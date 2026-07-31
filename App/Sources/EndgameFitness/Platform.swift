@@ -27,6 +27,21 @@ typealias PlatformColor = NSColor
 typealias PlatformColor = UIColor
 #endif
 
+/// The scalar `SCNVector3` is built from: `CGFloat` on macOS, `Float` on iOS.
+/// This is a genuine API difference, not a Swift inference quirk, so every
+/// vector component in the avatar system is funnelled through `scn(_:)` below.
+#if os(macOS)
+typealias SCNFloat = CGFloat
+#else
+typealias SCNFloat = Float
+#endif
+
+/// Converts any numeric value to the right scalar for `SCNVector3`.
+@inline(__always)
+func scn<T: BinaryFloatingPoint>(_ value: T) -> SCNFloat {
+    SCNFloat(value)
+}
+
 extension Color {
     /// Background for inset cards and controls.
     static var platformControlBackground: Color {

@@ -253,13 +253,13 @@ class BlobAvatar3D {
         material.shininess = 0.3
 
         // HEAD (blob sphere, no neck)
-        let headRadius: CGFloat = 0.4
+        let headRadius: SCNFloat = 0.4
         let headSphere = SCNSphere(radius: headRadius)
         headSphere.materials = [material]
         let headNode = SCNNode(geometry: headSphere)
         headNode.position = SCNVector3(
             x: 0,
-            y: CGFloat(2.0 * profile.height.scaleY), // Top of body
+            y: scn(2.0 * profile.height.scaleY), // Top of body
             z: 0
         )
         avatarNode.addChildNode(headNode)
@@ -275,17 +275,17 @@ class BlobAvatar3D {
         }
 
         // TORSO (ellipsoid blob)
-        let torsoWidth = CGFloat(0.6 * profile.bodyType.baseScale)
-        let torsoHeight = CGFloat(1.2 * profile.height.scaleY)
-        let torsoDepth = CGFloat(0.5 * profile.bodyType.baseScale)
+        let torsoWidth = scn(0.6 * profile.bodyType.baseScale)
+        let torsoHeight = scn(1.2 * profile.height.scaleY)
+        let torsoDepth = scn(0.5 * profile.bodyType.baseScale)
 
         let torsoSphere = SCNSphere(radius: 0.5)
         torsoSphere.materials = [material]
         let torsoNode = SCNNode(geometry: torsoSphere)
         torsoNode.scale = SCNVector3(
-            x: CGFloat(torsoWidth),
-            y: CGFloat(torsoHeight),
-            z: CGFloat(torsoDepth)
+            x: scn(torsoWidth),
+            y: scn(torsoHeight),
+            z: scn(torsoDepth)
         )
         torsoNode.position = SCNVector3(x: 0, y: 1.0, z: 0)
         avatarNode.addChildNode(torsoNode)
@@ -297,9 +297,9 @@ class BlobAvatar3D {
             bellySphere.materials = [material]
             let bellyNode = SCNNode(geometry: bellySphere)
             bellyNode.scale = SCNVector3(
-                x: CGFloat(bellyScale),
-                y: CGFloat(bellyScale * 0.8),
-                z: CGFloat(bellyScale * 1.2)
+                x: scn(bellyScale),
+                y: scn(bellyScale * 0.8),
+                z: scn(bellyScale * 1.2)
             )
             bellyNode.position = SCNVector3(x: 0, y: 0.8, z: 0.4)
             avatarNode.addChildNode(bellyNode)
@@ -320,21 +320,21 @@ class BlobAvatar3D {
         let eyeMaterial = SCNMaterial()
         eyeMaterial.diffuse.contents = PlatformColor.black
 
-        let eyeRadius: CGFloat = 0.08
+        let eyeRadius: SCNFloat = 0.08
         let eyeOffset = headRadius * 0.6
 
         // Left eye
         let leftEye = SCNSphere(radius: eyeRadius)
         leftEye.materials = [eyeMaterial]
         let leftEyeNode = SCNNode(geometry: leftEye)
-        leftEyeNode.position = SCNVector3(x: -0.15, y: 0.1, z: CGFloat(eyeOffset))
+        leftEyeNode.position = SCNVector3(x: -0.15, y: 0.1, z: scn(eyeOffset))
         headNode.addChildNode(leftEyeNode)
 
         // Right eye
         let rightEye = SCNSphere(radius: eyeRadius)
         rightEye.materials = [eyeMaterial]
         let rightEyeNode = SCNNode(geometry: rightEye)
-        rightEyeNode.position = SCNVector3(x: 0.15, y: 0.1, z: CGFloat(eyeOffset))
+        rightEyeNode.position = SCNVector3(x: 0.15, y: 0.1, z: scn(eyeOffset))
         headNode.addChildNode(rightEyeNode)
     }
 
@@ -346,7 +346,7 @@ class BlobAvatar3D {
         let mouth = SCNSphere(radius: 0.05)
         mouth.materials = [mouthMaterial]
         let mouthNode = SCNNode(geometry: mouth)
-        mouthNode.position = SCNVector3(x: 0, y: -0.1, z: CGFloat(headRadius * 0.6))
+        mouthNode.position = SCNVector3(x: 0, y: -0.1, z: scn(headRadius * 0.6))
         headNode.addChildNode(mouthNode)
     }
 
@@ -355,19 +355,19 @@ class BlobAvatar3D {
     }
 
     private func addArm(side: Side, material: SCNMaterial) {
-        let armLength: CGFloat = 0.8
-        let armRadius: CGFloat = 0.12
+        let armLength: SCNFloat = 0.8
+        let armRadius: SCNFloat = 0.12
 
         let armCylinder = SCNCylinder(radius: armRadius, height: armLength)
         armCylinder.materials = [material]
         let armNode = SCNNode(geometry: armCylinder)
 
         // Position at shoulder height (top of torso) and angle downward
-        let xOffset: CGFloat = side == .left ? -0.6 : 0.6  // Closer to torso
+        let xOffset: SCNFloat = side == .left ? -0.6 : 0.6  // Closer to torso
         armNode.position = SCNVector3(x: xOffset, y: 1.6, z: 0)  // Higher, at shoulder level
 
         // Rotate arm to angle down naturally
-        let angleDirection: CGFloat = side == .left ? CGFloat.pi / 6 : -CGFloat.pi / 6
+        let angleDirection: SCNFloat = side == .left ? SCNFloat.pi / 6 : -SCNFloat.pi / 6
         armNode.eulerAngles = SCNVector3(x: 0, y: 0, z: angleDirection)
 
         // Hand (small sphere at end of arm)
@@ -375,29 +375,29 @@ class BlobAvatar3D {
         handSphere.materials = [material]
         let handNode = SCNNode(geometry: handSphere)
         // Position hand at the bottom of the arm cylinder (local coordinate: negative Y = down)
-        handNode.position = SCNVector3(x: 0, y: -CGFloat(armLength / 2) - 0.15, z: 0)
+        handNode.position = SCNVector3(x: 0, y: -scn(armLength / 2) - 0.15, z: 0)
         armNode.addChildNode(handNode)
 
         avatarNode.addChildNode(armNode)
     }
 
     private func addLeg(side: Side, material: SCNMaterial) {
-        let legLength: CGFloat = 1.0
-        let legRadius: CGFloat = 0.15
+        let legLength: SCNFloat = 1.0
+        let legRadius: SCNFloat = 0.15
 
         let legCylinder = SCNCylinder(radius: legRadius, height: legLength)
         legCylinder.materials = [material]
         let legNode = SCNNode(geometry: legCylinder)
 
         // Position
-        let xOffset: CGFloat = side == .left ? -0.25 : 0.25
-        legNode.position = SCNVector3(x: xOffset, y: CGFloat(legLength / 2), z: 0)
+        let xOffset: SCNFloat = side == .left ? -0.25 : 0.25
+        legNode.position = SCNVector3(x: xOffset, y: scn(legLength / 2), z: 0)
 
         // Foot (small sphere)
         let footSphere = SCNSphere(radius: 0.18)
         footSphere.materials = [material]
         let footNode = SCNNode(geometry: footSphere)
-        footNode.position = SCNVector3(x: 0, y: CGFloat(-legLength / 2 - 0.1), z: 0.1)
+        footNode.position = SCNVector3(x: 0, y: scn(-legLength / 2 - 0.1), z: 0.1)
         legNode.addChildNode(footNode)
 
         avatarNode.addChildNode(legNode)

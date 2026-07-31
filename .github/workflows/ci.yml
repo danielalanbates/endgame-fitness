@@ -23,9 +23,12 @@ jobs:
           - name: macOS
             scheme: EndgameFitness-macOS
             destination: platform=macOS,arch=arm64
+          # Naming a specific simulator ("iPhone 16") breaks whenever the runner
+          # image ships a different device set. A generic destination just needs
+          # the SDK to exist, which is all a compile check requires.
           - name: iOS
             scheme: EndgameFitness-iOS
-            destination: platform=iOS Simulator,name=iPhone 16,OS=latest
+            destination: generic/platform=iOS Simulator
 
     name: ${{ matrix.name }}
     steps:
