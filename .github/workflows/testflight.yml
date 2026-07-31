@@ -1,22 +1,33 @@
 name: TestFlight
 
-# Archives, signs and uploads Endgame Fitness to TestFlight for iOS and macOS.
+# Ships Endgame Fitness to TestFlight. There is no Xcode on the development
+# machine, so every archive, signature and upload happens here.
 #
-# This is the whole release path: the development machine has no Xcode, so every
-# archive and upload happens here — the same approach that shipped Descend Watch.
+# This is modelled on danielalanbates/descend-watch, which is the pipeline that
+# has actually put builds on TestFlight from this Apple account. Two things in
+# particular are copied deliberately rather than done the "documented" way:
 #
-# Required repository secrets
-# ---------------------------
-#   ASC_KEY_ID           App Store Connect API key id (e.g. 32R84GFV2F)
-#   ASC_ISSUER_ID        ASC API issuer id (UUID, from App Store Connect -> Keys)
-#   ASC_PRIVATE_KEY      contents of the AuthKey_XXXX.p8 file
-#   DEVELOPMENT_TEAM     10-character Apple Developer team id
-#   BUILD_CERTIFICATE    base64 of the distribution .p12
-#   P12_PASSWORD         password for that .p12
-#   PROVISIONING_IOS     base64 of the iOS App Store .mobileprovision
-#   PROVISIONING_MACOS   base64 of the macOS App Store .provisionprofile
+#   * The .ipa is packaged by hand (zip a Payload/ directory) instead of using
+#     `xcodebuild -exportArchive`, which is fragile and needs an export plist
+#     that keeps drifting out of date.
+#   * Upload goes through the Build Upload REST API (scripts/upload_asc.py)
+#     rather than altool, which has proven unreliable here.
 #
-# Encode a file for a secret with:  base64 -i cert.p12 | pbcopy
+# SECRET NAMES MATCH descend-watch ON PURPOSE, so the same values can be pasted
+# straight across:
+#
+#   ASC_KEY_ID       App Store Connect API key id (e.g. 32R84GFV2F)
+#   ASC_ISSUER_ID    ASC API issuer id (UUID) — get from App Store Connect ->
+#                    Users and Access -> Integrations -> App Store Connect API
+#   ASC_KEY_P8       contents of AuthKey_XXXX.p8
+#   DIST_P12_B64     base64 of the Apple Distribution .p12
+#   DIST_P12_PASS    password for that .p12
+#   PROVISION_IOS_B64    base64 of the iOS App Store .mobileprovision for
+#                        org.batesai.endgamefitness
+#   PROVISION_MACOS_B64  base64 of the macOS App Store .provisionprofile
+#   ASC_APP_ID       the numeric app id from the App Store Connect URL
+#
+# Encode a file with:  base64 -i cert.p12 | pbcopy
 
 on:
   workflow_dispatch:
@@ -24,9 +35,14 @@ on:
       platform:
         description: Which platform to ship
         required: true
-        default: both
+        default: ios
         type: choice
-        options: [both, ios, macos]
+        options: [ios, macos, both]
+      version:
+        description: Marketing version
+        required: false
+        default: "1.0.0"
+        type: string
       build_number:
         description: Build number (defaults to the run number)
         required: false
@@ -37,8 +53,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  upload:
-    runs-on: macos-15
+  ship:
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -59,51 +75,9 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
 
-      - name: Select Xcode
-        if: steps.gate.outputs.run == 'true'
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app
-
       - name: Install XcodeGen
         if: steps.gate.outputs.run == 'true'
         run: brew install xcodegen
-
-      # A throwaway keychain keeps the signing identity off the runner's login
-      # keychain; it is discarded with the VM.
-      - name: Import signing certificate
-        if: steps.gate.outputs.run == 'true'
-        env:
-          BUILD_CERTIFICATE: ${{ secrets.BUILD_CERTIFICATE }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-        run: |
-          CERT_PATH="$RUNNER_TEMP/build.p12"
-          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-
-          echo -n "$BUILD_CERTIFICATE" | base64 --decode -o "$CERT_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT_PATH" -P "$P12_PASSWORD" -A \
-            -t cert -f pkcs12 -k "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
-          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
-
-      - name: Install provisioning profile
-        if: steps.gate.outputs.run == 'true'
-        env:
-          PROFILE_IOS: ${{ secrets.PROVISIONING_IOS }}
-          PROFILE_MACOS: ${{ secrets.PROVISIONING_MACOS }}
-        run: |
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          if [ "${{ matrix.platform }}" = "ios" ]; then
-            echo -n "$PROFILE_IOS" | base64 --decode \
-              -o "$HOME/Library/MobileDevice/Provisioning Profiles/app.mobileprovision"
-          else
-            echo -n "$PROFILE_MACOS" | base64 --decode \
-              -o "$HOME/Library/MobileDevice/Provisioning Profiles/app.provisionprofile"
-          fi
 
       - name: Generate project
         if: steps.gate.outputs.run == 'true'
@@ -111,6 +85,35 @@ jobs:
         env:
           DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
         run: xcodegen generate --spec project.yml
+
+      - name: Import signing certificate and profile
+        if: steps.gate.outputs.run == 'true'
+        env:
+          DIST_P12_B64: ${{ secrets.DIST_P12_B64 }}
+          DIST_P12_PASS: ${{ secrets.DIST_P12_PASS }}
+          PROVISION_IOS_B64: ${{ secrets.PROVISION_IOS_B64 }}
+          PROVISION_MACOS_B64: ${{ secrets.PROVISION_MACOS_B64 }}
+        run: |
+          echo "$DIST_P12_B64" | base64 -d > dist.p12
+          security create-keychain -p ci ci.keychain
+          security default-keychain -s ci.keychain
+          security unlock-keychain -p ci ci.keychain
+          security import dist.p12 -k ci.keychain -P "$DIST_P12_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain
+
+          # Xcode looks in one of these two directories depending on version;
+          # descend-watch writes both, so do the same.
+          mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          if [ "${{ matrix.platform }}" = "ios" ]; then
+            echo "$PROVISION_IOS_B64" | base64 -d \
+              > ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/endgame.mobileprovision
+          else
+            echo "$PROVISION_MACOS_B64" | base64 -d \
+              > ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/endgame.provisionprofile
+          fi
+          cp ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/* \
+             ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || true
 
       - name: Archive
         if: steps.gate.outputs.run == 'true'
@@ -123,85 +126,78 @@ jobs:
           [ -z "$BUILD_NUMBER" ] && BUILD_NUMBER="${{ github.run_number }}"
 
           if [ "${{ matrix.platform }}" = "ios" ]; then
-            SCHEME="EndgameFitness-iOS"
-            DESTINATION="generic/platform=iOS"
+            SCHEME="EndgameFitness-iOS"; DEST="generic/platform=iOS"
           else
-            SCHEME="EndgameFitness-macOS"
-            DESTINATION="generic/platform=macOS"
+            SCHEME="EndgameFitness-macOS"; DEST="generic/platform=macOS"
           fi
 
-          xcodebuild archive \
-            -project EndgameFitness.xcodeproj \
-            -scheme "$SCHEME" \
-            -destination "$DESTINATION" \
-            -configuration Release \
-            -archivePath "$RUNNER_TEMP/EndgameFitness.xcarchive" \
+          xcodebuild -project EndgameFitness.xcodeproj -scheme "$SCHEME" \
+            -destination "$DEST" -configuration Release \
+            -archivePath "$GITHUB_WORKSPACE/build/EndgameFitness.xcarchive" \
+            MARKETING_VERSION="${{ inputs.version }}" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-            -allowProvisioningUpdates
+            archive
 
-      - name: Export for App Store
+      - name: Inspect archive
         if: steps.gate.outputs.run == 'true'
-        env:
-          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+        run: |
+          find build/EndgameFitness.xcarchive -maxdepth 3 -print
+          plutil -p build/EndgameFitness.xcarchive/Info.plist || true
+
+      - name: Package artifact
+        if: steps.gate.outputs.run == 'true'
+        id: package
         run: |
           set -eo pipefail
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>teamID</key><string>${DEVELOPMENT_TEAM}</string>
-            <key>uploadSymbols</key><true/>
-            <key>destination</key><string>export</string>
-          </dict>
-          </plist>
-          EOF
+          APPS=build/EndgameFitness.xcarchive/Products/Applications
+          APP_NAME=$(ls "$APPS" | head -1)
+          echo "app: $APP_NAME"
 
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/EndgameFitness.xcarchive" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -allowProvisioningUpdates
+          if [ "${{ matrix.platform }}" = "ios" ]; then
+            # Hand-rolled .ipa: an .ipa is just a zip with the app under Payload/.
+            cd "$APPS"
+            mkdir -p Payload
+            cp -R "$APP_NAME" Payload/
+            zip -qry EndgameFitness.ipa Payload
+            cd -
+            echo "artifact=$APPS/EndgameFitness.ipa" >> "$GITHUB_OUTPUT"
+          else
+            # macOS TestFlight takes a signed .pkg, not a zip.
+            productbuild --component "$APPS/$APP_NAME" /Applications \
+              --sign "3rd Party Mac Developer Installer: ${{ secrets.INSTALLER_CERT_NAME }}" \
+              build/EndgameFitness.pkg
+            echo "artifact=build/EndgameFitness.pkg" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload to TestFlight
         if: steps.gate.outputs.run == 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APP_ID: ${{ secrets.ASC_APP_ID }}
+          IPA_PATH: ${{ steps.package.outputs.artifact }}
+          VER: ${{ inputs.version }}
         run: |
           set -eo pipefail
-          # altool locates the key by convention in this directory.
-          mkdir -p "$HOME/private_keys"
-          echo -n "$ASC_PRIVATE_KEY" > "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
-
+          BUILD_NUMBER="${{ inputs.build_number }}"
+          [ -z "$BUILD_NUMBER" ] && BUILD_NUMBER="${{ github.run_number }}"
           if [ "${{ matrix.platform }}" = "ios" ]; then
-            ARTIFACT=$(find "$RUNNER_TEMP/export" -name '*.ipa' | head -1)
-            TYPE="ios"
+            export PLATFORM=IOS
           else
-            ARTIFACT=$(find "$RUNNER_TEMP/export" -name '*.pkg' | head -1)
-            TYPE="macos"
+            export PLATFORM=MAC_OS
           fi
+          pip3 install --quiet --break-system-packages PyJWT cryptography \
+            || pip3 install --quiet PyJWT cryptography
+          BUILD="$BUILD_NUMBER" python3 scripts/upload_asc.py
 
-          if [ -z "$ARTIFACT" ]; then
-            echo "No artifact produced for ${{ matrix.platform }}" >&2
-            ls -R "$RUNNER_TEMP/export" >&2
-            exit 1
-          fi
-          echo "Uploading $ARTIFACT"
-
-          xcrun altool --upload-app \
-            --type "$TYPE" \
-            --file "$ARTIFACT" \
-            --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
-
-      - name: Keep the build for inspection
+      - name: Keep the artifact
         if: steps.gate.outputs.run == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: endgame-fitness-${{ matrix.platform }}
-          path: ${{ runner.temp }}/export
+          path: |
+            build/EndgameFitness.xcarchive/Products/Applications/*.ipa
+            build/*.pkg
           if-no-files-found: ignore

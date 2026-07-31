@@ -15,7 +15,7 @@ These cannot be done non-interactively. Everything else is waiting behind them.
 | 1 | `npx wrangler login` | Deploying the API and creating the D1 tables. Nothing about profiles, XP, friends or leaderboards can be proven until this happens. |
 | 2 | **Get the App Store Connect API Issuer ID** — App Store Connect → Users and Access → Integrations → App Store Connect API. The key itself (`AuthKey_32R84GFV2F.p8`) is already on disk; only the issuer UUID is missing, and without it no ASC API token can be minted at all. | Everything below it. |
 | 3 | App Store Connect: create the app record for `org.batesai.endgamefitness` | TestFlight. |
-| 4 | Generate a distribution certificate + provisioning profiles, add the 8 repo secrets | The TestFlight workflow. |
+| 4 | Add the repo secrets. **You already have every one of these values** — they are configured on `danielalanbates/descend-watch`, which has shipped to TestFlight. The workflow deliberately uses the same secret names (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `DIST_P12_B64`, `DIST_P12_PASS`) so they can be pasted straight across. Only the provisioning profile is genuinely new, because it is bound to a new bundle id. | The TestFlight workflow. |
 | 5 | Apple Developer portal: enable the **Sign in with Apple** capability for the bundle id, and register `endgamefitness://` | Native sign-in actually working on device. |
 | 6 | Cloudflare dashboard: set `JWT_SECRET`, `OAUTH_GOOGLE_CLIENT_SECRET`, `OAUTH_APPLE_CLIENT_SECRET`, `ALLOWED_ORIGINS` | Real OAuth. The JWT secret currently in the old `wrangler.toml` is a placeholder committed to git and **must be replaced**. |
 
@@ -91,6 +91,24 @@ gets a `TabView` (Home, Workout, Community, Progress, Programs, then More).
 2. Sign in for real on macOS. Confirm a profile row appears in D1.
 3. Complete a workout; confirm XP lands and the level bar moves.
 4. First TestFlight build, macOS then iOS.
+
+## The TestFlight pipeline is modelled on one that works
+
+Rather than invent a release path, `.github/workflows/testflight.yml` copies
+`danielalanbates/descend-watch`, which is the pipeline that has actually put
+builds on TestFlight from this Apple account. Two choices are deliberate:
+
+- The `.ipa` is packaged by hand (zip a `Payload/` directory) instead of
+  `xcodebuild -exportArchive`, which is fragile and needs an export plist that
+  keeps drifting.
+- Upload goes through the Build Upload REST API (`scripts/upload_asc.py`,
+  adapted from descend-watch) rather than `altool`, which has been unreliable
+  on this account.
+
+Caveat: descend-watch ships iOS only. The macOS leg (`productbuild` into a
+signed `.pkg`, `PLATFORM=MAC_OS`) is written but has **never been exercised**,
+and it needs a "3rd Party Mac Developer Installer" certificate that may not
+exist yet.
 
 ## Deliberate design decisions
 
