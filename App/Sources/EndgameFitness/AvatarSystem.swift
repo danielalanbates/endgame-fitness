@@ -253,7 +253,7 @@ class BlobAvatar3D {
         material.shininess = 0.3
 
         // HEAD (blob sphere, no neck)
-        let headRadius: SCNFloat = 0.4
+        let headRadius: CGFloat = 0.4
         let headSphere = SCNSphere(radius: headRadius)
         headSphere.materials = [material]
         let headNode = SCNNode(geometry: headSphere)
@@ -320,7 +320,7 @@ class BlobAvatar3D {
         let eyeMaterial = SCNMaterial()
         eyeMaterial.diffuse.contents = PlatformColor.black
 
-        let eyeRadius: SCNFloat = 0.08
+        let eyeRadius: CGFloat = 0.08
         let eyeOffset = headRadius * 0.6
 
         // Left eye
@@ -355,8 +355,8 @@ class BlobAvatar3D {
     }
 
     private func addArm(side: Side, material: SCNMaterial) {
-        let armLength: SCNFloat = 0.8
-        let armRadius: SCNFloat = 0.12
+        let armLength: CGFloat = 0.8
+        let armRadius: CGFloat = 0.12
 
         let armCylinder = SCNCylinder(radius: armRadius, height: armLength)
         armCylinder.materials = [material]
@@ -382,8 +382,8 @@ class BlobAvatar3D {
     }
 
     private func addLeg(side: Side, material: SCNMaterial) {
-        let legLength: SCNFloat = 1.0
-        let legRadius: SCNFloat = 0.15
+        let legLength: CGFloat = 1.0
+        let legRadius: CGFloat = 0.15
 
         let legCylinder = SCNCylinder(radius: legRadius, height: legLength)
         legCylinder.materials = [material]
