@@ -117,13 +117,9 @@ enum Platform {
 
 // MARK: - Split layout
 
-/// `HSplitView` is macOS-only. This keeps the single call site in `ContentView`
-/// platform-neutral: a draggable split on the Mac, a plain row elsewhere.
-///
-/// TODO: an iPhone should not get a 220pt sidebar next to the content — the iOS
-/// build needs a real tab-bar layout before it goes in front of testers. This
-/// exists so the target compiles and runs on iPad; iPhone navigation is a
-/// separate piece of design work.
+/// `HSplitView` is macOS-only. This keeps the split layout in `ContentView`
+/// platform-neutral. iOS no longer routes through here — it uses a TabView —
+/// so in practice this is the macOS path plus a safe fallback.
 struct PlatformSplit<Content: View>: View {
     @ViewBuilder var content: Content
 

@@ -1574,127 +1574,168 @@ struct ContentView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
 
     var body: some View {
+        #if os(macOS)
         PlatformSplit {
-            // Sidebar
-            VStack(alignment: .leading, spacing: 10) {
-                Text("WorkoutTracker")
-                    .font(.title2)
-                    .bold()
-                    .padding(.bottom)
-
-                SidebarButton(
-                    title: "Dashboard",
-                    icon: "dumbbell.fill",
-                    isSelected: workoutManager.selectedTab == 0
-                ) {
-                    workoutManager.selectedTab = 0
-                }
-
-                SidebarButton(
-                    title: "Workouts",
-                    icon: "figure.strengthtraining.traditional",
-                    isSelected: workoutManager.selectedTab == 1
-                ) {
-                    workoutManager.selectedTab = 1
-                }
-
-                SidebarButton(
-                    title: "Programs",
-                    icon: "doc.text",
-                    isSelected: workoutManager.selectedTab == 2
-                ) {
-                    workoutManager.selectedTab = 2
-                }
-
-                SidebarButton(
-                    title: "Progress",
-                    icon: "chart.line.uptrend.xyaxis",
-                    isSelected: workoutManager.selectedTab == 3
-                ) {
-                    workoutManager.selectedTab = 3
-                }
-
-                SidebarButton(
-                    title: "Mesocycle",
-                    icon: "calendar.badge.clock",
-                    isSelected: workoutManager.selectedTab == 4
-                ) {
-                    workoutManager.selectedTab = 4
-                }
-
-                SidebarButton(
-                    title: "Tools",
-                    icon: "wrench.and.screwdriver.fill",
-                    isSelected: workoutManager.selectedTab == 5
-                ) {
-                    workoutManager.selectedTab = 5
-                }
-
-                SidebarButton(
-                    title: "Community",
-                    icon: "person.2.fill",
-                    isSelected: workoutManager.selectedTab == 7
-                ) {
-                    workoutManager.selectedTab = 7
-                }
-
-                SidebarButton(
-                    title: "Settings",
-                    icon: "gear",
-                    isSelected: workoutManager.selectedTab == 6
-                ) {
-                    workoutManager.selectedTab = 6
-                }
-
-                Spacer()
-
-                // Quick Stats in Sidebar
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-                    HStack {
-                        Image(systemName: "flame.fill")
-                            .foregroundColor(.orange)
-                        Text("\(workoutManager.currentStreak) day streak")
-                            .font(.caption)
-                    }
-                    HStack {
-                        Image(systemName: "chart.bar.fill")
-                            .foregroundColor(.green)
-                        Text("\(workoutManager.weeklyWorkouts) workouts this week")
-                            .font(.caption)
-                    }
-                }
-                .padding(.top, 8)
-            }
-            .padding()
-            .frame(width: 220)
-            .background(Color.platformControlBackground)
-
-            // Main Content
-            Group {
-                switch workoutManager.selectedTab {
-                case 0:
-                    DashboardView()
-                case 1:
-                    WorkoutView()
-                case 2:
-                    ProgramsView()
-                case 3:
-                    ProgressView()
-                case 4:
-                    MesocycleView()
-                case 5:
-                    ToolsView()
-                case 6:
-                    SettingsView()
-                case 7:
-                    CommunityView()
-                default:
-                    DashboardView()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            sidebar
+            mainContent
         }
+        #else
+        // Phones and iPads get a tab bar. A fixed 220pt sidebar beside the
+        // content is a desktop idiom that is unusable on a phone. The five
+        // most-used destinations come first; SwiftUI moves the rest into a
+        // "More" tab on iPhone automatically.
+        TabView(selection: $workoutManager.selectedTab) {
+            DashboardView()
+                .tabItem { Label("Home", systemImage: "dumbbell.fill") }
+                .tag(0)
+            WorkoutView()
+                .tabItem { Label("Workout", systemImage: "figure.strengthtraining.traditional") }
+                .tag(1)
+            CommunityView()
+                .tabItem { Label("Community", systemImage: "person.2.fill") }
+                .tag(7)
+            ProgressView()
+                .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(3)
+            ProgramsView()
+                .tabItem { Label("Programs", systemImage: "doc.text") }
+                .tag(2)
+            MesocycleView()
+                .tabItem { Label("Mesocycle", systemImage: "calendar.badge.clock") }
+                .tag(4)
+            ToolsView()
+                .tabItem { Label("Tools", systemImage: "wrench.and.screwdriver.fill") }
+                .tag(5)
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gear") }
+                .tag(6)
+        }
+        #endif
+    }
+
+    /// The macOS navigation rail.
+    private var sidebar: some View {
+        // Sidebar
+        VStack(alignment: .leading, spacing: 10) {
+            Text("WorkoutTracker")
+                .font(.title2)
+                .bold()
+                .padding(.bottom)
+
+            SidebarButton(
+                title: "Dashboard",
+                icon: "dumbbell.fill",
+                isSelected: workoutManager.selectedTab == 0
+            ) {
+                workoutManager.selectedTab = 0
+            }
+
+            SidebarButton(
+                title: "Workouts",
+                icon: "figure.strengthtraining.traditional",
+                isSelected: workoutManager.selectedTab == 1
+            ) {
+                workoutManager.selectedTab = 1
+            }
+
+            SidebarButton(
+                title: "Programs",
+                icon: "doc.text",
+                isSelected: workoutManager.selectedTab == 2
+            ) {
+                workoutManager.selectedTab = 2
+            }
+
+            SidebarButton(
+                title: "Progress",
+                icon: "chart.line.uptrend.xyaxis",
+                isSelected: workoutManager.selectedTab == 3
+            ) {
+                workoutManager.selectedTab = 3
+            }
+
+            SidebarButton(
+                title: "Mesocycle",
+                icon: "calendar.badge.clock",
+                isSelected: workoutManager.selectedTab == 4
+            ) {
+                workoutManager.selectedTab = 4
+            }
+
+            SidebarButton(
+                title: "Tools",
+                icon: "wrench.and.screwdriver.fill",
+                isSelected: workoutManager.selectedTab == 5
+            ) {
+                workoutManager.selectedTab = 5
+            }
+
+            SidebarButton(
+                title: "Community",
+                icon: "person.2.fill",
+                isSelected: workoutManager.selectedTab == 7
+            ) {
+                workoutManager.selectedTab = 7
+            }
+
+            SidebarButton(
+                title: "Settings",
+                icon: "gear",
+                isSelected: workoutManager.selectedTab == 6
+            ) {
+                workoutManager.selectedTab = 6
+            }
+
+            Spacer()
+
+            // Quick Stats in Sidebar
+            VStack(alignment: .leading, spacing: 8) {
+                Divider()
+                HStack {
+                    Image(systemName: "flame.fill")
+                        .foregroundColor(.orange)
+                    Text("\(workoutManager.currentStreak) day streak")
+                        .font(.caption)
+                }
+                HStack {
+                    Image(systemName: "chart.bar.fill")
+                        .foregroundColor(.green)
+                    Text("\(workoutManager.weeklyWorkouts) workouts this week")
+                        .font(.caption)
+                }
+            }
+            .padding(.top, 8)
+        }
+        .padding()
+        .frame(width: 220)
+        .background(Color.platformControlBackground)
+    }
+
+    /// The selected destination, used by the macOS split layout.
+    private var mainContent: some View {
+        Group {
+            switch workoutManager.selectedTab {
+            case 0:
+                DashboardView()
+            case 1:
+                WorkoutView()
+            case 2:
+                ProgramsView()
+            case 3:
+                ProgressView()
+            case 4:
+                MesocycleView()
+            case 5:
+                ToolsView()
+            case 6:
+                SettingsView()
+            case 7:
+                CommunityView()
+            default:
+                DashboardView()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
