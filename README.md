@@ -104,14 +104,16 @@ signed-in user are both available. A workout in a basement gym is never lost.
 - Auth client, sync engine and social/game UI all compile into the app.
 - Backend workers written and syntax-checked; 12/12 security tests passing
   against the real production file.
+- **The iOS target compiles.** CI is green on iOS, macOS and the backend tests:
+  <https://github.com/danielalanbates/endgame-fitness>
 
 **Not done yet:**
 
 - The backend has **never been deployed**. `https://batesai.org/api/auth/verify`
   still returns the site's HTML. Blocked on `npx wrangler login`, which is
   interactive and has to be run by hand.
-- The iOS build has **never been compiled** — no local SDK, and CI has not run
-  yet (no git remote configured).
+- The iOS app has never been **run** — only compiled. iPhone navigation is also
+  still wrong (a sidebar, not a tab bar); see the TODO in `Platform.swift`.
 - Nothing has been near TestFlight. The App Store Connect app record, signing
   certificates and provisioning profiles do not exist yet.
 - The game layer is built but **unproven end to end**, because proving it needs a

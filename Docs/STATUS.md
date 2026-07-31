@@ -13,11 +13,16 @@ These cannot be done non-interactively. Everything else is waiting behind them.
 | # | Action | Unblocks |
 |---|--------|----------|
 | 1 | `npx wrangler login` | Deploying the API and creating the D1 tables. Nothing about profiles, XP, friends or leaderboards can be proven until this happens. |
-| 2 | Create a GitHub repo and add it as a remote | CI, which is the **only** way the iOS build gets compiled at all. |
+| 2 | **Get the App Store Connect API Issuer ID** — App Store Connect → Users and Access → Integrations → App Store Connect API. The key itself (`AuthKey_32R84GFV2F.p8`) is already on disk; only the issuer UUID is missing, and without it no ASC API token can be minted at all. | Everything below it. |
 | 3 | App Store Connect: create the app record for `org.batesai.endgamefitness` | TestFlight. |
 | 4 | Generate a distribution certificate + provisioning profiles, add the 8 repo secrets | The TestFlight workflow. |
 | 5 | Apple Developer portal: enable the **Sign in with Apple** capability for the bundle id, and register `endgamefitness://` | Native sign-in actually working on device. |
 | 6 | Cloudflare dashboard: set `JWT_SECRET`, `OAUTH_GOOGLE_CLIENT_SECRET`, `OAUTH_APPLE_CLIENT_SECRET`, `ALLOWED_ORIGINS` | Real OAuth. The JWT secret currently in the old `wrangler.toml` is a placeholder committed to git and **must be replaced**. |
+
+Item 2 was checked directly: the `.p8` is at
+`~/Library/Application Support/BatesAI/keys/AuthKey_32R84GFV2F.p8`, the issuer id
+is recorded as MISSING in `CREDENTIALS.md`, and it could not be recovered from
+the `batesai-notary` keychain profile. It has to come from the web UI.
 
 ## Done
 
@@ -41,23 +46,46 @@ These cannot be done non-interactively. Everything else is waiting behind them.
 - Build system: XcodeGen spec with macOS + iOS targets, CI workflow, TestFlight
   workflow.
 
+## CI is live and green
+
+Repo: <https://github.com/danielalanbates/endgame-fitness> (private).
+
+The **iOS target now compiles** — verified in GitHub Actions, run 30601151148,
+all three jobs green (iOS, macOS, backend tests). Getting there took four rounds
+of real cross-platform errors:
+
+1. `AvatarSystem.swift` used `NSColor`, which does not exist off AppKit →
+   `PlatformColor` alias.
+2. `SCNVector3` takes `CGFloat` components on macOS and `Float` on iOS →
+   `SCNFloat` alias plus an `scn()` helper.
+3. The fix for (2) was applied too broadly and broke `SCNSphere`/`SCNCylinder`,
+   which take `CGFloat` dimensions on both platforms → reverted those.
+4. `HSplitView`, `Process`, `.toggleStyle(.checkbox)`, `windowStyle` and
+   `defaultPosition` are all macOS-only → guarded, with `PlatformSplit` added.
+
+CI also caught a workflow bug: pinning the simulator to "iPhone 16" failed on the
+runner image before compiling anything. It now uses a generic destination.
+
 ## Not verified — do not claim these work
 
 - **The API has never been deployed.** `/api/auth/verify` returns the site's HTML.
-- **The iOS target has never been compiled.** No local iOS SDK exists.
 - **No end-to-end sign-in has ever happened.** Not once, on any platform.
+- **The iOS app has never been run**, only compiled. Compiling is not running.
+- **iPhone layout is wrong.** `PlatformSplit` puts a 220pt sidebar beside the
+  content, which is fine on iPad and bad on a phone. It needs a tab-bar layout
+  before any tester sees it. This is flagged in a TODO in `Platform.swift`.
 - **The macOS UI has not been seen since the auth gate was added.** The app built
   and launched, but macOS would not realise a window while a fullscreen game held
-  the display; the pristine pre-change build behaved identically, so this looks
-  environmental rather than a code fault — but it is unconfirmed either way.
+  the display; the pristine pre-change build behaved identically, so this is
+  environmental rather than a code fault — but the new sign-in screen has still
+  never been looked at.
 
 ## Next, once unblocked
 
 1. Deploy the API; confirm `/api/auth/verify` returns 401 rather than HTML.
-2. Push to GitHub; get a green iOS build. Expect real compile errors — 6,300
-   lines written for macOS have never seen the iOS SDK.
-3. Sign in for real on macOS. Confirm a profile row appears in D1.
-4. Complete a workout; confirm XP lands and the level bar moves.
+2. Sign in for real on macOS. Confirm a profile row appears in D1.
+3. Complete a workout; confirm XP lands and the level bar moves.
+4. Redesign iPhone navigation as a tab bar.
 5. First TestFlight build, macOS then iOS.
 
 ## Deliberate design decisions
