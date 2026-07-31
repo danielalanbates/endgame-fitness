@@ -66,14 +66,19 @@ of real cross-platform errors:
 CI also caught a workflow bug: pinning the simulator to "iPhone 16" failed on the
 runner image before compiling anything. It now uses a generic destination.
 
+After that, iPhone navigation was rebuilt: `ContentView` was putting a fixed
+220pt sidebar beside the content on every platform, which would have shipped a
+near-unusable phone layout to the first tester. macOS keeps the split view; iOS
+gets a `TabView` (Home, Workout, Community, Progress, Programs, then More).
+
 ## Not verified — do not claim these work
 
 - **The API has never been deployed.** `/api/auth/verify` returns the site's HTML.
 - **No end-to-end sign-in has ever happened.** Not once, on any platform.
 - **The iOS app has never been run**, only compiled. Compiling is not running.
-- **iPhone layout is wrong.** `PlatformSplit` puts a 220pt sidebar beside the
-  content, which is fine on iPad and bad on a phone. It needs a tab-bar layout
-  before any tester sees it. This is flagged in a TODO in `Platform.swift`.
+- **The iOS tab bar has never been seen.** iPhone/iPad now use a `TabView`
+  instead of the desktop sidebar and it compiles, but no one has looked at it on
+  a device or simulator.
 - **The macOS UI has not been seen since the auth gate was added.** The app built
   and launched, but macOS would not realise a window while a fullscreen game held
   the display; the pristine pre-change build behaved identically, so this is
@@ -85,8 +90,7 @@ runner image before compiling anything. It now uses a generic destination.
 1. Deploy the API; confirm `/api/auth/verify` returns 401 rather than HTML.
 2. Sign in for real on macOS. Confirm a profile row appears in D1.
 3. Complete a workout; confirm XP lands and the level bar moves.
-4. Redesign iPhone navigation as a tab bar.
-5. First TestFlight build, macOS then iOS.
+4. First TestFlight build, macOS then iOS.
 
 ## Deliberate design decisions
 
