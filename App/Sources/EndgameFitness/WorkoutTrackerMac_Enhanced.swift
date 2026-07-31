@@ -33,8 +33,10 @@ struct WorkoutTrackerMacApp: App {
                 .environmentObject(workoutManager)
                 .onAppear { Platform.activate() }
         }
+        #if os(macOS)
         .windowStyle(DefaultWindowStyle())
         .defaultPosition(.center)
+        #endif
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Workout Session") {
@@ -1532,7 +1534,16 @@ class PythonGeneratorService {
     static let shared = PythonGeneratorService()
     private init() {}
 
+    /// Shells out to a local Python script. `Process` does not exist on iOS, and
+    /// spawning a subprocess is not permitted there, so this is macOS-only and
+    /// callers must handle nil.
+    ///
+    /// NOTE: the paths below point at a checkout that may not exist. Treat a nil
+    /// return as the normal case, not an error worth surfacing to the user.
     func generateProgram(weeks: Int = 12, daysPerWeek: Int = 5) -> String? {
+        #if !os(macOS)
+        return nil
+        #else
         let task = Process()
         let pipe = Pipe()
 
@@ -1554,6 +1565,7 @@ class PythonGeneratorService {
             print("Error running Python generator: \(error)")
             return nil
         }
+        #endif
     }
 }
 
@@ -1562,7 +1574,7 @@ struct ContentView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
 
     var body: some View {
-        HSplitView {
+        PlatformSplit {
             // Sidebar
             VStack(alignment: .leading, spacing: 10) {
                 Text("WorkoutTracker")
@@ -5717,7 +5729,9 @@ struct WaiverStep: View {
                     .font(.headline)
                     .foregroundColor(.black)
             }
+            #if os(macOS)
             .toggleStyle(.checkbox)
+            #endif
             .padding()
             .background(hasAcceptedWaivers ? Color.brandGreen.opacity(0.2) : Color.white.opacity(0.5))
             .cornerRadius(12)

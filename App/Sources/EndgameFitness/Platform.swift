@@ -115,6 +115,27 @@ enum Platform {
     }
 }
 
+// MARK: - Split layout
+
+/// `HSplitView` is macOS-only. This keeps the single call site in `ContentView`
+/// platform-neutral: a draggable split on the Mac, a plain row elsewhere.
+///
+/// TODO: an iPhone should not get a 220pt sidebar next to the content — the iOS
+/// build needs a real tab-bar layout before it goes in front of testers. This
+/// exists so the target compiles and runs on iPad; iPhone navigation is a
+/// separate piece of design work.
+struct PlatformSplit<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        #if os(macOS)
+        HSplitView { content }
+        #else
+        HStack(spacing: 0) { content }
+        #endif
+    }
+}
+
 // MARK: - Cross-platform text field
 
 /// The original `MacTextField` wrapped `NSTextField` to get first-responder and
