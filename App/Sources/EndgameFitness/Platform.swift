@@ -18,6 +18,15 @@ import UIKit
 
 // MARK: - Colors
 
+/// The platform's concrete colour class. SceneKit materials and lights need a
+/// real `NSColor`/`UIColor` rather than a SwiftUI `Color`, so the avatar system
+/// builds against this alias instead of hard-coding AppKit.
+#if os(macOS)
+typealias PlatformColor = NSColor
+#else
+typealias PlatformColor = UIColor
+#endif
+
 extension Color {
     /// Background for inset cards and controls.
     static var platformControlBackground: Color {

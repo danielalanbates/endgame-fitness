@@ -82,15 +82,15 @@ struct AvatarBodyProfile: Codable, Equatable {
         case gold = "Gold"        // Unlock level 30
         case rainbow = "Rainbow"  // Unlock level 50
 
-        var color: NSColor {
+        var color: PlatformColor {
             switch self {
-            case .blue: return NSColor(red: 0.3, green: 0.5, blue: 0.9, alpha: 1.0)
-            case .green: return NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1.0)
-            case .purple: return NSColor(red: 0.6, green: 0.3, blue: 0.9, alpha: 1.0)
-            case .orange: return NSColor(red: 0.9, green: 0.5, blue: 0.2, alpha: 1.0)
-            case .red: return NSColor(red: 0.9, green: 0.3, blue: 0.3, alpha: 1.0)
-            case .gold: return NSColor(red: 0.9, green: 0.7, blue: 0.2, alpha: 1.0)
-            case .rainbow: return NSColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0) // Handled with gradient
+            case .blue: return PlatformColor(red: 0.3, green: 0.5, blue: 0.9, alpha: 1.0)
+            case .green: return PlatformColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1.0)
+            case .purple: return PlatformColor(red: 0.6, green: 0.3, blue: 0.9, alpha: 1.0)
+            case .orange: return PlatformColor(red: 0.9, green: 0.5, blue: 0.2, alpha: 1.0)
+            case .red: return PlatformColor(red: 0.9, green: 0.3, blue: 0.3, alpha: 1.0)
+            case .gold: return PlatformColor(red: 0.9, green: 0.7, blue: 0.2, alpha: 1.0)
+            case .rainbow: return PlatformColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0) // Handled with gradient
             }
         }
 
@@ -238,7 +238,7 @@ class BlobAvatar3D {
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light?.type = .ambient
-        ambientLight.light?.color = NSColor(white: 0.4, alpha: 1.0)
+        ambientLight.light?.color = PlatformColor(white: 0.4, alpha: 1.0)
         scene.rootNode.addChildNode(ambientLight)
     }
 
@@ -249,7 +249,7 @@ class BlobAvatar3D {
         // Base material
         let material = SCNMaterial()
         material.diffuse.contents = profile.skinColor.color
-        material.specular.contents = NSColor.white
+        material.specular.contents = PlatformColor.white
         material.shininess = 0.3
 
         // HEAD (blob sphere, no neck)
@@ -318,7 +318,7 @@ class BlobAvatar3D {
 
     private func addEyes(to headNode: SCNNode, headRadius: CGFloat) {
         let eyeMaterial = SCNMaterial()
-        eyeMaterial.diffuse.contents = NSColor.black
+        eyeMaterial.diffuse.contents = PlatformColor.black
 
         let eyeRadius: CGFloat = 0.08
         let eyeOffset = headRadius * 0.6
@@ -341,7 +341,7 @@ class BlobAvatar3D {
     private func addMouth(to headNode: SCNNode, headRadius: CGFloat) {
         // Simple smile (small sphere)
         let mouthMaterial = SCNMaterial()
-        mouthMaterial.diffuse.contents = NSColor.black
+        mouthMaterial.diffuse.contents = PlatformColor.black
 
         let mouth = SCNSphere(radius: 0.05)
         mouth.materials = [mouthMaterial]

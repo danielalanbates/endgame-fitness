@@ -424,7 +424,7 @@ struct AvatarEvolutionNotification: View {
             }
         }
         .padding(30)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Color.platformWindowBackground)
         .cornerRadius(16)
         .shadow(radius: 20)
     }
