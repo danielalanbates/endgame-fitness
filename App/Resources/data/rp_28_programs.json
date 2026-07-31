@@ -1,0 +1,2368 @@
+{
+  "version": "1.0",
+  "source": "28 Training Programs (Numbers)",
+  "maxes": {
+    "bench": 180,
+    "squat": 225,
+    "deadlift": 300,
+    "rounding": 2.5
+  },
+  "programs": {
+    "Bench 1x Beg": {
+      "lift_type": "bench",
+      "frequency": "1x",
+      "level": "beginner",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "2",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "8 - 10"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "2",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "6 - 8"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "2",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "New 1RM",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 1x Int": {
+      "lift_type": "bench",
+      "frequency": "1x",
+      "level": "intermediate",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "8 - 10"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "6 - 8"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "3",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "New 1RM",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 1x Adv": {
+      "lift_type": "bench",
+      "frequency": "1x",
+      "level": "advanced",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "8 - 10"
+            },
+            {
+              "exercise": "Pin press from chest or floor press",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "6 - 8"
+            },
+            {
+              "exercise": "Pin press from chest or floor press",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "3",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Pin press from chest or floor press",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "New 1RM",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Pin press from chest or floor press",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press, flyes, dips, or pec dec",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "12.0"
+            },
+            {
+              "exercise": "Curls of your choice",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 2x Beg": {
+      "lift_type": "bench",
+      "frequency": "2x",
+      "level": "beginner",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "4",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "1",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Hammer Curl",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "2",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Hammer Curl",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "2",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Hammer Curl",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "5",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Hammer Curl",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 2x Int": {
+      "lift_type": "bench",
+      "frequency": "2x",
+      "level": "intermediate",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "4",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "2",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "2",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "3",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "5",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 2x Adv": {
+      "lift_type": "bench",
+      "frequency": "2x",
+      "level": "advanced",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "4",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "2",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Weighted dips",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "2",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Weighted dips",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "3",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Weighted dips",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "5",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Weighted dips",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Triceps extensions of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "DB press",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Curls/pullups/pulldowns of your choice",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 3x Beg": {
+      "lift_type": "bench",
+      "frequency": "3x",
+      "level": "beginner",
+      "total_weeks": 2,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "1",
+              "reps": "AMAP"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "If you got 8 or fewer reps on your AMAP set, then stick with the same weight from the prior week.  If you got 9 or 10 reps, increase by 5 pounds.  If you got 11 or 12 reps, increase by 10 pounds.  If you got more than 12 reps, increase by 15 pounds.",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 3x Int Medium": {
+      "lift_type": "bench",
+      "frequency": "3x",
+      "level": "intermediate",
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "5",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "147.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "137.5",
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "160.0",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "155.0",
+              "sets": "3",
+              "reps": "2.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "145.0",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 3x Int High": {
+      "lift_type": "bench",
+      "frequency": "3x",
+      "level": "intermediate",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "5",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "107.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "115.0",
+              "sets": "2",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "115.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "2",
+              "reps": "4.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "2.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        }
+      }
+    },
+    "Bench 3x Adv": {
+      "lift_type": "bench",
+      "frequency": "3x",
+      "level": "advanced",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "5",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "107.5",
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "107.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "115.0",
+              "sets": "2",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "115.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "152.5",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "2",
+              "reps": "4.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "142.5",
+              "sets": "3",
+              "reps": "2.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "125.0",
+              "sets": "3",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Bench Press",
+              "weight_lbs": "135.0",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Curls",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 1x Beg": {
+      "lift_type": "squat",
+      "frequency": "1x",
+      "level": "beginner",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "3",
+              "reps": "AMAP -2"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "3",
+              "reps": "AMAP -2"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "3",
+              "reps": "AMAP -2"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "157.5",
+              "sets": "3",
+              "reps": "10.0"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 1x Int": {
+      "lift_type": "squat",
+      "frequency": "1x",
+      "level": "intermediate",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "5",
+              "reps": "AMAP -2"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "5",
+              "reps": "AMAP -2"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "182.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "182.5",
+              "sets": "5",
+              "reps": "AMAP -2"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "160.0",
+              "sets": "3",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "15 - 20"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "15 - 20"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 1x Adv": {
+      "lift_type": "squat",
+      "frequency": "1x",
+      "level": "advanced",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "5",
+              "reps": "AMAP -2"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "5",
+              "reps": "AMAP -2"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "1",
+              "reps": "AMAP"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "5",
+              "reps": "AMAP -2"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "157.5",
+              "sets": "3",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "15 - 20"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "15 - 20"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 2x Beg": {
+      "lift_type": "squat",
+      "frequency": "2x",
+      "level": "beginner",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "167.5",
+              "sets": "6",
+              "reps": "6.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "5",
+              "reps": "5.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "3",
+              "reps": "1.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "157.5",
+              "sets": "3",
+              "reps": "3.0"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 2x Int": {
+      "lift_type": "squat",
+      "frequency": "2x",
+      "level": "intermediate",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "5",
+              "reps": "5.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "4",
+              "reps": "3.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "202.5",
+              "sets": "3",
+              "reps": "1.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "New Max",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "1.0"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 2x Adv": {
+      "lift_type": "squat",
+      "frequency": "2x",
+      "level": "advanced",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "180.0",
+              "sets": "5",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "190.0",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "202.5",
+              "sets": "3",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "10 - 12"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "10 - 12"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "New Max",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Quad-dominant accessory of your choice (leg press, weighted step up, weighted lunge, hack squat, etc.)",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "15 - 20"
+            },
+            {
+              "exercise": "Hip thrust or glute bridge",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "15 - 20"
+            }
+          ]
+        }
+      }
+    },
+    "Squat 3x Beg": {
+      "lift_type": "squat",
+      "frequency": "3x",
+      "level": "beginner",
+      "total_weeks": 2,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Squat",
+              "weight_lbs": "157.5",
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Squat",
+              "weight_lbs": "157.5",
+              "sets": "1",
+              "reps": "AMAP"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "If you got 8 or fewer reps on your AMAP set, then stick with the same weight from the prior week.  If you got 9 or 10 reps, increase by 5 pounds.  If you got 11 or 12 reps, increase by 10 pounds.  If you got more than 12 reps, increase by 15 pounds.",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 1x Beg": {
+      "lift_type": "dl",
+      "frequency": "1x",
+      "level": "beginner",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Heavy set of 10 with no technical breakdown (add weight slowly working up.  Accumulating some fatigue and hitting a lower number is okay)",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Heavy set of 8 with no technical breakdown (add weight slowly working up.  Accumulating some fatigue and hitting a lower number is okay)",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Heavy set of 5 with no technical breakdown (add weight slowly working up.  Accumulating some fatigue and hitting a lower number is okay)",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "5.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Heavy set of 3 with no technical breakdown (add weight slowly working up.  Accumulating some fatigue and hitting a lower number is okay)",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "3.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 1x Int": {
+      "lift_type": "dl",
+      "frequency": "1x",
+      "level": "intermediate",
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "4",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "180.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell rows",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "270.0",
+              "sets": "2",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "195.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell rows",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "210.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell rows",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 1x Adv": {
+      "lift_type": "dl",
+      "frequency": "1x",
+      "level": "advanced",
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "4",
+              "reps": "5.0"
+            },
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "180.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Last set should be an 8-9RPE",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Row",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Shrug",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Hip Thrust",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "270.0",
+              "sets": "2",
+              "reps": "1.0"
+            },
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "3",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "195.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Last set should be an 8-9RPE",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "6.0"
+            },
+            {
+              "exercise": "Row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Shrug",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            },
+            {
+              "exercise": "Hip Thrust",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "210.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "Last set should be an 8-9RPE",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "4.0"
+            },
+            {
+              "exercise": "Row",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Shrug",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Hip Thrust",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 2x Beg": {
+      "lift_type": "dl",
+      "frequency": "2x",
+      "level": "beginner",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Work up to a heavy, but not max set of 5",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "5.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "5-10 pounds heavier than last week",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "5.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "5-10 pounds heavier than last week",
+              "weight_lbs": null,
+              "sets": "1",
+              "reps": "5.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "30% lighter than your top set of 5 from last week",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "3.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 2x Int": {
+      "lift_type": "dl",
+      "frequency": "2x",
+      "level": "intermediate",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "225.0",
+              "sets": "8",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "12.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "195.0",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 2x Adv": {
+      "lift_type": "dl",
+      "frequency": "2x",
+      "level": "advanced",
+      "total_weeks": 4,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "225.0",
+              "sets": "8",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "3",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "6",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "10.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "5",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "4",
+              "reps": "12.0"
+            }
+          ]
+        },
+        "Week 4": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "195.0",
+              "sets": "4",
+              "reps": "3.0"
+            },
+            {
+              "exercise": "RDL",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            },
+            {
+              "exercise": "Barbell or dumbbell row",
+              "weight_lbs": null,
+              "sets": "2",
+              "reps": "8.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 3x Beg": {
+      "lift_type": "dl",
+      "frequency": "3x",
+      "level": "beginner",
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "180.0",
+              "sets": "15",
+              "reps": "1.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "195.0",
+              "sets": "15",
+              "reps": "1.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "165.0",
+              "sets": "15",
+              "reps": "1.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 3x Low Vol": {
+      "lift_type": "dl",
+      "frequency": "3x",
+      "level": null,
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "4",
+              "reps": "4.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "3",
+              "reps": "3.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "270.0",
+              "sets": "2",
+              "reps": "1.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 3x Med Vol": {
+      "lift_type": "dl",
+      "frequency": "3x",
+      "level": null,
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "5",
+              "reps": "4.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "4",
+              "reps": "3.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "270.0",
+              "sets": "3",
+              "reps": "1.0"
+            }
+          ]
+        }
+      }
+    },
+    "DL 3x High Vol": {
+      "lift_type": "dl",
+      "frequency": "3x",
+      "level": null,
+      "total_weeks": 3,
+      "weeks": {
+        "Week 1": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "240.0",
+              "sets": "6",
+              "reps": "4.0"
+            }
+          ]
+        },
+        "Week 2": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "255.0",
+              "sets": "5",
+              "reps": "3.0"
+            }
+          ]
+        },
+        "Week 3": {
+          "Day 1": [
+            {
+              "exercise": "Deadlift",
+              "weight_lbs": "270.0",
+              "sets": "4",
+              "reps": "1.0"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

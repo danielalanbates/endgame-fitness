@@ -1,0 +1,251 @@
+{
+  "programs": [
+    {
+      "id": "531-wendler",
+      "name": "5/3/1 Wendler",
+      "description": "Jim Wendler's proven strength program with progressive overload over 4-week cycles",
+      "weeks": 12,
+      "daysPerWeek": 4,
+      "difficulty": "Intermediate",
+      "goal": "Strength",
+      "schedule": {
+        "week_1": {
+          "day_1": {
+            "name": "Squat Day (Week 1: 5/5/5+)",
+            "focus": "Lower Body - Squat",
+            "exercises": [
+              {"name": "Squat", "sets": "3", "reps": "5/5/5+", "weight": "65%/75%/85% of 1RM", "rest": "3-5 min", "notes": "Main lift - AMRAP on last set"},
+              {"name": "Romanian Deadlift", "sets": "5", "reps": "10", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Press", "sets": "5", "reps": "15", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Curls", "sets": "5", "reps": "10", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Ab Wheel", "sets": "5", "reps": "15", "weight": "Bodyweight", "rest": "60 sec"}
+            ]
+          },
+          "day_2": {
+            "name": "Bench Press Day (Week 1: 5/5/5+)",
+            "focus": "Upper Body - Bench",
+            "exercises": [
+              {"name": "Bench Press", "sets": "3", "reps": "5/5/5+", "weight": "65%/75%/85% of 1RM", "rest": "3-5 min", "notes": "Main lift - AMRAP on last set"},
+              {"name": "Overhead Press", "sets": "5", "reps": "10", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Dumbbell Rows", "sets": "5", "reps": "10", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Tricep Extensions", "sets": "5", "reps": "15", "weight": "Light", "rest": "60 sec"},
+              {"name": "Face Pulls", "sets": "5", "reps": "20", "weight": "Light", "rest": "60 sec"}
+            ]
+          },
+          "day_3": {
+            "name": "Deadlift Day (Week 1: 5/5/5+)",
+            "focus": "Lower Body - Deadlift",
+            "exercises": [
+              {"name": "Deadlift", "sets": "3", "reps": "5/5/5+", "weight": "65%/75%/85% of 1RM", "rest": "3-5 min", "notes": "Main lift - AMRAP on last set"},
+              {"name": "Front Squat", "sets": "5", "reps": "8", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Extensions", "sets": "5", "reps": "15", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Hanging Leg Raises", "sets": "5", "reps": "12", "weight": "Bodyweight", "rest": "60 sec"},
+              {"name": "Planks", "sets": "3", "reps": "60 sec hold", "weight": "Bodyweight", "rest": "60 sec"}
+            ]
+          },
+          "day_4": {
+            "name": "Overhead Press Day (Week 1: 5/5/5+)",
+            "focus": "Upper Body - Press",
+            "exercises": [
+              {"name": "Overhead Press", "sets": "3", "reps": "5/5/5+", "weight": "65%/75%/85% of 1RM", "rest": "3-5 min", "notes": "Main lift - AMRAP on last set"},
+              {"name": "Incline Bench Press", "sets": "5", "reps": "10", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Pull-ups", "sets": "5", "reps": "8-10", "weight": "Bodyweight", "rest": "90 sec"},
+              {"name": "Lateral Raises", "sets": "5", "reps": "15", "weight": "Light", "rest": "60 sec"},
+              {"name": "Bicep Curls", "sets": "5", "reps": "12", "weight": "Moderate", "rest": "60 sec"}
+            ]
+          }
+        }
+      },
+      "notes": "Week 2: 3/3/3+, Week 3: 5/3/1+, Week 4: Deload (5x40%, 5x50%, 5x60%). Repeat for 3 cycles."
+    },
+    {
+      "id": "starting-strength",
+      "name": "Starting Strength",
+      "description": "Mark Rippetoe's beginner strength program focusing on compound movements",
+      "weeks": 12,
+      "daysPerWeek": 3,
+      "difficulty": "Beginner",
+      "goal": "Strength",
+      "schedule": {
+        "week_1": {
+          "day_1": {
+            "name": "Workout A",
+            "focus": "Full Body - Squat Focus",
+            "exercises": [
+              {"name": "Squat", "sets": "3", "reps": "5", "weight": "Add 5-10 lbs each session", "rest": "3-5 min", "notes": "Main compound lift"},
+              {"name": "Bench Press", "sets": "3", "reps": "5", "weight": "Add 5 lbs each session", "rest": "3-5 min", "notes": "Upper body push"},
+              {"name": "Deadlift", "sets": "1", "reps": "5", "weight": "Add 10 lbs each session", "rest": "5 min", "notes": "One heavy set only"}
+            ]
+          },
+          "day_2": {
+            "name": "Workout B",
+            "focus": "Full Body - Press Focus",
+            "exercises": [
+              {"name": "Squat", "sets": "3", "reps": "5", "weight": "Add 5-10 lbs each session", "rest": "3-5 min", "notes": "Main compound lift"},
+              {"name": "Overhead Press", "sets": "3", "reps": "5", "weight": "Add 2.5-5 lbs each session", "rest": "3-5 min", "notes": "Upper body push"},
+              {"name": "Power Clean", "sets": "5", "reps": "3", "weight": "Add 5 lbs each session", "rest": "3 min", "notes": "Explosive power"}
+            ]
+          },
+          "day_3": {
+            "name": "Workout A (Repeated)",
+            "focus": "Full Body - Squat Focus",
+            "exercises": [
+              {"name": "Squat", "sets": "3", "reps": "5", "weight": "Add 5-10 lbs from last A workout", "rest": "3-5 min"},
+              {"name": "Bench Press", "sets": "3", "reps": "5", "weight": "Add 5 lbs from last A workout", "rest": "3-5 min"},
+              {"name": "Deadlift", "sets": "1", "reps": "5", "weight": "Add 10 lbs from last A workout", "rest": "5 min"}
+            ]
+          }
+        }
+      },
+      "notes": "Alternate A/B workouts (A-B-A, B-A-B). Linear progression - add weight every session. Deload when you fail 3 times on same weight."
+    },
+    {
+      "id": "ppl",
+      "name": "Push/Pull/Legs",
+      "description": "Classic bodybuilding split focusing on muscle groups with volume training",
+      "weeks": 12,
+      "daysPerWeek": 6,
+      "difficulty": "Intermediate",
+      "goal": "Hypertrophy",
+      "schedule": {
+        "week_1": {
+          "day_1": {
+            "name": "Push Day 1",
+            "focus": "Chest, Shoulders, Triceps",
+            "exercises": [
+              {"name": "Bench Press", "sets": "4", "reps": "6-8", "weight": "Heavy", "rest": "2-3 min", "notes": "Main compound"},
+              {"name": "Overhead Press", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2 min"},
+              {"name": "Incline Dumbbell Press", "sets": "3", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Lateral Raises", "sets": "3", "reps": "12-15", "weight": "Light-Moderate", "rest": "60 sec"},
+              {"name": "Tricep Rope Pushdowns", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Overhead Tricep Extension", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"}
+            ]
+          },
+          "day_2": {
+            "name": "Pull Day 1",
+            "focus": "Back, Biceps",
+            "exercises": [
+              {"name": "Deadlift", "sets": "4", "reps": "5-6", "weight": "Heavy", "rest": "3 min", "notes": "Main compound"},
+              {"name": "Pull-ups", "sets": "4", "reps": "8-10", "weight": "Bodyweight/Weighted", "rest": "2 min"},
+              {"name": "Barbell Rows", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2 min"},
+              {"name": "Face Pulls", "sets": "3", "reps": "15-20", "weight": "Light", "rest": "60 sec"},
+              {"name": "Barbell Curls", "sets": "3", "reps": "10-12", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Hammer Curls", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"}
+            ]
+          },
+          "day_3": {
+            "name": "Leg Day 1",
+            "focus": "Quads, Hamstrings, Calves",
+            "exercises": [
+              {"name": "Squat", "sets": "4", "reps": "6-8", "weight": "Heavy", "rest": "3 min", "notes": "Main compound"},
+              {"name": "Romanian Deadlift", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2 min"},
+              {"name": "Leg Press", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Curls", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Calf Raises", "sets": "4", "reps": "15-20", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Ab Wheel", "sets": "3", "reps": "12-15", "weight": "Bodyweight", "rest": "60 sec"}
+            ]
+          },
+          "day_4": {
+            "name": "Push Day 2",
+            "focus": "Chest, Shoulders, Triceps",
+            "exercises": [
+              {"name": "Incline Barbell Press", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2 min"},
+              {"name": "Dumbbell Bench Press", "sets": "4", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Cable Flyes", "sets": "3", "reps": "12-15", "weight": "Light-Moderate", "rest": "60 sec"},
+              {"name": "Lateral Raises", "sets": "4", "reps": "15-20", "weight": "Light", "rest": "60 sec"},
+              {"name": "Dips", "sets": "3", "reps": "10-12", "weight": "Bodyweight", "rest": "90 sec"},
+              {"name": "Tricep Kickbacks", "sets": "3", "reps": "15", "weight": "Light", "rest": "60 sec"}
+            ]
+          },
+          "day_5": {
+            "name": "Pull Day 2",
+            "focus": "Back, Biceps",
+            "exercises": [
+              {"name": "Rack Pulls", "sets": "4", "reps": "6-8", "weight": "Heavy", "rest": "3 min"},
+              {"name": "Lat Pulldowns", "sets": "4", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Seated Cable Rows", "sets": "4", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Shrugs", "sets": "3", "reps": "12-15", "weight": "Heavy", "rest": "60 sec"},
+              {"name": "Concentration Curls", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Preacher Curls", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"}
+            ]
+          },
+          "day_6": {
+            "name": "Leg Day 2",
+            "focus": "Quads, Hamstrings, Glutes",
+            "exercises": [
+              {"name": "Front Squat", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2-3 min"},
+              {"name": "Bulgarian Split Squats", "sets": "3", "reps": "10-12 per leg", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Extensions", "sets": "3", "reps": "15-20", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Stiff-Leg Deadlift", "sets": "3", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Seated Calf Raises", "sets": "4", "reps": "20", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Hanging Leg Raises", "sets": "3", "reps": "15", "weight": "Bodyweight", "rest": "60 sec"}
+            ]
+          }
+        }
+      },
+      "notes": "Run 6 days/week (Push-Pull-Legs-Push-Pull-Legs, rest on Sunday). Progressive overload by adding reps, then weight."
+    },
+    {
+      "id": "upper-lower",
+      "name": "Upper/Lower Split",
+      "description": "4-day split alternating upper and lower body for balanced strength and size",
+      "weeks": 12,
+      "daysPerWeek": 4,
+      "difficulty": "Beginner-Intermediate",
+      "goal": "Strength & Hypertrophy",
+      "schedule": {
+        "week_1": {
+          "day_1": {
+            "name": "Upper Body A",
+            "focus": "Chest, Back, Shoulders",
+            "exercises": [
+              {"name": "Bench Press", "sets": "4", "reps": "6-8", "weight": "Heavy", "rest": "2-3 min", "notes": "Main compound"},
+              {"name": "Barbell Rows", "sets": "4", "reps": "6-8", "weight": "Heavy", "rest": "2-3 min", "notes": "Main compound"},
+              {"name": "Overhead Press", "sets": "3", "reps": "8-10", "weight": "Moderate", "rest": "2 min"},
+              {"name": "Pull-ups", "sets": "3", "reps": "8-12", "weight": "Bodyweight", "rest": "90 sec"},
+              {"name": "Dumbbell Flyes", "sets": "3", "reps": "12-15", "weight": "Light-Moderate", "rest": "60 sec"},
+              {"name": "Face Pulls", "sets": "3", "reps": "15-20", "weight": "Light", "rest": "60 sec"}
+            ]
+          },
+          "day_2": {
+            "name": "Lower Body A",
+            "focus": "Quads, Hamstrings, Glutes",
+            "exercises": [
+              {"name": "Squat", "sets": "4", "reps": "6-8", "weight": "Heavy", "rest": "3 min", "notes": "Main compound"},
+              {"name": "Romanian Deadlift", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2-3 min"},
+              {"name": "Leg Press", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Curls", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Calf Raises", "sets": "4", "reps": "15-20", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Planks", "sets": "3", "reps": "45-60 sec hold", "weight": "Bodyweight", "rest": "60 sec"}
+            ]
+          },
+          "day_3": {
+            "name": "Upper Body B",
+            "focus": "Back, Chest, Arms",
+            "exercises": [
+              {"name": "Deadlift", "sets": "4", "reps": "5-6", "weight": "Heavy", "rest": "3 min", "notes": "Main compound"},
+              {"name": "Incline Bench Press", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2 min"},
+              {"name": "Lat Pulldowns", "sets": "3", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Dumbbell Rows", "sets": "3", "reps": "10-12", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Barbell Curls", "sets": "3", "reps": "10-12", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Tricep Pushdowns", "sets": "3", "reps": "12-15", "weight": "Moderate", "rest": "60 sec"}
+            ]
+          },
+          "day_4": {
+            "name": "Lower Body B",
+            "focus": "Hamstrings, Quads, Glutes",
+            "exercises": [
+              {"name": "Front Squat", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2-3 min"},
+              {"name": "Stiff-Leg Deadlift", "sets": "4", "reps": "8-10", "weight": "Moderate-Heavy", "rest": "2 min"},
+              {"name": "Bulgarian Split Squats", "sets": "3", "reps": "10-12 per leg", "weight": "Moderate", "rest": "90 sec"},
+              {"name": "Leg Extensions", "sets": "3", "reps": "15", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Seated Calf Raises", "sets": "4", "reps": "20", "weight": "Moderate", "rest": "60 sec"},
+              {"name": "Ab Wheel", "sets": "3", "reps": "12-15", "weight": "Bodyweight", "rest": "60 sec"}
+            ]
+          }
+        }
+      },
+      "notes": "Train Mon/Tue/Thu/Fri (Upper/Lower/Upper/Lower) or Mon/Thu (Upper) and Tue/Fri (Lower). Rest Wed/Sat/Sun."
+    }
+  ]
+}

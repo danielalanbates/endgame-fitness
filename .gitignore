@@ -1,0 +1,11 @@
+.DS_Store
+*.o
+*.swiftmodule
+build/
+.build/
+DerivedData/
+*.xcuserdatastate
+xcuserdata/
+node_modules/
+Web/web-react/dist/
+_archive/
