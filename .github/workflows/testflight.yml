@@ -60,6 +60,7 @@ concurrency:
 jobs:
   ship:
     runs-on: macos-15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -183,7 +184,7 @@ jobs:
           else
             # macOS TestFlight takes a signed .pkg, not a zip.
             productbuild --component "$APPS/$APP_NAME" /Applications \
-              --sign "3rd Party Mac Developer Installer: Daniel Bates (MG4YW8XX2Z)" --keychain ci.keychain \
+              --sign "3rd Party Mac Developer Installer: Daniel Bates (MG4YW8XX2Z)" --keychain ci.keychain --timestamp=none \
               build/EndgameFitness.pkg
             echo "artifact=build/EndgameFitness.pkg" >> "$GITHUB_OUTPUT"
           fi

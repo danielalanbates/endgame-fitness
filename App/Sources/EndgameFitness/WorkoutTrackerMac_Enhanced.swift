@@ -1964,6 +1964,9 @@ struct DashboardView: View {
                 // Today's Workout / Next Workout
                 WorkoutScheduleCard(workoutManager: workoutManager)
 
+                // Today's Quests (server-generated; jumps to Community → Quests)
+                TodaysQuestsCard { workoutManager.selectedTab = 7 }
+
                 // Quick Stats
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 20) {
                     StatCard(title: "Today's Workouts", value: "\(workoutManager.todaysWorkouts)", icon: "figure.strengthtraining.traditional", color: .blue)

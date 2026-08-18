@@ -420,6 +420,70 @@ struct Challenge: Codable, Identifiable, Equatable {
     }
 }
 
+struct Quest: Codable, Identifiable, Equatable {
+    var id: String
+    var questKey: String
+    var kind: String            // daily | weekly
+    var title: String
+    var description: String
+    var icon: String
+    var metric: String?
+    var target: Double
+    var progress: Double
+    var xpReward: Int
+    var expiresAt: Int?
+    var completedAt: Int?
+    var claimed: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, title, description, icon, metric, target, progress, claimed
+        case questKey = "quest_key"
+        case xpReward = "xp_reward"
+        case expiresAt = "expires_at"
+        case completedAt = "completed_at"
+    }
+
+    var fraction: Double { target > 0 ? min(1, max(0, progress / target)) : 0 }
+    var isComplete: Bool { completedAt != nil }
+    var isClaimable: Bool { isComplete && !claimed }
+    var isDaily: Bool { kind == "daily" }
+
+    /// "3,200 / 5,000" style progress label, dropping decimals for counts.
+    var progressLabel: String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        let p = f.string(from: NSNumber(value: progress.rounded(.down))) ?? "0"
+        let t = f.string(from: NSNumber(value: target)) ?? "0"
+        return "\(p) / \(t)"
+    }
+}
+
+struct Achievement: Codable, Identifiable, Equatable {
+    var id: String
+    var title: String
+    var desc: String
+    var rarity: String          // common | rare | epic | legendary
+    var xp: Int
+    var icon: String
+    var unlocked: Bool
+    var unlockedAt: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, desc, rarity, xp, icon, unlocked
+        case unlockedAt = "unlocked_at"
+    }
+
+    var rarityColor: Color {
+        switch rarity {
+        case "rare":      return .brandBlue
+        case "epic":      return .brandPurple
+        case "legendary": return .brandOrange
+        default:          return .gray
+        }
+    }
+}
+
 // MARK: - Service
 
 @MainActor
@@ -437,6 +501,15 @@ final class GameProfileService: ObservableObject {
     @Published private(set) var activeChallenges: [Challenge] = []
     @Published private(set) var pendingChallenges: [Challenge] = []
     @Published private(set) var finishedChallenges: [Challenge] = []
+
+    @Published private(set) var dailyQuests: [Quest] = []
+    @Published private(set) var weeklyQuests: [Quest] = []
+    @Published private(set) var achievements: [Achievement] = []
+
+    /// Set when a sync unlocks achievements, so the UI can celebrate once.
+    @Published var pendingAchievements: [String] = []
+    /// The quest most recently claimed, for the claim animation.
+    @Published var lastClaimedQuest: Quest?
 
     @Published private(set) var isSyncing = false
     @Published var lastError: String?
@@ -514,12 +587,14 @@ final class GameProfileService: ObservableObject {
         let levelsGained: Int
         let serverTime: Int
         let profile: FitnessProfile
+        let achievementsUnlocked: [String]?
 
         enum CodingKeys: String, CodingKey {
             case accepted, profile
             case xpGained = "xp_gained"
             case levelsGained = "levels_gained"
             case serverTime = "server_time"
+            case achievementsUnlocked = "achievements_unlocked"
         }
     }
 
@@ -560,6 +635,11 @@ final class GameProfileService: ObservableObject {
             profile = response.profile
             if response.levelsGained > 0 { pendingLevelUps = response.levelsGained }
             if response.xpGained > 0 { lastXPGain = response.xpGained }
+            if let unlocked = response.achievementsUnlocked, !unlocked.isEmpty {
+                pendingAchievements = unlocked
+            }
+            // A workout moves quest progress; refresh the board if anything went up.
+            if !outbound.isEmpty { await loadQuests() }
 
             lastError = nil
             return true
@@ -596,7 +676,74 @@ final class GameProfileService: ObservableObject {
         async let friendsTask: Void = loadFriends()
         async let guildTask: Void = loadGuild()
         async let challengesTask: Void = loadChallenges()
-        _ = await (profileTask, feedTask, friendsTask, guildTask, challengesTask)
+        async let questTask: Void = loadQuests()
+        _ = await (profileTask, feedTask, friendsTask, guildTask, challengesTask, questTask)
+    }
+
+    // MARK: Quests & achievements
+
+    private struct QuestsResponse: Decodable {
+        let daily: [Quest]
+        let weekly: [Quest]
+    }
+    private struct ClaimResponse: Decodable {
+        let xpGained: Int
+        let levelsGained: Int
+        let quest: Quest
+        enum CodingKeys: String, CodingKey {
+            case quest
+            case xpGained = "xp_gained"
+            case levelsGained = "levels_gained"
+        }
+    }
+    private struct AchievementsResponse: Decodable { let achievements: [Achievement] }
+
+    var claimableQuestCount: Int {
+        (dailyQuests + weeklyQuests).filter(\.isClaimable).count
+    }
+
+    func loadQuests() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let response: QuestsResponse = try await auth.request("fitness/quests", method: "GET")
+            dailyQuests = response.daily
+            weeklyQuests = response.weekly
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Claims a completed quest. XP is paid by the server on claim, so the
+    /// profile is refreshed afterwards to pick up the new total.
+    func claimQuest(_ quest: Quest) async {
+        guard auth.isSignedIn, quest.isClaimable else { return }
+        do {
+            let response: ClaimResponse = try await auth.request(
+                "fitness/quests/\(quest.id)/claim", method: "POST", body: [:]
+            )
+            lastClaimedQuest = response.quest
+            if response.xpGained > 0 { lastXPGain = response.xpGained }
+            if response.levelsGained > 0 { pendingLevelUps = response.levelsGained }
+            replaceQuest(response.quest)
+            await loadProfile()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func replaceQuest(_ quest: Quest) {
+        if let i = dailyQuests.firstIndex(where: { $0.id == quest.id }) { dailyQuests[i] = quest }
+        if let i = weeklyQuests.firstIndex(where: { $0.id == quest.id }) { weeklyQuests[i] = quest }
+    }
+
+    func loadAchievements() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let response: AchievementsResponse = try await auth.request("fitness/achievements", method: "GET")
+            achievements = response.achievements
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func loadProfile() async {
@@ -804,5 +951,10 @@ final class GameProfileService: ObservableObject {
         pendingChallenges = []
         finishedChallenges = []
         talents = nil
+        dailyQuests = []
+        weeklyQuests = []
+        achievements = []
+        pendingAchievements = []
+        lastClaimedQuest = nil
     }
 }
