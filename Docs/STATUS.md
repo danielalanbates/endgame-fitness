@@ -36,7 +36,15 @@ via batesai.org membership; TestFlight on macOS + iOS.
   `GameProfile.swift` / `SocialViews.swift` / `fitness/[[path]].js` and the
   merge needs a careful hand-merge (additive on both sides). Do this next.
 
-## Blocked on Daniel (the ONLY remaining hard blocker)
+## Blocked on Daniel
+
+0. **GitHub Actions billing**: as of 2026-08-18 evening every runner job fails
+   in 4s with "recent account payments have failed or your spending limit
+   needs to be increased" (github.com -> Settings -> Billing & plans). The 3-hour
+   hung macOS job (productbuild timestamp hang, since fixed with
+   --timestamp=none + a 30-min job timeout) probably burned the limit —
+   macOS minutes bill at 10x. Until this is fixed neither CI nor TestFlight
+   runs at all.
 
 1. **Create the App Store Connect app record**: My Apps → + → New App →
    platforms iOS + macOS, name "Endgame Fitness", bundle id
