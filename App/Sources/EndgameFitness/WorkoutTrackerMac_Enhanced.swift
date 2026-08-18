@@ -1743,7 +1743,7 @@ struct ContentView: View {
     private var sidebar: some View {
         // Sidebar
         VStack(alignment: .leading, spacing: 10) {
-            Text("WorkoutTracker")
+            Text("Endgame Fitness")
                 .font(.title2)
                 .bold()
                 .padding(.bottom)
@@ -4620,8 +4620,11 @@ struct AICoachInsightCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text(insights[currentInsightIndex].emoji)
-                    .font(.system(size: 40))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(Color.brandPurple)
+                    .frame(width: 44, height: 44)
+                    .background(Color.brandPurple.opacity(0.12), in: Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("AI Coach")
@@ -5773,7 +5776,7 @@ struct WelcomeStep: View {
             }
             .frame(height: 140)
 
-            Text("WorkoutTracker")
+            Text("Endgame Fitness")
                 .font(.system(size: 52, weight: .bold))
                 .foregroundStyle(
                     LinearGradient(
