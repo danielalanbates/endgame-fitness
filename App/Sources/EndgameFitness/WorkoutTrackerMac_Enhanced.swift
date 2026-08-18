@@ -4238,6 +4238,7 @@ struct SettingsView: View {
     @AppStorage("defaultRestTime") private var defaultRestTime = 90
     @AppStorage("weeklyGoal") private var weeklyGoal = 5
     @EnvironmentObject var workoutManager: WorkoutManager
+    @State private var showAccount = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -4246,6 +4247,20 @@ struct SettingsView: View {
                 .bold()
 
             Form {
+                Section("Account") {
+                    Button {
+                        showAccount = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "person.crop.circle")
+                            Text(BatesAIAuth.shared.user?.email ?? "Account")
+                            Spacer()
+                            Text("Manage").foregroundColor(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Section("Units") {
                     Toggle("Use Metric Units (kg)", isOn: $useMetric)
                 }
@@ -4307,6 +4322,7 @@ struct SettingsView: View {
             Spacer()
         }
         .padding()
+        .sheet(isPresented: $showAccount) { NavigationStack { AccountView() } }
     }
 }
 

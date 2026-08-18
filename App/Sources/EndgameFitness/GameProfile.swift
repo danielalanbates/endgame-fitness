@@ -258,6 +258,80 @@ struct GuildMember: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Talents
+
+struct TalentBranch: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var color: String
+    var icon: String
+
+    var tint: Color {
+        switch color {
+        case "red":    return .brandOrange
+        case "green":  return .brandGreen
+        case "purple": return .brandPurple
+        default:       return .brandBlue
+        }
+    }
+}
+
+struct TalentNode: Codable, Identifiable, Equatable {
+    struct Requirement: Codable, Equatable {
+        var id: String
+        var rank: Int
+    }
+    var id: String
+    var branch: String
+    var tier: Int
+    var maxRank: Int
+    var requires: [Requirement]
+    var name: String
+    var icon: String
+    var description: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, branch, tier, requires, name, icon, description
+        case maxRank = "max_rank"
+    }
+}
+
+struct TalentTree: Codable, Equatable {
+    var version: Int
+    var branches: [TalentBranch]
+    var nodes: [TalentNode]
+}
+
+/// The server's view of the player's talents. Validation is server-side; the
+/// client mirrors the same rules purely to grey out buttons.
+struct TalentState: Codable, Equatable {
+    static let pointsPerTier = 3
+
+    var tree: TalentTree
+    var ranks: [String: Int]
+    var unspent: Int
+    var spent: Int
+
+    func rank(of id: String) -> Int { ranks[id] ?? 0 }
+
+    func spentInBranch(_ branch: String) -> Int {
+        tree.nodes.filter { $0.branch == branch }.reduce(0) { $0 + rank(of: $1.id) }
+    }
+
+    /// nil when a point can be spent, otherwise the reason it cannot.
+    func blocker(for node: TalentNode) -> String? {
+        if unspent < 1 { return "No unspent points" }
+        if rank(of: node.id) >= node.maxRank { return "Max rank" }
+        let needed = (node.tier - 1) * Self.pointsPerTier
+        if spentInBranch(node.branch) < needed { return "Spend \(needed) points in this branch first" }
+        for req in node.requires where rank(of: req.id) < req.rank {
+            let name = tree.nodes.first { $0.id == req.id }?.name ?? req.id
+            return "Requires \(name) rank \(req.rank)"
+        }
+        return nil
+    }
+}
+
 // MARK: - Service
 
 @MainActor
@@ -271,6 +345,7 @@ final class GameProfileService: ObservableObject {
     @Published private(set) var incomingRequests: [Friend] = []
     @Published private(set) var guild: Guild?
     @Published private(set) var guildMembers: [GuildMember] = []
+    @Published private(set) var talents: TalentState?
 
     @Published private(set) var isSyncing = false
     @Published var lastError: String?
@@ -542,6 +617,43 @@ final class GameProfileService: ObservableObject {
         await loadGuild()
     }
 
+    // MARK: Talents
+
+    func loadTalents() async {
+        guard auth.isSignedIn else { return }
+        do {
+            talents = try await auth.request("fitness/talents", method: "GET")
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Spends one point. Returns the server's rejection reason, or nil on success.
+    @discardableResult
+    func spendTalent(_ talentID: String) async -> String? {
+        guard auth.isSignedIn else { return "Not signed in" }
+        do {
+            talents = try await auth.request(
+                "fitness/talents/spend", method: "POST", body: ["talent_id": talentID]
+            )
+            await loadProfile()
+            return nil
+        } catch {
+            lastError = error.localizedDescription
+            return error.localizedDescription
+        }
+    }
+
+    func respecTalents() async {
+        guard auth.isSignedIn else { return }
+        do {
+            talents = try await auth.request("fitness/talents/respec", method: "POST", body: [:])
+            await loadProfile()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     /// Clears everything on sign-out. The pending queue is deliberately kept:
     /// if the same person signs back in, their unsynced workouts still upload.
     func reset() {
@@ -552,5 +664,6 @@ final class GameProfileService: ObservableObject {
         incomingRequests = []
         guild = nil
         guildMembers = []
+        talents = nil
     }
 }

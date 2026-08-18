@@ -17,9 +17,16 @@
  *   POST   guild                   create a guild { name, motto }
  *   POST   guild/join              { guild_id }
  *   POST   guild/leave
+ *   GET    talents                 tree definition + allocated ranks + unspent points
+ *   POST   talents/spend           { talent_id } — one point, server-validated
+ *   POST   talents/respec          refund every point
  */
 
 import { requireUser, json, withCors, corsHeaders, now } from '../../_lib/session.js';
+import {
+  TALENT_TREE, nodeById, ranksFromRows, pointsSpent, validateSpend,
+  applyTalentEffects, streakShieldDays, bonusTalentPoints,
+} from '../../_lib/talents.js';
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -59,6 +66,9 @@ export async function onRequest(context) {
         break;
       case 'guild':
         response = await handleGuild(request, env, userId, path);
+        break;
+      case 'talents':
+        response = await handleTalents(request, env, userId, path);
         break;
       default:
         response = json({ error: 'Unknown endpoint' }, 404);
@@ -191,15 +201,17 @@ function xpForWorkout({ total_volume = 0, total_reps = 0, duration_secs = 0 }) {
   return Math.max(10, Math.round(volumeXp + repXp + timeXp));
 }
 
-function streakAfter(lastDate, performedDate) {
+function streakAfter(lastDate, performedDate, shieldDays = 0) {
   // Returns 'continue' | 'reset' | 'same-day' given two YYYY-MM-DD strings.
+  // `shieldDays` (Streak Shield talent) is how many missed days are forgiven.
   if (!lastDate) return 'continue';
   if (lastDate === performedDate) return 'same-day';
   const last = Date.parse(`${lastDate}T00:00:00Z`);
   const cur = Date.parse(`${performedDate}T00:00:00Z`);
   if (Number.isNaN(last) || Number.isNaN(cur)) return 'continue';
   const days = Math.round((cur - last) / 86400000);
-  return days === 1 ? 'continue' : days <= 0 ? 'same-day' : 'reset';
+  if (days <= 0) return 'same-day';
+  return days - 1 <= shieldDays ? 'continue' : 'reset';
 }
 
 const isoDay = (epochSeconds) => new Date(epochSeconds * 1000).toISOString().slice(0, 10);
@@ -237,6 +249,15 @@ async function handleSync(request, env, userId) {
   let totalVolume = profile.total_volume;
   let totalReps = profile.total_reps;
 
+  // Talent effects are server-side: load ranks + the social context they key on.
+  const talentRows = await env.DB.prepare('SELECT talent_id, rank FROM talents WHERE user_id = ?')
+    .bind(userId).all();
+  const ranks = ranksFromRows(talentRows.results);
+  const friendCount = (await friendIdsOf(env, userId)).length;
+  const guildRow = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  const shieldDays = streakShieldDays(ranks);
+
   // Oldest first so streak arithmetic walks forward in time.
   incoming.sort((a, b) => (a.performed_at || 0) - (b.performed_at || 0));
 
@@ -270,7 +291,18 @@ async function handleSync(request, env, userId) {
       continue;
     }
 
-    const xp = xpForWorkout({ total_volume: volume, total_reps: reps, duration_secs: duration });
+    // Streak first so Second Wind sees the streak this session produces.
+    const day = isoDay(performedAt);
+    const transition = streakAfter(lastWorkoutDate, day, shieldDays);
+    if (transition === 'continue') currentStreak += 1;
+    else if (transition === 'reset') currentStreak = 1;
+    if (transition !== 'same-day') lastWorkoutDate = day;
+    longestStreak = Math.max(longestStreak, currentStreak);
+
+    const baseXp = xpForWorkout({ total_volume: volume, total_reps: reps, duration_secs: duration });
+    const xp = applyTalentEffects(baseXp, ranks, {
+      volume, streak: currentStreak, friends: friendCount, inGuild: !!guildRow,
+    });
 
     await env.DB.prepare(
       `INSERT INTO workout_sessions
@@ -287,13 +319,6 @@ async function handleSync(request, env, userId) {
     totalVolume += volume;
     totalReps += reps;
 
-    const day = isoDay(performedAt);
-    const transition = streakAfter(lastWorkoutDate, day);
-    if (transition === 'continue') currentStreak += 1;
-    else if (transition === 'reset') currentStreak = 1;
-    if (transition !== 'same-day') lastWorkoutDate = day;
-    longestStreak = Math.max(longestStreak, currentStreak);
-
     await env.DB.prepare(
       'INSERT INTO xp_transactions (id, user_id, amount, reason, source_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(crypto.randomUUID(), userId, xp, 'workout', session.id, now()).run();
@@ -308,6 +333,7 @@ async function handleSync(request, env, userId) {
   const newXp = profile.xp + xpGained;
   const newLevel = levelForXp(newXp);
   const levelsGained = Math.max(0, newLevel - levelBefore);
+  const pointsGained = levelsGained + bonusTalentPoints(ranks, levelBefore, newLevel);
 
   await env.DB.prepare(
     `UPDATE fitness_profiles
@@ -316,7 +342,7 @@ async function handleSync(request, env, userId) {
             total_workouts = ?, total_volume = ?, total_reps = ?, updated_at = ?
       WHERE user_id = ?`
   ).bind(
-    newXp, newLevel, levelsGained, currentStreak, longestStreak, lastWorkoutDate,
+    newXp, newLevel, pointsGained, currentStreak, longestStreak, lastWorkoutDate,
     totalWorkouts, totalVolume, totalReps, now(), userId
   ).run();
 
@@ -345,6 +371,7 @@ async function handleSync(request, env, userId) {
     accepted,
     xp_gained: xpGained,
     levels_gained: levelsGained,
+    talent_points_gained: pointsGained,
     sessions,
     has_more: sessions.length === 500,
     server_time: now(),
@@ -699,6 +726,76 @@ async function handleGuild(request, env, userId, path) {
       }
     }
     return json({ success: true });
+  }
+
+  return json({ error: 'Unknown endpoint' }, 404);
+}
+
+/* ------------------------------------------------------------------ */
+/* Talents                                                             */
+/* ------------------------------------------------------------------ */
+
+async function talentState(env, userId) {
+  const profile = await env.DB.prepare('SELECT talent_points FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  if (!profile) return null;
+  const rows = await env.DB.prepare('SELECT talent_id, rank FROM talents WHERE user_id = ?')
+    .bind(userId).all();
+  const ranks = ranksFromRows(rows.results);
+  return {
+    tree: TALENT_TREE,
+    ranks,
+    unspent: profile.talent_points,
+    spent: pointsSpent(ranks),
+  };
+}
+
+async function handleTalents(request, env, userId, path) {
+  const action = path[1] || '';
+
+  if (request.method === 'GET' && !action) {
+    const state = await talentState(env, userId);
+    return state ? json(state) : json({ error: 'Profile not found' }, 404);
+  }
+
+  if (action === 'spend' && request.method === 'POST') {
+    const { talent_id: talentId } = await request.json().catch(() => ({}));
+    if (!talentId) return json({ error: 'talent_id is required' }, 400);
+
+    const state = await talentState(env, userId);
+    if (!state) return json({ error: 'Profile not found' }, 404);
+    const check = validateSpend(state.ranks, state.unspent, talentId);
+    if (!check.ok) return json({ error: check.error }, 409);
+    const node = nodeById(talentId);
+
+    // Both statements are guarded so two racing requests cannot overspend: the
+    // decrement only lands while a point exists, and the rank only climbs while
+    // below max. D1 batch runs as one transaction.
+    const [dec] = await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE fitness_profiles SET talent_points = talent_points - 1, updated_at = ? WHERE user_id = ? AND talent_points > 0'
+      ).bind(now(), userId),
+      env.DB.prepare(
+        `INSERT INTO talents (user_id, talent_id, rank) VALUES (?, ?, 1)
+         ON CONFLICT (user_id, talent_id) DO UPDATE SET rank = rank + 1 WHERE rank < ?`
+      ).bind(userId, talentId, node.max_rank),
+    ]);
+    if (dec && dec.meta && dec.meta.changes === 0) {
+      return json({ error: 'No unspent talent points' }, 409);
+    }
+    return json({ success: true, ...(await talentState(env, userId)) });
+  }
+
+  if (action === 'respec' && request.method === 'POST') {
+    const state = await talentState(env, userId);
+    if (!state) return json({ error: 'Profile not found' }, 404);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM talents WHERE user_id = ?').bind(userId),
+      env.DB.prepare(
+        'UPDATE fitness_profiles SET talent_points = talent_points + ?, updated_at = ? WHERE user_id = ?'
+      ).bind(state.spent, now(), userId),
+    ]);
+    return json({ success: true, refunded: state.spent, ...(await talentState(env, userId)) });
   }
 
   return json({ error: 'Unknown endpoint' }, 404);

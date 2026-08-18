@@ -192,10 +192,15 @@ struct PlayerCardView: View {
     let profile: FitnessProfile
     var compact = false
 
+    @State private var showTalents = false
+    @State private var showAccount = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 14) {
             HStack(spacing: 12) {
-                avatar
+                Button { showAccount = true } label: { avatar }
+                    .buttonStyle(.plain)
+                    .help("Account")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.displayName)
@@ -215,6 +220,14 @@ struct PlayerCardView: View {
 
                 Spacer()
 
+                if profile.talentPoints > 0 {
+                    Button { showTalents = true } label: {
+                        TalentPointsBadge(points: profile.talentPoints)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Spend talent points")
+                }
+
                 if profile.currentStreak > 0 {
                     VStack(spacing: 0) {
                         Text("🔥").font(compact ? .body : .title3)
@@ -232,15 +245,18 @@ struct PlayerCardView: View {
                     stat("Workouts", "\(profile.totalWorkouts)")
                     stat("Volume", Self.compactNumber(profile.totalVolume) + " lb")
                     stat("Best streak", "\(profile.longestStreak)d")
-                    if profile.talentPoints > 0 {
-                        stat("Talent pts", "\(profile.talentPoints)", tint: .brandPurple)
+                    Button { showTalents = true } label: {
+                        stat("Talents", profile.talentPoints > 0 ? "\(profile.talentPoints) to spend" : "View", tint: .brandPurple)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
         .padding(compact ? 12 : 18)
         .background(Color.platformControlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .sheet(isPresented: $showTalents) { TalentTreeView() }
+        .sheet(isPresented: $showAccount) { NavigationStack { AccountView() } }
     }
 
     private var avatar: some View {
