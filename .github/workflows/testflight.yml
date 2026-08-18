@@ -25,6 +25,7 @@ name: TestFlight
 #   PROVISION_IOS_B64    base64 of the iOS App Store .mobileprovision for
 #                        org.batesai.endgamefitness
 #   PROVISION_MACOS_B64  base64 of the macOS App Store .provisionprofile
+#   INSTALLER_P12_B64  base64 of the Mac Installer Distribution .p12 (macOS only)
 #   ASC_APP_ID       the numeric app id from the App Store Connect URL
 #
 # Encode a file with:  base64 -i cert.p12 | pbcopy
@@ -54,7 +55,7 @@ concurrency:
 
 jobs:
   ship:
-    runs-on: macos-26
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +76,10 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
 
+      - name: Select Xcode
+        if: steps.gate.outputs.run == 'true'
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
       - name: Install XcodeGen
         if: steps.gate.outputs.run == 'true'
         run: brew install xcodegen
@@ -93,13 +98,22 @@ jobs:
           DIST_P12_PASS: ${{ secrets.DIST_P12_PASS }}
           PROVISION_IOS_B64: ${{ secrets.PROVISION_IOS_B64 }}
           PROVISION_MACOS_B64: ${{ secrets.PROVISION_MACOS_B64 }}
+          INSTALLER_P12_B64: ${{ secrets.INSTALLER_P12_B64 }}
         run: |
           echo "$DIST_P12_B64" | base64 -d > dist.p12
           security create-keychain -p ci ci.keychain
           security default-keychain -s ci.keychain
           security unlock-keychain -p ci ci.keychain
+          security set-keychain-settings -lut 21600 ci.keychain
           security import dist.p12 -k ci.keychain -P "$DIST_P12_PASS" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain
+          if [ "${{ matrix.platform }}" = "macos" ] && [ -n "$INSTALLER_P12_B64" ]; then
+            # Same private key as the distribution cert, different leaf: signs the
+            # .pkg that TestFlight for Mac requires.
+            echo "$INSTALLER_P12_B64" | base64 -d > installer.p12
+            security import installer.p12 -k ci.keychain -P "$DIST_P12_PASS" -T /usr/bin/productbuild
+          fi
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productbuild: -s -k ci ci.keychain
+          security find-identity -v ci.keychain
 
           # Xcode looks in one of these two directories depending on version;
           # descend-watch writes both, so do the same.
@@ -165,7 +179,7 @@ jobs:
           else
             # macOS TestFlight takes a signed .pkg, not a zip.
             productbuild --component "$APPS/$APP_NAME" /Applications \
-              --sign "3rd Party Mac Developer Installer: ${{ secrets.INSTALLER_CERT_NAME }}" \
+              --sign "Mac Installer Distribution: Daniel Bates (MG4YW8XX2Z)" --keychain ci.keychain \
               build/EndgameFitness.pkg
             echo "artifact=build/EndgameFitness.pkg" >> "$GITHUB_OUTPUT"
           fi
