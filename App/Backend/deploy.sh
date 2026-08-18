@@ -67,7 +67,7 @@ if ! $SCHEMA_ONLY; then
                "$SITE_DIR/functions/_lib"
   run cp "$BACKEND_DIR/functions/api/auth/[[path]].js"    "$SITE_DIR/functions/api/auth/[[path]].js"
   run cp "$BACKEND_DIR/functions/api/fitness/[[path]].js" "$SITE_DIR/functions/api/fitness/[[path]].js"
-  run cp "$BACKEND_DIR/functions/_lib/session.js"         "$SITE_DIR/functions/_lib/session.js"
+  run cp "$BACKEND_DIR"/functions/_lib/*.js "$SITE_DIR/functions/_lib/"
 fi
 
 echo "==> Applying database schema (idempotent)"
@@ -81,7 +81,7 @@ fi
 echo "==> Deploying to Cloudflare Pages"
 # Pages Functions are picked up from ./functions at the project root, so the
 # deploy must run from the site directory, not from dist alone.
-run bash -c "cd '$SITE_DIR' && npx wrangler pages deploy dist --project-name='$PROJECT_NAME'"
+run bash -c "cd '$SITE_DIR' && npx wrangler pages deploy dist --project-name='$PROJECT_NAME' --branch=main --commit-dirty=true"
 
 cat <<'EOF'
 
