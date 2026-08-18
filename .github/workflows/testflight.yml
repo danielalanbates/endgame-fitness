@@ -56,6 +56,8 @@ concurrency:
 jobs:
   ship:
     runs-on: macos-15
+    env:
+      APP_ID: ${{ secrets.ASC_APP_ID }}
     strategy:
       fail-fast: false
       matrix:
@@ -184,13 +186,12 @@ jobs:
             echo "artifact=build/EndgameFitness.pkg" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload to TestFlight
-        if: steps.gate.outputs.run == 'true'
+      - name: Upload to TestFlight (Build Upload API, needs ASC_APP_ID)
+        if: steps.gate.outputs.run == 'true' && env.APP_ID != ''
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          APP_ID: ${{ secrets.ASC_APP_ID }}
           IPA_PATH: ${{ steps.package.outputs.artifact }}
           VER: ${{ inputs.version }}
         run: |
@@ -205,6 +206,35 @@ jobs:
           pip3 install --quiet --break-system-packages PyJWT cryptography \
             || pip3 install --quiet PyJWT cryptography
           BUILD="$BUILD_NUMBER" python3 scripts/upload_asc.py
+
+      # Pathway B — no app record exists yet (ASC_APP_ID unset). The REST API
+      # cannot create one, but Xcode's own uploader can: `-exportArchive` with
+      # destination=upload registers the app in App Store Connect on first
+      # upload, using the bundle id + CFBundleDisplayName. Once that has run
+      # successfully, copy the numeric app id into ASC_APP_ID and the API path
+      # above takes over.
+      - name: Upload to TestFlight (xcodebuild exportArchive, creates the app record)
+        if: steps.gate.outputs.run == 'true' && env.APP_ID == ''
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -eo pipefail
+          mkdir -p ~/.private_keys
+          echo "$ASC_KEY_P8" > ~/.private_keys/AuthKey_${ASC_KEY_ID}.p8
+          if [ "${{ matrix.platform }}" = "ios" ]; then PROFILE="Endgame Fitness IOS_APP_STORE"; else PROFILE="Endgame Fitness MAC_APP_STORE"; fi
+          sed -i '' "s/__PROFILE__/$PROFILE/" App/ExportOptions.plist
+          xcodebuild -exportArchive \
+            -archivePath build/EndgameFitness.xcarchive \
+            -exportOptionsPlist App/ExportOptions.plist \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          ls -la build/export || true
+          cat build/export/*.plist 2>/dev/null || true
 
       - name: Keep the artifact
         if: steps.gate.outputs.run == 'true' && always()
