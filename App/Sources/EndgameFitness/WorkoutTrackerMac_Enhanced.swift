@@ -5537,7 +5537,12 @@ struct OnboardingView: View {
         switch currentStep {
         case 0: return hasAcceptedWaivers
         case 1: return true
-        case 2: return !userName.isEmpty && !userAge.isEmpty && !userWeight.isEmpty && !userHeight.isEmpty
+        case 2:
+            let t = { (v: String) in v.trimmingCharacters(in: .whitespaces) }
+            return !t(userName).isEmpty
+                && Int(t(userAge)) != nil
+                && Double(t(userWeight)) != nil
+                && Double(t(userHeight)) != nil
         case 3: return !selectedGoals.isEmpty
         case 4: return true
         case 5: return true
@@ -5855,122 +5860,98 @@ struct BasicInfoStep: View {
 
     @FocusState private var focusedField: Field?
 
-    enum Field {
-        case name, age, weight, height
+    enum Field { case name, age, weight }
+
+    // Height is entered as feet + inches (no one thinks in total inches);
+    // the parent still stores plain inches in userHeight, so nothing
+    // downstream changes.
+    private var feetBinding: Binding<Int> {
+        Binding(
+            get: { Int(Double(userHeight) ?? 68) / 12 },
+            set: { userHeight = String($0 * 12 + Int(Double(userHeight) ?? 68) % 12) }
+        )
+    }
+    private var inchesBinding: Binding<Int> {
+        Binding(
+            get: { Int(Double(userHeight) ?? 68) % 12 },
+            set: { userHeight = String((Int(Double(userHeight) ?? 68) / 12) * 12 + $0) }
+        )
     }
 
     var body: some View {
-        VStack(spacing: 30) {
-            VStack(spacing: 8) {
-                Text("👤 Tell Us About Yourself")
-                    .font(.largeTitle)
-                    .bold()
-                    .foregroundColor(.black)
-
-                Text("Help us personalize your experience")
+        VStack(spacing: 28) {
+            VStack(spacing: 6) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(Color.brandPurple)
+                Text("Tell us about yourself")
+                    .font(.largeTitle.bold())
+                Text("Four quick answers to calibrate your programs.")
                     .font(.subheadline)
-                    .foregroundColor(.black)
+                    .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("What's your name?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Name", text: $userName)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Name").font(.headline)
+                    TextField("Your name", text: $userName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.title3)
                         .focused($focusedField, equals: .name)
+                        .onSubmit { focusedField = .age }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("How old are you?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Age", text: $userAge)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
-                        .focused($focusedField, equals: .age)
-                }
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Age").font(.headline)
+                        TextField("34", text: $userAge)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.title3)
+                            .frame(width: 90)
+                            .focused($focusedField, equals: .age)
+                            .onSubmit { focusedField = .weight }
+                            .onChange(of: userAge) { v in
+                                userAge = String(v.filter(\.isNumber).prefix(3))
+                            }
+                    }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Current weight (lbs)?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Weight", text: $userWeight)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
-                        .focused($focusedField, equals: .weight)
-                }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Weight (lb)").font(.headline)
+                        TextField("185", text: $userWeight)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.title3)
+                            .frame(width: 110)
+                            .focused($focusedField, equals: .weight)
+                            .onChange(of: userWeight) { v in
+                                userWeight = String(v.filter { $0.isNumber || $0 == "." }.prefix(6))
+                            }
+                    }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Height (inches)?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Height (e.g., 70 for 5'10\")", text: $userHeight)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
-                        .focused($focusedField, equals: .height)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Height").font(.headline)
+                        HStack(spacing: 8) {
+                            Picker("", selection: feetBinding) {
+                                ForEach(3...7, id: \.self) { Text("\($0) ft").tag($0) }
+                            }
+                            .labelsHidden()
+                            .frame(width: 90)
+                            Picker("", selection: inchesBinding) {
+                                ForEach(0...11, id: \.self) { Text("\($0) in").tag($0) }
+                            }
+                            .labelsHidden()
+                            .frame(width: 90)
+                        }
+                    }
                 }
             }
-            .padding(30)
-            .background(Color.white.opacity(0.9))
-            .cornerRadius(16)
+            .padding(28)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: 560)
         }
         .padding()
         .onAppear {
-            // Force window to front and make it key
             Platform.activate()
-            #if os(macOS)
-            DispatchQueue.main.async {
-                if let window = NSApp.keyWindow ?? NSApp.windows.first {
-                    window.makeKeyAndOrderFront(nil)
-                    window.makeFirstResponder(window.contentView)
-                }
-            }
-            #endif
-
-            // Set focus to name field
+            if userHeight.isEmpty { userHeight = "68" }   // sensible default; pickers can't be blank
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 focusedField = .name
             }
