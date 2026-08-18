@@ -18,7 +18,14 @@
 set -euo pipefail
 
 BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SITE_DIR="${BATESAI_SITE_DIR:-$HOME}"
+# Where the built site (dist/ + functions/) lives. Default: a fresh shallow clone
+# of the website repo (it tracks its own dist/), so this never depends on the
+# state of the home-directory worktree, which has had dist/ go missing before.
+SITE_DIR="${BATESAI_SITE_DIR:-}"
+if [[ -z "$SITE_DIR" ]]; then
+  SITE_DIR="$(mktemp -d)/site"
+  git clone -q --depth 1 https://github.com/danielalanbates/website.git "$SITE_DIR"
+fi
 PROJECT_NAME="website"
 
 DRY_RUN=false

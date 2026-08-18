@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   name           TEXT,
   avatar_url     TEXT,
   oauth_provider TEXT,
-  oauth_sub      TEXT,
+  oauth_id      TEXT,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
 );
@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
 -- Apple gives us a stable (provider, sub) pair but an email that may rotate,
 -- so sign-in resolves on this index rather than on email.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oauth
-  ON users (oauth_provider, oauth_sub)
-  WHERE oauth_provider IS NOT NULL AND oauth_sub IS NOT NULL;
+  ON users (oauth_provider, oauth_id)
+  WHERE oauth_provider IS NOT NULL AND oauth_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sessions (
   id         TEXT PRIMARY KEY,
