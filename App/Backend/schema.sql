@@ -221,3 +221,36 @@ CREATE TABLE IF NOT EXISTS activity_reactions (
   created_at  INTEGER NOT NULL,
   PRIMARY KEY (activity_id, user_id, emoji)
 );
+
+-- ---------------------------------------------------------------- challenges
+
+-- A duel (two friends) or a guild challenge (everyone in the guild) over a
+-- time window. Standings are NEVER stored: they are recomputed from
+-- workout_sessions in [starts_at, ends_at) on every read, and settle() runs
+-- lazily on the first GET after ends_at (see functions/_lib/challenges.js).
+CREATE TABLE IF NOT EXISTS challenges (
+  id           TEXT PRIMARY KEY,
+  kind         TEXT NOT NULL,                 -- duel | guild
+  metric       TEXT NOT NULL,                 -- volume | workouts | streak
+  creator_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  opponent_id  TEXT REFERENCES users(id) ON DELETE CASCADE,   -- duel only
+  guild_id     TEXT REFERENCES guilds(id) ON DELETE CASCADE,  -- guild only
+  starts_at    INTEGER NOT NULL,
+  ends_at      INTEGER NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending | active | declined | finished
+  winner_id    TEXT,
+  settled_at   INTEGER,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_challenges_status ON challenges (status, ends_at);
+CREATE INDEX IF NOT EXISTS idx_challenges_guild ON challenges (guild_id, status);
+
+-- Who is in a challenge. Duels get exactly two rows; guild challenges get one
+-- row per member at creation time (late joiners are not enrolled).
+CREATE TABLE IF NOT EXISTS challenge_participants (
+  challenge_id TEXT NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_at    INTEGER NOT NULL,
+  PRIMARY KEY (challenge_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_challenge_participants_user ON challenge_participants (user_id);
