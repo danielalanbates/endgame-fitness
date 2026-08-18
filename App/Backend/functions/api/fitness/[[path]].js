@@ -17,9 +17,15 @@
  *   POST   guild                   create a guild { name, motto }
  *   POST   guild/join              { guild_id }
  *   POST   guild/leave
+ *   GET    quests                  active daily + weekly quests (generated on read)
+ *   POST   quests/:id/claim        claim a completed quest → XP + feed item
+ *   GET    achievements            catalog + unlocked state
  */
 
 import { requireUser, json, withCors, corsHeaders, now } from '../../_lib/session.js';
+import {
+  boardFor, advance, eventForWorkout, questDefinition, newlyUnlocked, achievementCatalog,
+} from '../../_lib/game.js';
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -59,6 +65,14 @@ export async function onRequest(context) {
         break;
       case 'guild':
         response = await handleGuild(request, env, userId, path);
+        break;
+      case 'quests':
+        response = path[1] && path[2] === 'claim'
+          ? await claimQuest(request, env, userId, path[1])
+          : await getQuests(env, userId);
+        break;
+      case 'achievements':
+        response = await getAchievements(env, userId);
         break;
       default:
         response = json({ error: 'Unknown endpoint' }, 404);
@@ -287,6 +301,15 @@ async function handleSync(request, env, userId) {
     totalVolume += volume;
     totalReps += reps;
 
+    const prs = await recordPersonalRecords(env, userId, session, performedAt);
+    if (prs > 0) {
+      await pushActivity(env, userId, 'pr', `set ${prs} new personal record${prs === 1 ? '' : 's'}`,
+        { session_id: session.id, count: prs });
+    }
+    await advanceQuests(env, userId, eventForWorkout({
+      total_volume: volume, total_reps: reps, duration_secs: duration, prs,
+    }));
+
     const day = isoDay(performedAt);
     const transition = streakAfter(lastWorkoutDate, day);
     if (transition === 'continue') currentStreak += 1;
@@ -324,6 +347,8 @@ async function handleSync(request, env, userId) {
     await pushActivity(env, userId, 'level_up', `reached level ${newLevel}`, { level: newLevel });
   }
 
+  const unlocked = await checkAchievements(env, userId);
+
   // Hand back everything the client hasn't seen. Capped so a fresh install with
   // years of history pages through instead of timing out on one request.
   const remote = await env.DB.prepare(
@@ -345,6 +370,7 @@ async function handleSync(request, env, userId) {
     accepted,
     xp_gained: xpGained,
     levels_gained: levelsGained,
+    achievements_unlocked: unlocked,
     sessions,
     has_more: sessions.length === 500,
     server_time: now(),
@@ -437,6 +463,8 @@ async function reactToActivity(request, env, userId, activityId) {
     `INSERT INTO activity_reactions (activity_id, user_id, emoji, created_at)
      VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`
   ).bind(activityId, userId, emoji, now()).run();
+
+  if (activity.user_id !== userId) await advanceQuests(env, userId, { reactions: 1 });
 
   return json({ success: true });
 }
@@ -584,6 +612,11 @@ async function handleFriends(request, env, userId, path) {
       await env.DB.prepare(
         `UPDATE friendships SET status = 'accepted', updated_at = ? WHERE user_low = ? AND user_high = ?`
       ).bind(now(), low, high).run();
+      // Both sides gained a friend.
+      for (const uid of [userId, otherId]) {
+        await advanceQuests(env, uid, { friends: 1 });
+        await checkAchievements(env, uid);
+      }
     } else {
       await env.DB.prepare('DELETE FROM friendships WHERE user_low = ? AND user_high = ?')
         .bind(low, high).run();
@@ -648,6 +681,7 @@ async function handleGuild(request, env, userId, path) {
       `INSERT INTO guild_members (guild_id, user_id, role, joined_at) VALUES (?, ?, 'owner', ?)`
     ).bind(guildId, userId, now()).run();
 
+    await checkAchievements(env, userId);
     return json({ success: true, guild_id: guildId }, 201);
   }
 
@@ -671,6 +705,7 @@ async function handleGuild(request, env, userId, path) {
     await env.DB.prepare(
       `INSERT INTO guild_members (guild_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`
     ).bind(guildId, userId, now()).run();
+    await checkAchievements(env, userId);
     return json({ success: true });
   }
 
@@ -702,4 +737,256 @@ async function handleGuild(request, env, userId, path) {
   }
 
   return json({ error: 'Unknown endpoint' }, 404);
+}
+
+/* ------------------------------------------------------------------ */
+/* Quests & achievements                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Award XP outside the sync path (quest claims, achievements). Re-reads the
+ * profile so it composes with whatever handleSync just wrote. Returns levels
+ * gained so callers can post a level-up.
+ */
+async function awardXp(env, userId, amount, reason, sourceId) {
+  const profile = await env.DB.prepare('SELECT xp, level FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  if (!profile) return 0;
+  const newXp = profile.xp + amount;
+  const newLevel = levelForXp(newXp);
+  const gained = Math.max(0, newLevel - profile.level);
+  await env.DB.prepare(
+    `UPDATE fitness_profiles SET xp = ?, level = ?, talent_points = talent_points + ?, updated_at = ?
+      WHERE user_id = ?`
+  ).bind(newXp, newLevel, gained, now(), userId).run();
+  await env.DB.prepare(
+    'INSERT INTO xp_transactions (id, user_id, amount, reason, source_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), userId, amount, reason, sourceId || null, now()).run();
+  if (gained > 0) {
+    await pushActivity(env, userId, 'level_up', `reached level ${newLevel}`, { level: newLevel });
+  }
+  return gained;
+}
+
+/**
+ * Make sure the user's board for right now exists. Deterministic ids make this
+ * an idempotent INSERT OR IGNORE, so it is safe to call on every read/event.
+ */
+async function ensureBoard(env, userId, epoch = now()) {
+  const board = boardFor(userId, epoch);
+  const stmt = env.DB.prepare(
+    `INSERT OR IGNORE INTO quests
+       (id, user_id, quest_key, kind, target, progress, xp_reward, expires_at, completed_at, claimed)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, 0)`
+  );
+  await env.DB.batch(board.map((q) => stmt.bind(q.id, userId, q.key, q.kind, q.target, q.xp, q.expires_at)));
+  return board;
+}
+
+function shapeQuest(row) {
+  const def = questDefinition(row.quest_key) || {};
+  return {
+    id: row.id,
+    quest_key: row.quest_key,
+    kind: row.kind,
+    title: def.title || row.quest_key,
+    description: def.desc || '',
+    icon: def.icon || 'checkmark.seal.fill',
+    metric: def.metric || null,
+    target: row.target,
+    progress: row.progress,
+    xp_reward: row.xp_reward,
+    expires_at: row.expires_at,
+    completed_at: row.completed_at,
+    claimed: !!row.claimed,
+  };
+}
+
+async function activeQuestRows(env, userId) {
+  const rows = await env.DB.prepare(
+    `SELECT * FROM quests WHERE user_id = ? AND expires_at > ?
+      ORDER BY CASE kind WHEN 'daily' THEN 0 ELSE 1 END, quest_key`
+  ).bind(userId, now()).all();
+  return rows.results || [];
+}
+
+async function getQuests(env, userId) {
+  await ensureBoard(env, userId);
+  const rows = await activeQuestRows(env, userId);
+  const quests = rows.map(shapeQuest);
+  return json({
+    daily: quests.filter((q) => q.kind === 'daily'),
+    weekly: quests.filter((q) => q.kind === 'weekly'),
+    server_time: now(),
+  });
+}
+
+/**
+ * Apply an event ({workouts, volume, reps, minutes, prs, reactions, friends})
+ * to every active, unfinished quest. Completion is recorded here; XP is paid
+ * out on claim so the player gets the moment.
+ */
+async function advanceQuests(env, userId, event) {
+  try {
+    await ensureBoard(env, userId);
+    const rows = await activeQuestRows(env, userId);
+    for (const row of rows) {
+      if (row.completed_at) continue;
+      const next = advance(row, event);
+      if (next === row.progress) continue;
+      const done = next >= row.target;
+      await env.DB.prepare(
+        'UPDATE quests SET progress = ?, completed_at = ? WHERE id = ?'
+      ).bind(next, done ? now() : null, row.id).run();
+    }
+  } catch (e) {
+    console.error('advanceQuests failed:', e && e.message);
+  }
+}
+
+async function claimQuest(request, env, userId, questId) {
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const row = await env.DB.prepare('SELECT * FROM quests WHERE id = ? AND user_id = ?')
+    .bind(questId, userId).first();
+  if (!row) return json({ error: 'Quest not found' }, 404);
+  if (!row.completed_at) return json({ error: 'Quest not complete' }, 409);
+  if (row.claimed) return json({ success: true, xp_gained: 0, levels_gained: 0, quest: shapeQuest(row) });
+
+  // Flip claimed first with a guard so a double-tap cannot pay twice.
+  const flip = await env.DB.prepare(
+    'UPDATE quests SET claimed = 1 WHERE id = ? AND user_id = ? AND claimed = 0'
+  ).bind(questId, userId).run();
+  if (!flip.meta || flip.meta.changes === 0) {
+    return json({ success: true, xp_gained: 0, levels_gained: 0, quest: shapeQuest({ ...row, claimed: 1 }) });
+  }
+
+  const gained = await awardXp(env, userId, row.xp_reward, 'quest', row.id);
+  const def = questDefinition(row.quest_key);
+  await pushActivity(env, userId, 'quest',
+    `completed the ${row.kind} quest "${def ? def.title : row.quest_key}"`,
+    { quest_key: row.quest_key, kind: row.kind, xp: row.xp_reward });
+
+  return json({
+    success: true,
+    xp_gained: row.xp_reward,
+    levels_gained: gained,
+    quest: shapeQuest({ ...row, claimed: 1 }),
+  });
+}
+
+/** Snapshot the numbers the achievement rules look at. */
+async function achievementStats(env, userId) {
+  const p = await env.DB.prepare(
+    'SELECT level, total_workouts, total_volume, longest_streak FROM fitness_profiles WHERE user_id = ?'
+  ).bind(userId).first();
+  if (!p) return null;
+  const friends = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM friendships WHERE status = 'accepted' AND (user_low = ? OR user_high = ?)`
+  ).bind(userId, userId).first();
+  const guild = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  return {
+    level: p.level,
+    total_workouts: p.total_workouts,
+    total_volume: p.total_volume,
+    longest_streak: p.longest_streak,
+    friend_count: friends?.n || 0,
+    in_guild: !!guild,
+  };
+}
+
+/** Unlock anything newly earned. Returns the ids unlocked on this call. */
+async function checkAchievements(env, userId) {
+  try {
+    const stats = await achievementStats(env, userId);
+    if (!stats) return [];
+    const have = await env.DB.prepare('SELECT achievement_id FROM achievements WHERE user_id = ?')
+      .bind(userId).all();
+    const fresh = newlyUnlocked(stats, (have.results || []).map((r) => r.achievement_id));
+    const ids = [];
+    for (const a of fresh) {
+      const ins = await env.DB.prepare(
+        `INSERT OR IGNORE INTO achievements (user_id, achievement_id, unlocked_at, progress) VALUES (?, ?, ?, 1.0)`
+      ).bind(userId, a.id, now()).run();
+      if (!ins.meta || ins.meta.changes === 0) continue; // raced; already paid
+      await awardXp(env, userId, a.xp, 'achievement', a.id);
+      await pushActivity(env, userId, 'achievement', `unlocked "${a.title}"`,
+        { achievement_id: a.id, rarity: a.rarity, xp: a.xp });
+      ids.push(a.id);
+    }
+    // Level-based rules may become true only after the XP just paid.
+    if (ids.length) {
+      const again = await checkAchievements(env, userId);
+      ids.push(...again);
+    }
+    return ids;
+  } catch (e) {
+    console.error('checkAchievements failed:', e && e.message);
+    return [];
+  }
+}
+
+async function getAchievements(env, userId) {
+  const rows = await env.DB.prepare(
+    'SELECT achievement_id, unlocked_at FROM achievements WHERE user_id = ?'
+  ).bind(userId).all();
+  const unlockedAt = new Map((rows.results || []).map((r) => [r.achievement_id, r.unlocked_at]));
+  const items = achievementCatalog().map((a) => ({
+    ...a,
+    unlocked: unlockedAt.has(a.id),
+    unlocked_at: unlockedAt.get(a.id) || null,
+  }));
+  return json({
+    achievements: items,
+    unlocked_count: unlockedAt.size,
+    total_count: items.length,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Personal records                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Walk a session payload's exercise/set tree (if the client sent one) and
+ * upsert personal_records. Returns how many records were newly set/beaten.
+ * The current native client uploads aggregates only, so this is a no-op until
+ * it starts sending `payload.exercises[].sets[]{weight, reps}`.
+ */
+async function recordPersonalRecords(env, userId, session, performedAt) {
+  try {
+    const payload = session.payload && typeof session.payload === 'object' ? session.payload : session;
+    const exercises = Array.isArray(payload.exercises) ? payload.exercises : [];
+    let count = 0;
+    for (const ex of exercises) {
+      const name = String(ex.name || ex.exercise || '').trim();
+      const sets = Array.isArray(ex.sets) ? ex.sets : [];
+      if (!name || !sets.length) continue;
+      const best = new Map(); // reps -> best weight
+      for (const set of sets) {
+        const reps = Math.round(Number(set.reps) || 0);
+        const weight = Number(set.weight) || 0;
+        if (reps <= 0 || weight <= 0) continue;
+        if (!best.has(reps) || best.get(reps) < weight) best.set(reps, weight);
+      }
+      for (const [reps, weight] of best) {
+        const existing = await env.DB.prepare(
+          'SELECT weight FROM personal_records WHERE user_id = ? AND exercise = ? AND reps = ?'
+        ).bind(userId, name, reps).first();
+        if (existing && existing.weight >= weight) continue;
+        const e1rm = Math.round(weight * (1 + reps / 30));
+        await env.DB.prepare(
+          `INSERT INTO personal_records (user_id, exercise, reps, weight, estimated_1rm, achieved_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, exercise, reps) DO UPDATE SET
+             weight = excluded.weight, estimated_1rm = excluded.estimated_1rm, achieved_at = excluded.achieved_at`
+        ).bind(userId, name, reps, weight, e1rm, performedAt).run();
+        count += 1;
+      }
+    }
+    return count;
+  } catch (e) {
+    console.error('recordPersonalRecords failed:', e && e.message);
+    return 0;
+  }
 }

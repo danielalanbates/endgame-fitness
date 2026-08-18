@@ -68,6 +68,7 @@ if ! $SCHEMA_ONLY; then
   run cp "$BACKEND_DIR/functions/api/auth/[[path]].js"    "$SITE_DIR/functions/api/auth/[[path]].js"
   run cp "$BACKEND_DIR/functions/api/fitness/[[path]].js" "$SITE_DIR/functions/api/fitness/[[path]].js"
   run cp "$BACKEND_DIR/functions/_lib/session.js"         "$SITE_DIR/functions/_lib/session.js"
+  run cp "$BACKEND_DIR/functions/_lib/game.js"            "$SITE_DIR/functions/_lib/game.js"
 fi
 
 echo "==> Applying database schema (idempotent)"

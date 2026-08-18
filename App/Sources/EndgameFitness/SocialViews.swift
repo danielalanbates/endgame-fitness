@@ -317,6 +317,7 @@ struct CommunityView: View {
         case leaderboard = "Leaderboard"
         case friends = "Friends"
         case guild = "Guild"
+        case quests = "Quests"
         var id: String { rawValue }
 
         var icon: String {
@@ -325,6 +326,7 @@ struct CommunityView: View {
             case .leaderboard: return "trophy.fill"
             case .friends:     return "person.2.fill"
             case .guild:       return "shield.lefthalf.filled"
+            case .quests:      return "checkmark.seal.fill"
             }
         }
     }
@@ -357,6 +359,7 @@ struct CommunityView: View {
                 case .leaderboard: leaderboardList
                 case .friends:     friendsList
                 case .guild:       guildPane
+                case .quests:      QuestsAndAchievementsPane()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -369,6 +372,7 @@ struct CommunityView: View {
                 case .leaderboard: await game.loadLeaderboard(scope: leaderboardScope, metric: leaderboardMetric)
                 case .friends:     await game.loadFriends()
                 case .guild:       await game.loadGuild()
+                case .quests:      await game.loadQuests()
                 }
             }
         }
