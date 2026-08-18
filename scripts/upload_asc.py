@@ -30,7 +30,8 @@ API = "https://api.appstoreconnect.apple.com/v1"
 KEY_ID = os.environ["ASC_KEY_ID"]
 ISSUER = os.environ["ASC_ISSUER_ID"]
 KEY = os.environ.get("ASC_KEY_P8") or open(os.environ["ASC_KEY_PATH"]).read()
-APP_ID = os.environ["APP_ID"]
+APP_ID = os.environ.get("APP_ID") or ""
+BUNDLE_ID = os.environ.get("BUNDLE_ID", "org.batesai.endgamefitness")
 ARTIFACT = os.environ["IPA_PATH"]
 PLATFORM = os.environ.get("PLATFORM", "IOS")
 
@@ -62,6 +63,24 @@ def call(method, url, body=None, headers=None, raw=False):
         raise
 
 
+def resolve_app_id():
+    """APP_ID may be unset: look the app up by bundle id. Exit 78 (EX_CONFIG)
+    when App Store Connect has no app record yet — creating one is web-UI only."""
+    global APP_ID
+    if APP_ID:
+        return APP_ID
+    r = call("GET", f"{API}/apps?filter[bundleId]={BUNDLE_ID}&fields[apps]=name,bundleId")
+    apps = r.get("data", []) if isinstance(r, dict) else []
+    if not apps:
+        print(f"NO APP RECORD for {BUNDLE_ID} in App Store Connect. Create it (My Apps -> + -> New App, "
+              f"iOS + macOS, bundle id {BUNDLE_ID}); this job will succeed on the next run.")
+        sys.exit(78)
+    APP_ID = apps[0]["id"]
+    print(f"resolved app id {APP_ID} ({apps[0]['attributes']['name']})")
+    return APP_ID
+
+
+resolve_app_id()
 data = open(ARTIFACT, "rb").read()
 print(f"artifact: {ARTIFACT} ({len(data)} bytes, md5 {hashlib.md5(data).hexdigest()})")
 

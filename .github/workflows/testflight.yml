@@ -31,6 +31,10 @@ name: TestFlight
 # Encode a file with:  base64 -i cert.p12 | pbcopy
 
 on:
+  # Daily retry: the day the ASC app record appears, this ships without anyone
+  # touching it. Harmless (exit 0 with a warning) until then.
+  schedule:
+    - cron: '17 15 * * *'
   workflow_dispatch:
     inputs:
       platform:
@@ -56,8 +60,6 @@ concurrency:
 jobs:
   ship:
     runs-on: macos-15
-    env:
-      APP_ID: ${{ secrets.ASC_APP_ID }}
     strategy:
       fail-fast: false
       matrix:
@@ -67,7 +69,7 @@ jobs:
       - name: Skip unselected platform
         id: gate
         run: |
-          want="${{ inputs.platform }}"
+          want="${{ inputs.platform || 'both' }}"
           if [ "$want" = "both" ] || [ "$want" = "${{ matrix.platform }}" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
@@ -150,7 +152,7 @@ jobs:
           xcodebuild -project EndgameFitness.xcodeproj -scheme "$SCHEME" \
             -destination "$DEST" -configuration Release \
             -archivePath "$GITHUB_WORKSPACE/build/EndgameFitness.xcarchive" \
-            MARKETING_VERSION="${{ inputs.version }}" \
+            MARKETING_VERSION="${{ inputs.version || '1.0.0' }}" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             archive
@@ -181,21 +183,31 @@ jobs:
           else
             # macOS TestFlight takes a signed .pkg, not a zip.
             productbuild --component "$APPS/$APP_NAME" /Applications \
-              --sign "Mac Installer Distribution: Daniel Bates (MG4YW8XX2Z)" --keychain ci.keychain \
+              --sign "3rd Party Mac Developer Installer: Daniel Bates (MG4YW8XX2Z)" --keychain ci.keychain \
               build/EndgameFitness.pkg
             echo "artifact=build/EndgameFitness.pkg" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload to TestFlight (Build Upload API, needs ASC_APP_ID)
-        if: steps.gate.outputs.run == 'true' && env.APP_ID != ''
+      # Upload through the ASC Build Upload REST API (scripts/upload_asc.py).
+      # The app id is resolved from the bundle id at run time, so no ASC_APP_ID
+      # secret is required. If App Store Connect has no app record yet the
+      # script exits 78 and the job is marked as "record missing" rather than
+      # failed — creating the record is web-UI only (Daniel: My Apps -> + ->
+      # New App -> iOS + macOS, bundle id org.batesai.endgamefitness).
+      # exportArchive with destination=upload was tried first and does NOT
+      # create the record ("Error Downloading App Information").
+      - name: Upload to TestFlight
+        if: steps.gate.outputs.run == 'true'
+        id: upload
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APP_ID: ${{ secrets.ASC_APP_ID }}
           IPA_PATH: ${{ steps.package.outputs.artifact }}
-          VER: ${{ inputs.version }}
+          VER: ${{ inputs.version || '1.0.0' }}
         run: |
-          set -eo pipefail
+          set -o pipefail
           BUILD_NUMBER="${{ inputs.build_number }}"
           [ -z "$BUILD_NUMBER" ] && BUILD_NUMBER="${{ github.run_number }}"
           if [ "${{ matrix.platform }}" = "ios" ]; then
@@ -205,36 +217,16 @@ jobs:
           fi
           pip3 install --quiet --break-system-packages PyJWT cryptography \
             || pip3 install --quiet PyJWT cryptography
+          set +e
           BUILD="$BUILD_NUMBER" python3 scripts/upload_asc.py
-
-      # Pathway B — no app record exists yet (ASC_APP_ID unset). The REST API
-      # cannot create one, but Xcode's own uploader can: `-exportArchive` with
-      # destination=upload registers the app in App Store Connect on first
-      # upload, using the bundle id + CFBundleDisplayName. Once that has run
-      # successfully, copy the numeric app id into ASC_APP_ID and the API path
-      # above takes over.
-      - name: Upload to TestFlight (xcodebuild exportArchive, creates the app record)
-        if: steps.gate.outputs.run == 'true' && env.APP_ID == ''
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-        run: |
-          set -eo pipefail
-          mkdir -p ~/.private_keys
-          echo "$ASC_KEY_P8" > ~/.private_keys/AuthKey_${ASC_KEY_ID}.p8
-          if [ "${{ matrix.platform }}" = "ios" ]; then PROFILE="Endgame Fitness IOS_APP_STORE"; else PROFILE="Endgame Fitness MAC_APP_STORE"; fi
-          sed -i '' "s/__PROFILE__/$PROFILE/" App/ExportOptions.plist
-          xcodebuild -exportArchive \
-            -archivePath build/EndgameFitness.xcarchive \
-            -exportOptionsPlist App/ExportOptions.plist \
-            -exportPath build/export \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          ls -la build/export || true
-          cat build/export/*.plist 2>/dev/null || true
+          rc=$?
+          set -e
+          if [ $rc -eq 78 ]; then
+            echo "::warning::App Store Connect has no app record for org.batesai.endgamefitness yet — build kept as artifact, nothing uploaded."
+            echo "status=no-app-record" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit $rc
 
       - name: Keep the artifact
         if: steps.gate.outputs.run == 'true' && always()
