@@ -17,9 +17,14 @@
  *   POST   guild                   create a guild { name, motto }
  *   POST   guild/join              { guild_id }
  *   POST   guild/leave
+ *   GET    challenges              mine: pending / active / finished (+ live standings)
+ *   POST   challenges              { kind, metric, opponent_user_id | (guild), days }
+ *   POST   challenges/:id/accept
+ *   POST   challenges/:id/decline
  */
 
 import { requireUser, json, withCors, corsHeaders, now } from '../../_lib/session.js';
+import { computeStandings, settle, validateCreate } from '../../_lib/challenges.js';
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -59,6 +64,9 @@ export async function onRequest(context) {
         break;
       case 'guild':
         response = await handleGuild(request, env, userId, path);
+        break;
+      case 'challenges':
+        response = await handleChallenges(request, env, userId, path);
         break;
       default:
         response = json({ error: 'Unknown endpoint' }, 404);
@@ -702,4 +710,228 @@ async function handleGuild(request, env, userId, path) {
   }
 
   return json({ error: 'Unknown endpoint' }, 404);
+}
+
+/* ------------------------------------------------------------------ */
+/* Challenges                                                          */
+/* ------------------------------------------------------------------ */
+
+async function handleChallenges(request, env, userId, path) {
+  const id = path[1] || '';
+  const action = path[2] || '';
+
+  if (request.method === 'GET' && !id) return listChallenges(env, userId);
+  if (request.method === 'POST' && !id) return createChallenge(request, env, userId);
+  if (request.method === 'POST' && id && (action === 'accept' || action === 'decline')) {
+    return respondToChallenge(env, userId, id, action === 'accept');
+  }
+  return json({ error: 'Unknown endpoint' }, 404);
+}
+
+async function createChallenge(request, env, userId) {
+  const body = await request.json().catch(() => ({}));
+  const v = validateCreate(body);
+  if (!v.ok) return json({ error: v.error }, 400);
+
+  const t = now();
+  const challengeId = crypto.randomUUID();
+  const endsAt = t + v.days * 86400;
+
+  if (v.kind === 'duel') {
+    const opponentId = String(body.opponent_user_id);
+    if (opponentId === userId) return json({ error: 'You cannot duel yourself' }, 400);
+    const friends = await friendIdsOf(env, userId);
+    if (!friends.includes(opponentId)) return json({ error: 'You can only duel a friend' }, 403);
+
+    const open = await env.DB.prepare(
+      `SELECT id FROM challenges
+        WHERE kind = 'duel' AND status IN ('pending','active')
+          AND ((creator_id = ? AND opponent_id = ?) OR (creator_id = ? AND opponent_id = ?))`
+    ).bind(userId, opponentId, opponentId, userId).first();
+    if (open) return json({ error: 'You already have an open duel with this friend' }, 409);
+
+    // Duels start when accepted; starts_at is provisional until then.
+    await env.DB.prepare(
+      `INSERT INTO challenges (id, kind, metric, creator_id, opponent_id, guild_id, starts_at, ends_at, status, created_at)
+       VALUES (?, 'duel', ?, ?, ?, NULL, ?, ?, 'pending', ?)`
+    ).bind(challengeId, v.metric, userId, opponentId, t, endsAt, t).run();
+    for (const uid of [userId, opponentId]) {
+      await env.DB.prepare(
+        'INSERT INTO challenge_participants (challenge_id, user_id, joined_at) VALUES (?, ?, ?)'
+      ).bind(challengeId, uid, t).run();
+    }
+    return json({ success: true, challenge_id: challengeId, status: 'pending' }, 201);
+  }
+
+  // guild challenge: creator must be owner/officer; enrol every current member.
+  const membership = await env.DB.prepare('SELECT guild_id, role FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  if (!membership) return json({ error: 'You are not in a guild' }, 404);
+  if (!['owner', 'officer'].includes(membership.role)) {
+    return json({ error: 'Only guild owners and officers can start a guild challenge' }, 403);
+  }
+  const running = await env.DB.prepare(
+    `SELECT id FROM challenges WHERE guild_id = ? AND status = 'active'`
+  ).bind(membership.guild_id).first();
+  if (running) return json({ error: 'Your guild already has an active challenge' }, 409);
+
+  await env.DB.prepare(
+    `INSERT INTO challenges (id, kind, metric, creator_id, opponent_id, guild_id, starts_at, ends_at, status, created_at)
+     VALUES (?, 'guild', ?, ?, NULL, ?, ?, ?, 'active', ?)`
+  ).bind(challengeId, v.metric, userId, membership.guild_id, t, endsAt, t).run();
+  const members = await env.DB.prepare('SELECT user_id FROM guild_members WHERE guild_id = ?')
+    .bind(membership.guild_id).all();
+  for (const m of members.results || []) {
+    await env.DB.prepare(
+      'INSERT INTO challenge_participants (challenge_id, user_id, joined_at) VALUES (?, ?, ?)'
+    ).bind(challengeId, m.user_id, t).run();
+  }
+  await pushActivity(env, userId, 'challenge', `started a ${v.days}-day guild ${v.metric} challenge`,
+    { challenge_id: challengeId, metric: v.metric });
+  return json({ success: true, challenge_id: challengeId, status: 'active' }, 201);
+}
+
+async function respondToChallenge(env, userId, challengeId, accept) {
+  const row = await env.DB.prepare('SELECT * FROM challenges WHERE id = ?').bind(challengeId).first();
+  if (!row) return json({ error: 'Challenge not found' }, 404);
+  if (row.kind !== 'duel' || row.status !== 'pending') return json({ error: 'Nothing to respond to' }, 409);
+  // Only the invited side may answer — the creator cannot self-accept.
+  if (row.opponent_id !== userId) return json({ error: 'Not your invite' }, 403);
+
+  const t = now();
+  if (accept) {
+    // The clock starts now, for the originally requested duration.
+    const days = Math.max(1, Math.round((row.ends_at - row.starts_at) / 86400));
+    await env.DB.prepare(
+      `UPDATE challenges SET status = 'active', starts_at = ?, ends_at = ? WHERE id = ?`
+    ).bind(t, t + days * 86400, challengeId).run();
+    await pushActivity(env, userId, 'challenge', `accepted a ${days}-day ${row.metric} duel`,
+      { challenge_id: challengeId, metric: row.metric, opponent_id: row.creator_id });
+    return json({ success: true, status: 'active' });
+  }
+  await env.DB.prepare(`UPDATE challenges SET status = 'declined' WHERE id = ?`).bind(challengeId).run();
+  return json({ success: true, status: 'declined' });
+}
+
+async function loadParticipants(env, challengeId) {
+  const rows = await env.DB.prepare(
+    `SELECT cp.user_id, p.display_name, p.level, u.avatar_url
+       FROM challenge_participants cp
+       JOIN fitness_profiles p ON p.user_id = cp.user_id
+       JOIN users u ON u.id = cp.user_id
+      WHERE cp.challenge_id = ?`
+  ).bind(challengeId).all();
+  return rows.results || [];
+}
+
+async function sessionsInWindow(env, userIds, startsAt, endsAt) {
+  const map = new Map();
+  if (!userIds.length) return map;
+  const rows = await env.DB.prepare(
+    `SELECT user_id, performed_at, total_volume FROM workout_sessions
+      WHERE user_id IN (${userIds.map(() => '?').join(',')})
+        AND performed_at >= ? AND performed_at < ?`
+  ).bind(...userIds, startsAt, endsAt).all();
+  for (const r of rows.results || []) {
+    if (!map.has(r.user_id)) map.set(r.user_id, []);
+    map.get(r.user_id).push(r);
+  }
+  return map;
+}
+
+/** Standings + lazy settlement for one challenge row. */
+async function hydrateChallenge(env, row, userId) {
+  const participants = await loadParticipants(env, row.id);
+  const sessions = await sessionsInWindow(env, participants.map((p) => p.user_id), row.starts_at, row.ends_at);
+  const standings = computeStandings(row, participants, sessions);
+
+  if (row.status === 'active' && now() >= row.ends_at) {
+    // Claim the settlement atomically so two concurrent GETs cannot double-award.
+    const claimed = await env.DB.prepare(
+      `UPDATE challenges SET status = 'finished', settled_at = ? WHERE id = ? AND status = 'active'`
+    ).bind(now(), row.id).run();
+    if (claimed.meta && claimed.meta.changes === 1) {
+      const outcome = settle(row, standings);
+      await env.DB.prepare('UPDATE challenges SET winner_id = ? WHERE id = ?')
+        .bind(outcome.winner_id, row.id).run();
+      for (const award of outcome.awards) {
+        await env.DB.prepare(
+          'INSERT INTO xp_transactions (id, user_id, amount, reason, source_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(crypto.randomUUID(), award.user_id, award.amount, award.reason, row.id, now()).run();
+        await env.DB.prepare('UPDATE fitness_profiles SET xp = xp + ?, updated_at = ? WHERE user_id = ?')
+          .bind(award.amount, now(), award.user_id).run();
+        // Level is derived from total XP; recompute so a challenge can level you up too.
+        const prof = await env.DB.prepare('SELECT xp, level FROM fitness_profiles WHERE user_id = ?')
+          .bind(award.user_id).first();
+        if (prof) {
+          const lvl = levelForXp(prof.xp);
+          if (lvl > prof.level) {
+            await env.DB.prepare(
+              'UPDATE fitness_profiles SET level = ?, talent_points = talent_points + ? WHERE user_id = ?'
+            ).bind(lvl, lvl - prof.level, award.user_id).run();
+            await pushActivity(env, award.user_id, 'level_up', `reached level ${lvl}`, { level: lvl });
+          }
+        }
+      }
+      const name = (uid) => (participants.find((p) => p.user_id === uid) || {}).display_name || 'someone';
+      if (outcome.winner_id) {
+        await pushActivity(env, outcome.winner_id, 'challenge',
+          row.kind === 'duel'
+            ? `won a ${row.metric} duel against ${name(standings.find((s) => s.user_id !== outcome.winner_id)?.user_id)}`
+            : `topped the guild ${row.metric} challenge`,
+          { challenge_id: row.id, metric: row.metric, kind: row.kind });
+      } else if (row.kind === 'duel' && outcome.awards.length) {
+        await pushActivity(env, row.creator_id, 'challenge', `drew a ${row.metric} duel`, { challenge_id: row.id });
+      }
+      row = { ...row, status: 'finished', winner_id: outcome.winner_id, settled_at: now() };
+    } else {
+      row = (await env.DB.prepare('SELECT * FROM challenges WHERE id = ?').bind(row.id).first()) || row;
+    }
+  }
+
+  return {
+    id: row.id,
+    kind: row.kind,
+    metric: row.metric,
+    creator_id: row.creator_id,
+    opponent_id: row.opponent_id,
+    guild_id: row.guild_id,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    status: row.status,
+    winner_id: row.winner_id,
+    is_creator: row.creator_id === userId,
+    awaiting_me: row.status === 'pending' && row.opponent_id === userId,
+    standings: standings.map((s) => ({
+      user_id: s.user_id,
+      display_name: s.display_name,
+      level: s.level,
+      avatar_url: s.avatar_url,
+      score: s.score,
+      sessions: s.sessions,
+      rank: s.rank,
+      is_self: s.user_id === userId,
+    })),
+  };
+}
+
+async function listChallenges(env, userId) {
+  const rows = await env.DB.prepare(
+    `SELECT c.* FROM challenges c
+       JOIN challenge_participants cp ON cp.challenge_id = c.id
+      WHERE cp.user_id = ? AND c.status IN ('pending','active','finished')
+      ORDER BY c.created_at DESC
+      LIMIT 40`
+  ).bind(userId).all();
+
+  const pending = [];
+  const active = [];
+  const finished = [];
+  for (const row of rows.results || []) {
+    const c = await hydrateChallenge(env, row, userId);
+    if (c.status === 'pending') pending.push(c);
+    else if (c.status === 'active') active.push(c);
+    else if (c.status === 'finished') finished.push(c);
+  }
+  return json({ pending, active, finished: finished.slice(0, 10), server_time: now() });
 }

@@ -189,6 +189,7 @@ struct ActivityItem: Codable, Identifiable, Equatable {
         case "pr":          return "trophy.fill"
         case "achievement": return "rosette"
         case "quest":       return "checkmark.seal.fill"
+        case "challenge":   return "flag.2.crossed.fill"
         default:            return "figure.strengthtraining.traditional"
         }
     }
@@ -199,6 +200,7 @@ struct ActivityItem: Codable, Identifiable, Equatable {
         case "pr":          return .brandYellow
         case "achievement": return .brandOrange
         case "quest":       return .brandGreen
+        case "challenge":   return .brandOrange
         default:            return .brandBlue
         }
     }
@@ -258,6 +260,92 @@ struct GuildMember: Codable, Identifiable, Equatable {
     }
 }
 
+struct Challenge: Codable, Identifiable, Equatable {
+    struct Standing: Codable, Identifiable, Equatable {
+        var userID: String
+        var displayName: String
+        var level: Int
+        var avatarURL: String?
+        var score: Double
+        var sessions: Int
+        var rank: Int
+        var isSelf: Bool
+
+        var id: String { userID }
+
+        enum CodingKeys: String, CodingKey {
+            case level, score, sessions, rank
+            case userID = "user_id"
+            case displayName = "display_name"
+            case avatarURL = "avatar_url"
+            case isSelf = "is_self"
+        }
+    }
+
+    var id: String
+    var kind: String            // duel | guild
+    var metric: String          // volume | workouts | streak
+    var creatorID: String
+    var opponentID: String?
+    var guildID: String?
+    var startsAt: Int
+    var endsAt: Int
+    var status: String          // pending | active | finished
+    var winnerID: String?
+    var isCreator: Bool
+    var awaitingMe: Bool
+    var standings: [Standing]
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, metric, status, standings
+        case creatorID = "creator_id"
+        case opponentID = "opponent_id"
+        case guildID = "guild_id"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case winnerID = "winner_id"
+        case isCreator = "is_creator"
+        case awaitingMe = "awaiting_me"
+    }
+
+    var isDuel: Bool { kind == "duel" }
+    var me: Standing? { standings.first { $0.isSelf } }
+    var them: Standing? { standings.first { !$0.isSelf } }
+    var didWin: Bool { winnerID != nil && winnerID == me?.userID }
+
+    var metricLabel: String {
+        switch metric {
+        case "workouts": return "Workouts"
+        case "streak":   return "Streak"
+        default:         return "Volume"
+        }
+    }
+
+    var metricIcon: String {
+        switch metric {
+        case "workouts": return "figure.strengthtraining.traditional"
+        case "streak":   return "flame.fill"
+        default:         return "scalemass.fill"
+        }
+    }
+
+    func format(_ score: Double) -> String {
+        switch metric {
+        case "workouts": return "\(Int(score))"
+        case "streak":   return "\(Int(score))d"
+        default:         return PlayerCardView.compactNumber(score) + " lb"
+        }
+    }
+
+    var timeRemaining: String {
+        let secs = endsAt - Int(Date().timeIntervalSince1970)
+        if secs <= 0 { return "Ended" }
+        if secs < 3600 { return "\(max(1, secs / 60))m left" }
+        if secs < 86400 { return "\(secs / 3600)h left" }
+        return "\(secs / 86400)d left"
+    }
+}
+
 // MARK: - Service
 
 @MainActor
@@ -271,6 +359,9 @@ final class GameProfileService: ObservableObject {
     @Published private(set) var incomingRequests: [Friend] = []
     @Published private(set) var guild: Guild?
     @Published private(set) var guildMembers: [GuildMember] = []
+    @Published private(set) var activeChallenges: [Challenge] = []
+    @Published private(set) var pendingChallenges: [Challenge] = []
+    @Published private(set) var finishedChallenges: [Challenge] = []
 
     @Published private(set) var isSyncing = false
     @Published var lastError: String?
@@ -429,7 +520,8 @@ final class GameProfileService: ObservableObject {
         async let feedTask: Void = loadFeed()
         async let friendsTask: Void = loadFriends()
         async let guildTask: Void = loadGuild()
-        _ = await (profileTask, feedTask, friendsTask, guildTask)
+        async let challengesTask: Void = loadChallenges()
+        _ = await (profileTask, feedTask, friendsTask, guildTask, challengesTask)
     }
 
     func loadProfile() async {
@@ -542,6 +634,50 @@ final class GameProfileService: ObservableObject {
         await loadGuild()
     }
 
+    // MARK: Challenges
+
+    private struct ChallengesResponse: Decodable {
+        let pending: [Challenge]
+        let active: [Challenge]
+        let finished: [Challenge]
+    }
+
+    func loadChallenges() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let response: ChallengesResponse = try await auth.request("fitness/challenges", method: "GET")
+            pendingChallenges = response.pending
+            activeChallenges = response.active
+            finishedChallenges = response.finished
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Returns the server's error message on failure, nil on success.
+    @discardableResult
+    func createChallenge(kind: String, metric: String, opponentUserID: String?, days: Int) async -> String? {
+        guard auth.isSignedIn else { return "Sign in first." }
+        var body: [String: Any] = ["kind": kind, "metric": metric, "days": days]
+        if let opponentUserID { body["opponent_user_id"] = opponentUserID }
+        do {
+            _ = try await auth.requestRaw("fitness/challenges", method: "POST", token: auth.token, body: body)
+            await loadChallenges()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    func respondToChallenge(id: String, accept: Bool) async {
+        guard auth.isSignedIn else { return }
+        _ = try? await auth.requestRaw(
+            "fitness/challenges/\(id)/\(accept ? "accept" : "decline")",
+            method: "POST", token: auth.token, body: nil
+        )
+        await loadChallenges()
+    }
+
     /// Clears everything on sign-out. The pending queue is deliberately kept:
     /// if the same person signs back in, their unsynced workouts still upload.
     func reset() {
@@ -552,5 +688,8 @@ final class GameProfileService: ObservableObject {
         incomingRequests = []
         guild = nil
         guildMembers = []
+        activeChallenges = []
+        pendingChallenges = []
+        finishedChallenges = []
     }
 }

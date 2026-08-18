@@ -1778,12 +1778,33 @@ struct SidebarButton: View {
 struct DashboardView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
 
+    private var todaysScheduledWorkout: ScheduledWorkout? {
+        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        let today = dayNames[Calendar.current.component(.weekday, from: Date()) - 1]
+        return workoutManager.weeklySchedule.first { $0.dayOfWeek == today }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Dashboard")
                     .font(.largeTitle)
                     .bold()
+
+                // Today: streak, XP ring, today's workout CTA, friends strip, live duel
+                TodayCardCluster(
+                    localStreak: workoutManager.currentStreak,
+                    todaysWorkout: todaysScheduledWorkout,
+                    workoutDoneToday: workoutManager.todaysWorkouts > 0,
+                    onStartWorkout: {
+                        if let scheduled = todaysScheduledWorkout {
+                            workoutManager.startScheduledWorkout(scheduled)
+                        } else {
+                            workoutManager.startNewWorkout()
+                        }
+                    },
+                    onOpenCommunity: { workoutManager.selectedTab = 7 }
+                )
 
                 // AI Coach Insight - Inspiring Message
                 AICoachInsightCard(workoutManager: workoutManager)
