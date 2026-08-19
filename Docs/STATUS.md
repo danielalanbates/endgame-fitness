@@ -121,3 +121,16 @@ exist yet.
   relay addresses rotate; matching on email would fracture accounts.
 - **Sign-in comes before onboarding.** The onboarding answers belong on the
   server profile, so we need to know who the person is first.
+
+## 2026-08-19 03:50 UTC — autonomous check (Claude)
+Verified tonight:
+- App launches and renders correctly from /Applications (dashboard, streak/XP, AI coach, weekly program). Left closed.
+- Live API healthy: /api/membership/session → 200; /api/fitness/quests and /achievements correctly return Unauthorized without a session.
+- Local main == origin/main @ dd2b3fa. Nothing unmerged.
+- ASC API access WORKS locally now: issuer ID recovered (see BatesAI CREDENTIALS.md) via `notarytool -v` JWT debug. Confirmed via API: bundle id `org.batesai.endgamefitness` (UNIVERSAL) registered; **no app record exists** (`GET /v1/apps` filter → 0).
+
+Remaining blockers — BOTH need Daniel, nothing else is left:
+1. **GitHub Actions billing** — every job dies in ~7s: "recent account payments have failed or your spending limit needs to be increased" (re-confirmed 03:39 UTC run 32212915054). Fix in GitHub → Settings → Billing & plans.
+2. **ASC app record** — cannot be created by API (POST /v1/apps unsupported) and browser automation to appstoreconnect.apple.com is permission-blocked; fastlane produce needs Apple-ID password auth (off-limits). Create in ASC web UI: My Apps → + → New App, iOS+macOS, bundle org.batesai.endgamefitness.
+
+After both: dispatch the TestFlight workflow (or wait for the daily 15:17 UTC run) — it archives, signs, uploads both platforms unattended.
