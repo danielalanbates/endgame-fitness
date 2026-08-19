@@ -60,6 +60,9 @@ export async function onRequest(context) {
       case 'guild':
         response = await handleGuild(request, env, userId, path);
         break;
+      case 'ai':
+        response = await handleAI(request, env, userId);
+        break;
       default:
         response = json({ error: 'Unknown endpoint' }, 404);
     }
@@ -68,6 +71,62 @@ export async function onRequest(context) {
     console.error('Fitness API error:', error && error.stack ? error.stack : error);
     return withCors(json({ error: 'Internal server error' }, 500), env, origin);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* AI assist (Cerebras, server-side key)                               */
+/* ------------------------------------------------------------------ */
+
+// POST /api/fitness/ai  { task, ...payload }
+// Tasks:
+//   improve_workout  { workout: [{day, name, exercises:[...], minutes}], profile? }
+//   build_mesocycle  { goal, experience, weeks?, days_per_week?, notes? }
+// Returns { text } — for build_mesocycle the text is a strict JSON array of
+// phases the client parses.
+async function handleAI(request, env, userId) {
+  if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
+  if (!env.OPENROUTER_API_KEY) return json({ error: 'AI is not configured' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
+  const task = body.task || '';
+
+  let system, user;
+  if (task === 'improve_workout') {
+    system = 'You are a concise evidence-based strength coach. Review the workout plan and suggest concrete improvements: exercise selection, order, volume, balance across muscle groups, and recovery. Reply in short plain-text bullet points (no markdown headers), max ~200 words.';
+    user = JSON.stringify({ workout: body.workout || [], profile: body.profile || null });
+  } else if (task === 'build_mesocycle') {
+    system = 'You design training mesocycles. Reply with ONLY a JSON array, no prose, where each element is {"name": string, "weeks": int, "repRange": string like "8-12", "focus": one-sentence string, "emoji": one emoji}. 2-5 phases, total weeks matching the request (default 12).';
+    user = JSON.stringify({ goal: body.goal || 'general fitness', experience: body.experience || 'intermediate', weeks: body.weeks || 12, days_per_week: body.days_per_week || 3, notes: body.notes || '' });
+  } else {
+    return json({ error: 'Unknown task' }, 400);
+  }
+
+  // OpenRouter (GLM): the Cerebras free tier started returning
+  // payment_required in Aug 2026, so the paid-but-cheap GLM key is the backend.
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'z-ai/glm-5.2',
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      max_tokens: 1400,
+      temperature: 0.4,
+    }),
+  });
+  if (!res.ok) {
+    console.error('OpenRouter error', res.status, await res.text());
+    return json({ error: 'AI backend error' }, 502);
+  }
+  const data = await res.json();
+  const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+  return json({ text });
 }
 
 /* ------------------------------------------------------------------ */
