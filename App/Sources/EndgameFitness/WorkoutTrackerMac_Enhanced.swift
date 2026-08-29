@@ -310,6 +310,13 @@ class WorkoutManager: ObservableObject {
         let reps = completedSets.reduce(0) { $0 + $1.reps }
 
         if reps > 0 {
+            // Completed sets per exercise, so the server can detect personal
+            // records (best weight at each rep count).
+            let syncExercises: [SyncExercise] = workout.exercises.compactMap { exercise in
+                let done = exercise.sets.filter { $0.completed && $0.reps > 0 && $0.weight > 0 }
+                guard !done.isEmpty else { return nil }
+                return SyncExercise(name: exercise.name, sets: done.map { .init(reps: $0.reps, weight: $0.weight) })
+            }
             let sessionID = workout.id.uuidString
             let sessionName = workout.programName ?? "Workout"
             let performedAt = workout.date
@@ -321,7 +328,8 @@ class WorkoutManager: ObservableObject {
                     performedAt: performedAt,
                     durationSecs: duration,
                     totalVolume: volume,
-                    totalReps: reps
+                    totalReps: reps,
+                    exercises: syncExercises
                 )
             }
         }

@@ -45,6 +45,7 @@ struct FitnessProfile: Codable, Equatable {
     var units: String
     var title: String?
     var isPublic: Bool
+    var friendCode: String?
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
@@ -67,6 +68,7 @@ struct FitnessProfile: Codable, Equatable {
         case heightInches = "height_inches"
         case birthYear = "birth_year"
         case isPublic = "is_public"
+        case friendCode = "friend_code"
     }
 
     /// 0–1 progress through the current level, for the XP bar.
@@ -107,6 +109,17 @@ struct FitnessProfile: Codable, Equatable {
     }
 }
 
+/// One exercise's completed sets, uploaded so the server can detect personal
+/// records (best weight per rep count) — the client never decides a PR itself.
+struct SyncExercise: Codable, Equatable {
+    struct Set: Codable, Equatable {
+        var reps: Int
+        var weight: Double
+    }
+    var name: String
+    var sets: [Set]
+}
+
 struct SyncSession: Codable, Identifiable, Equatable {
     var id: String
     var performedAt: Int
@@ -117,9 +130,10 @@ struct SyncSession: Codable, Identifiable, Equatable {
     var totalReps: Int
     var xpEarned: Int?
     var clientRev: Int
+    var exercises: [SyncExercise]? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, exercises
         case performedAt = "performed_at"
         case programID = "program_id"
         case durationSecs = "duration_secs"
@@ -556,7 +570,8 @@ final class GameProfileService: ObservableObject {
         performedAt: Date = Date(),
         durationSecs: Int,
         totalVolume: Double,
-        totalReps: Int
+        totalReps: Int,
+        exercises: [SyncExercise]? = nil
     ) {
         var queue = pending
         // Replace rather than append if this id is already queued, so an edited
@@ -570,7 +585,8 @@ final class GameProfileService: ObservableObject {
             totalVolume: totalVolume,
             totalReps: totalReps,
             xpEarned: nil,
-            clientRev: (queue.first { $0.id == id }?.clientRev ?? 0) + 1
+            clientRev: (queue.first { $0.id == id }?.clientRev ?? 0) + 1,
+            exercises: exercises
         )
         queue.removeAll { $0.id == id }
         queue.append(session)
@@ -619,6 +635,16 @@ final class GameProfileService: ObservableObject {
                     ]
                     if let name = session.name { dict["name"] = name }
                     if let programID = session.programID { dict["program_id"] = programID }
+                    if let exercises = session.exercises, !exercises.isEmpty {
+                        dict["payload"] = [
+                            "exercises": exercises.map { exercise -> [String: Any] in
+                                [
+                                    "name": exercise.name,
+                                    "sets": exercise.sets.map { ["reps": $0.reps, "weight": $0.weight] },
+                                ]
+                            },
+                        ]
+                    }
                     return dict
                 },
             ]
@@ -810,14 +836,25 @@ final class GameProfileService: ObservableObject {
         }
     }
 
-    func requestFriend(email: String) async {
-        guard auth.isSignedIn else { return }
-        _ = try? await auth.requestRaw(
-            "fitness/friends/request", method: "POST",
-            token: auth.token, body: ["email": email]
-        )
+    /// `query` is an email or a friend code; the server tells them apart.
+    /// Returns an error message to show, or nil on success.
+    @discardableResult
+    func requestFriend(query: String) async -> String? {
+        guard auth.isSignedIn else { return "Not signed in." }
+        var failure: String?
+        do {
+            _ = try await auth.requestRaw(
+                "fitness/friends/request", method: "POST",
+                token: auth.token, body: ["query": query.trimmingCharacters(in: .whitespaces)]
+            )
+        } catch {
+            failure = error.localizedDescription
+        }
         await loadFriends()
+        return failure
     }
+
+    func requestFriend(email: String) async { _ = await requestFriend(query: email) }
 
     func respondToFriendRequest(userID: String, accept: Bool) async {
         guard auth.isSignedIn else { return }

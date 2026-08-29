@@ -472,18 +472,44 @@ struct CommunityView: View {
     // MARK: Friends
 
     @State private var friendEmail = ""
+    @State private var friendError: String?
+    @State private var copiedCode = false
 
     private var friendsList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    PlatformTextField(placeholder: "Friend's email", text: $friendEmail)
-                    Button("Invite") {
-                        let email = friendEmail
-                        friendEmail = ""
-                        Task { await game.requestFriend(email: email) }
+                if let code = game.profile?.friendCode {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Your friend code").font(.caption).foregroundStyle(.secondary)
+                            Text(code)
+                                .font(.system(.title2, design: .monospaced).weight(.bold))
+                                .tracking(2)
+                        }
+                        Spacer()
+                        Button(copiedCode ? "Copied" : "Copy") {
+                            Platform.copyToClipboard(code)
+                            copiedCode = true
+                            Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copiedCode = false }
+                        }
                     }
-                    .disabled(friendEmail.isEmpty)
+                    .padding(14)
+                    .background(Color.brandPurple.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                HStack(spacing: 8) {
+                    PlatformTextField(placeholder: "Friend code or email", text: $friendEmail)
+                    Button("Add") {
+                        let query = friendEmail
+                        friendEmail = ""
+                        friendError = nil
+                        Task { friendError = await game.requestFriend(query: query) }
+                    }
+                    .disabled(friendEmail.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if let friendError {
+                    Text(friendError).font(.caption).foregroundStyle(.red)
                 }
 
                 if !game.incomingRequests.isEmpty {
@@ -508,7 +534,7 @@ struct CommunityView: View {
                     emptyState(
                         icon: "person.2",
                         title: "No friends yet",
-                        message: "Training with someone watching is the whole point. Invite one above."
+                        message: "Training with someone watching is the whole point. Share your code or add theirs above."
                     )
                 }
                 ForEach(game.friends) { friend in

@@ -254,3 +254,10 @@ CREATE TABLE IF NOT EXISTS challenge_participants (
   PRIMARY KEY (challenge_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_challenge_participants_user ON challenge_participants (user_id);
+
+-- ---------------------------------------------------------------- friend codes (2026-08-28)
+-- Applied to the live database by hand with ALTER TABLE (D1 has no IF NOT EXISTS
+-- for columns); kept here so a fresh database gets it too.
+-- ALTER TABLE fitness_profiles ADD COLUMN friend_code TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fitness_profiles_friend_code
+  ON fitness_profiles (friend_code) WHERE friend_code IS NOT NULL;

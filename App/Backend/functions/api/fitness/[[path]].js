@@ -165,7 +165,39 @@ async function handleAI(request, env, userId) {
 /* Profile                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Friend codes: a short, shareable handle so people can add each other in the
+ * gym without typing an email. Generated lazily the first time a profile is
+ * read; the unique index makes a collision a retry rather than a duplicate.
+ */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
+function randomFriendCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+}
+async function ensureFriendCode(env, userId) {
+  const row = await env.DB.prepare('SELECT friend_code FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  if (!row || row.friend_code) return row ? row.friend_code : null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = randomFriendCode();
+    try {
+      const res = await env.DB.prepare(
+        'UPDATE fitness_profiles SET friend_code = ? WHERE user_id = ? AND friend_code IS NULL'
+      ).bind(code, userId).run();
+      if (res.meta && res.meta.changes === 0) break; // someone else set it meanwhile
+      return code;
+    } catch (e) {
+      if (!/UNIQUE|constraint/i.test(String(e && e.message))) throw e;
+    }
+  }
+  const again = await env.DB.prepare('SELECT friend_code FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  return again ? again.friend_code : null;
+}
+
 async function getProfile(env, userId) {
+  await ensureFriendCode(env, userId);
   const profile = await env.DB.prepare(
     `SELECT p.*, u.email, u.avatar_url AS account_avatar
        FROM fitness_profiles p JOIN users u ON u.id = p.user_id
@@ -247,6 +279,7 @@ function shapeProfile(row) {
     avatar_config: avatar,
     title: row.title,
     is_public: !!row.is_public,
+    friend_code: row.friend_code || null,
   };
 }
 
@@ -666,15 +699,27 @@ async function handleFriends(request, env, userId, path) {
     const body = await request.json().catch(() => ({}));
     let targetId = body.user_id;
 
-    if (!targetId && body.email) {
+    // One field, two shapes: "ABC234" is a friend code, anything with an @ is
+    // an email. The client sends whichever the user typed as `query`.
+    const query = String(body.query || '').trim();
+    const code = String(body.code || (query && !query.includes('@') ? query : '')).trim().toUpperCase();
+    const email = String(body.email || (query.includes('@') ? query : '')).trim().toLowerCase();
+
+    if (!targetId && code) {
+      const target = await env.DB.prepare('SELECT user_id FROM fitness_profiles WHERE friend_code = ?')
+        .bind(code).first();
+      if (!target) return json({ error: 'No player has that friend code' }, 404);
+      targetId = target.user_id;
+    }
+    if (!targetId && email) {
       const target = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
-        .bind(String(body.email).toLowerCase()).first();
+        .bind(email).first();
       // Deliberately the same response whether or not the account exists, so this
       // endpoint can't be used to enumerate which emails are registered.
       if (!target) return json({ success: true, status: 'pending' });
       targetId = target.id;
     }
-    if (!targetId) return json({ error: 'user_id or email is required' }, 400);
+    if (!targetId) return json({ error: 'user_id, code or email is required' }, 400);
     if (targetId === userId) return json({ error: 'You cannot friend yourself' }, 400);
 
     const [low, high] = pair(userId, targetId);
