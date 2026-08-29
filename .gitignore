@@ -9,3 +9,5 @@ xcuserdata/
 node_modules/
 Web/web-react/dist/
 _archive/
+.local/
+.claude/

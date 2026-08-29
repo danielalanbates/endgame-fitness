@@ -61,8 +61,8 @@ POST /api/fitness/sync (with payload) -> xp_gained 264, levels_gained 1, PR reco
 DELETE /api/auth/account      -> {"deleted":true}
 ```
 
-Test accounts on the live DB: `ef-smoke-test@batesai.org` / `smoketest-pass-123`
-(level 3), `ef-friend-test@batesai.org` / `friendtest-pass-123` (level 3, has a
+Test accounts on the live DB: `ef-smoke-test@batesai.org` / `<see .local/test-accounts.md>`
+(level 3), `ef-friend-test@batesai.org` / `<see .local/test-accounts.md>` (level 3, has a
 pending request to Smoke). Delete them once real users exist.
 
 ## Signed artifacts built 2026-08-28 (local Xcode 26.6)
