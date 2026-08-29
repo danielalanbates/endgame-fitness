@@ -110,7 +110,7 @@ test('achievement rules', () => {
 
 test('catalog is JSON-safe and complete', () => {
   const cat = achievementCatalog();
-  assert.equal(cat.length, 12);
+  assert.equal(cat.length, 13);
   for (const a of cat) {
     assert.ok(a.id && a.title && a.rarity && a.xp > 0 && a.icon, JSON.stringify(a));
     assert.equal(typeof a.rule, 'undefined');

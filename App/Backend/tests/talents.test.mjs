@@ -104,7 +104,8 @@ const source = readFileSync(workerPath, 'utf8')
   .replace("from '../../_lib/session.js'", `from '${join(here, '..', 'functions', '_lib', 'session.js')}'`)
   .replace("from '../../_lib/talents.js'", `from '${join(here, '..', 'functions', '_lib', 'talents.js')}'`)
   .replace("from '../../_lib/challenges.js'", `from '${join(here, '..', 'functions', '_lib', 'challenges.js')}'`)
-  .replace("from '../../_lib/game.js'", `from '${join(here, '..', 'functions', '_lib', 'game.js')}'`);
+  .replace("from '../../_lib/game.js'", `from '${join(here, '..', 'functions', '_lib', 'game.js')}'`)
+  .replace("from '../../_lib/raids.js'", `from '${join(here, '..', 'functions', '_lib', 'raids.js')}'`);
 const scratch = mkdtempSync(join(tmpdir(), 'talents-test-'));
 writeFileSync(join(scratch, 'fitness.mjs'), source);
 const { streakAfter } = await import(`file://${join(scratch, 'fitness.mjs')}`);
