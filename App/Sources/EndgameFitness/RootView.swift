@@ -32,6 +32,14 @@ struct RootView: View {
             )
             .task {
                 await auth.restoreSession()
+                #if DEBUG
+                // Headless UI verification (simulator): `-ef.autologin email password`
+                // signs in a test account without touching the keyboard.
+                if !auth.isSignedIn, let i = CommandLine.arguments.firstIndex(of: "-ef.autologin"),
+                   CommandLine.arguments.count > i + 2 {
+                    await auth.signIn(email: CommandLine.arguments[i + 1], password: CommandLine.arguments[i + 2])
+                }
+                #endif
                 if auth.isSignedIn { await game.loadAll() }
             }
             .onChange(of: auth.isSignedIn) { _, signedIn in

@@ -72,9 +72,9 @@ ship_one() {
   # the profile by name — never "Apple Distribution" by display name.
   local profile_name
   if [ "$platform" = "ios" ]; then
-    profile_name="${PROFILE_IOS:-Endgame Fitness iOS AppStore 2026-08-28}"
+    profile_name="${PROFILE_IOS:-Endgame Fitness iOS AppStore 2026-08-29}"
   else
-    profile_name="${PROFILE_MACOS:-Endgame Fitness macOS AppStore 2026-08-28}"
+    profile_name="${PROFILE_MACOS:-Endgame Fitness macOS AppStore 2026-08-29}"
   fi
   security unlock-keychain -p "$(cat "$SIGNING_DIR/keychain-password.txt")" "$SIGNING_KEYCHAIN" 2>/dev/null || true
 
