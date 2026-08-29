@@ -16,11 +16,11 @@
     <key>signingStyle</key>
     <string>manual</string>
     <key>signingCertificate</key>
-    <string>Apple Distribution</string>
+    <string>EC92881F03ECB13449DDD839E2E276767C1C1F92</string>
     <key>provisioningProfiles</key>
     <dict>
         <key>org.batesai.endgamefitness</key>
-        <string>Endgame Fitness IOS_APP_STORE</string>
+        <string>Endgame Fitness iOS AppStore 2026-08-28</string>
     </dict>
 </dict>
 </plist>

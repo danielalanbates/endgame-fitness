@@ -16,13 +16,13 @@
     <key>signingStyle</key>
     <string>manual</string>
     <key>signingCertificate</key>
-    <string>Apple Distribution</string>
+    <string>EC92881F03ECB13449DDD839E2E276767C1C1F92</string>
     <key>installerSigningCertificate</key>
-    <string>3rd Party Mac Developer Installer</string>
+    <string>049686F40318329C1EBBB41B7C5E66500D924422</string>
     <key>provisioningProfiles</key>
     <dict>
         <key>org.batesai.endgamefitness</key>
-        <string>Endgame Fitness MAC_APP_STORE</string>
+        <string>Endgame Fitness macOS AppStore 2026-08-28</string>
     </dict>
 </dict>
 </plist>

@@ -37,6 +37,10 @@ export ASC_KEY_ID="${ASC_KEY_ID:-32R84GFV2F}"
 export ASC_ISSUER_ID="${ASC_ISSUER_ID:-67d2d531-0ef2-43f5-8319-7505313c9fd1}"
 export ASC_KEY_PATH="${ASC_KEY_PATH:-$HOME/Library/Application Support/BatesAI/keys/AuthKey_32R84GFV2F.p8}"
 BUNDLE_ID="org.batesai.endgamefitness"
+SIGNING_DIR="${SIGNING_DIR:-$HOME/Library/Application Support/BatesAI/keys/endgame-signing}"
+SIGNING_KEYCHAIN="${SIGNING_KEYCHAIN:-$HOME/Library/Keychains/endgame-ci.keychain-db}"
+# SHA-1 of "Apple Distribution: Daniel Bates" in endgame-ci.keychain (cert DR22GD8ZN2, exp 2027-08-29)
+CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-EC92881F03ECB13449DDD839E2E276767C1C1F92}"
 
 if ! xcodebuild -version >/dev/null 2>&1; then
   echo "xcodebuild not usable. Is /Applications/Xcode.app installed and selected?" >&2
@@ -61,12 +65,29 @@ ship_one() {
   local exportdir="$OUT/export-$platform"
   rm -rf "$archive" "$exportdir"
 
+  # Signing lives in a dedicated keychain whose password we know
+  # (~/Library/Application Support/BatesAI/keys/endgame-signing/). The login
+  # keychain holds an older Apple Distribution identity whose private key
+  # prompts for the login password, so the identity is pinned by SHA-1 and
+  # the profile by name — never "Apple Distribution" by display name.
+  local profile_name
+  if [ "$platform" = "ios" ]; then
+    profile_name="${PROFILE_IOS:-Endgame Fitness iOS AppStore 2026-08-28}"
+  else
+    profile_name="${PROFILE_MACOS:-Endgame Fitness macOS AppStore 2026-08-28}"
+  fi
+  security unlock-keychain -p "$(cat "$SIGNING_DIR/keychain-password.txt")" "$SIGNING_KEYCHAIN" 2>/dev/null || true
+
   echo "==> Archiving $scheme ($VERSION / $BUILD)"
   xcodebuild -project "$APP/EndgameFitness.xcodeproj" -scheme "$scheme" \
     -destination "$dest" -configuration Release \
     -archivePath "$archive" \
     MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+    CODE_SIGN_STYLE=Manual \
+    CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+    PROVISIONING_PROFILE_SPECIFIER="$profile_name" \
+    OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
     archive 2>&1 | tee "$OUT/archive-$platform.log" | grep -E "error:|warning: .*deprecated|ARCHIVE|\*\* " || true
   grep -q "ARCHIVE SUCCEEDED" "$OUT/archive-$platform.log"
 
