@@ -65,10 +65,32 @@ Test accounts on the live DB: `ef-smoke-test@batesai.org` / `smoketest-pass-123`
 (level 3), `ef-friend-test@batesai.org` / `friendtest-pass-123` (level 3, has a
 pending request to Smoke). Delete them once real users exist.
 
+## Signed artifacts built 2026-08-28 (local Xcode 26.6)
+
+- `~/Downloads/endgame-fitness-ship/export-ios/Endgame Fitness.ipa` (2.1 MB, 1.0.0/1)
+- `~/Downloads/endgame-fitness-ship/export-macos/Endgame Fitness.pkg` (4.3 MB, 1.0.0/1)
+- Signing: dedicated `endgame-ci` keychain with API-minted certs (see
+  `scripts/ship.sh` header). The login keychain's older "dist" key prompts for a
+  password and is deliberately not used.
+- `/Applications/Endgame Fitness.app` = the same archive re-signed ad-hoc (App
+  Store-profile builds cannot launch outside the store); previous copy archived
+  to iCloud `EndgameFitness/_archive/apps/2026-08-28-pre-xcode-build/`.
+
 ## Blocked on Daniel
 
+0. **Xcode first-launch components** — Xcode is open with a "Download & Install"
+   admin-password prompt (iOS 26.5 platform support, 10.6 GB, ~24 GB free).
+   Enter the password once. This also unlocks the iOS Simulator so the iOS UI
+   can finally be run and screenshotted (`xcrun simctl`).
 1. **App Store Connect app record for `org.batesai.endgamefitness`** — still the
-   only thing between the signed builds and TestFlight. The ASC REST API cannot
+   only thing between the signed builds and TestFlight. Two ways:
+   - Xcode: Settings → Accounts → **+** → App Store Connect API (issuer
+     `67d2d531-0ef2-43f5-8319-7505313c9fd1`, key `32R84GFV2F`, file
+     `~/Library/Application Support/BatesAI/keys/AuthKey_32R84GFV2F.p8`), then
+     Window → Organizer → the 2026-08-28 archive → Distribute App → App Store
+     Connect → Upload. When no record exists Xcode asks for **name + SKU** and
+     creates it (Apple forum thread 800558 confirms this flow).
+   - Or the website form described below. The ASC REST API cannot
    create it, `xcodebuild -exportArchive destination=upload` does not create it,
    the Chrome extension is not connected on this Mac, and no browser has an ASC
    session. Create it: appstoreconnect.apple.com → My Apps → **+** → New App →
