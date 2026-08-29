@@ -621,8 +621,10 @@ final class GameProfileService: ObservableObject {
         defer { isSyncing = false }
 
         let outbound = pending
+        // Fresh Health numbers ride along so server quests (Step Count) can use them.
+        await HealthKitManager.shared.refreshToday()
         do {
-            let body: [String: Any] = [
+            var body: [String: Any] = [
                 "since": lastSyncedAt,
                 "sessions": outbound.map { session -> [String: Any] in
                     var dict: [String: Any] = [
@@ -648,6 +650,7 @@ final class GameProfileService: ObservableObject {
                     return dict
                 },
             ]
+            for (key, value) in HealthKitManager.shared.syncFields { body[key] = value }
 
             let response: SyncResponse = try await auth.request(
                 "fitness/sync", method: "POST", body: body

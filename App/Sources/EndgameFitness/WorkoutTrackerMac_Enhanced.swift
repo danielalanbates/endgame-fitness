@@ -331,6 +331,13 @@ class WorkoutManager: ObservableObject {
                     totalReps: reps,
                     exercises: syncExercises
                 )
+                // Mirror the session into Apple Health (iOS only; no-op on macOS
+                // and whenever the Settings toggle is off).
+                HealthKitManager.shared.saveStrengthWorkout(
+                    start: performedAt,
+                    durationSecs: duration,
+                    name: sessionName
+                )
             }
         }
 
@@ -1983,6 +1990,11 @@ struct DashboardView: View {
 
                 // Today's Quests (server-generated; jumps to Community → Quests)
                 TodaysQuestsCard { workoutManager.selectedTab = 7 }
+
+                // Apple Health: today's steps + active energy (iOS only)
+                #if os(iOS)
+                HealthCard()
+                #endif
 
                 // Quick Stats
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 20) {
@@ -3870,6 +3882,7 @@ struct SettingsView: View {
     @AppStorage("defaultRestTime") private var defaultRestTime = 90
     @AppStorage("weeklyGoal") private var weeklyGoal = 5
     @EnvironmentObject var workoutManager: WorkoutManager
+    @ObservedObject private var health = HealthKitManager.shared
     @State private var showAccount = false
 
     var body: some View {
@@ -3896,6 +3909,22 @@ struct SettingsView: View {
                 Section("Units") {
                     Toggle("Use Metric Units (kg)", isOn: $useMetric)
                 }
+
+                #if os(iOS)
+                Section("Apple Health") {
+                    if health.isConnected {
+                        Toggle("Sync workouts to Apple Health", isOn: $health.syncWorkoutsToHealth)
+                    } else {
+                        Button("Connect Apple Health") {
+                            Task { await health.requestAuthorization() }
+                        }
+                        .disabled(!health.isAvailable)
+                    }
+                    if let error = health.lastError {
+                        Text(error).font(.caption).foregroundColor(.secondary)
+                    }
+                }
+                #endif
 
                 Section("Workout Settings") {
                     HStack {
@@ -4381,6 +4410,76 @@ struct WorkoutScheduleCard: View {
         }
 
         return nil
+    }
+}
+
+/// Dashboard card: today's steps and active energy from Apple Health, or a
+/// connect button until the user has authorised us. iOS only at the call site;
+/// the type itself compiles everywhere via the macOS stub.
+struct HealthCard: View {
+    @ObservedObject private var health = HealthKitManager.shared
+    private let stepGoal = 8000
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Health", systemImage: "heart.fill")
+                    .font(.headline)
+                    .foregroundStyle(Color.red)
+                Spacer()
+                if health.isConnected {
+                    Button {
+                        Task { await health.refreshToday() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            if !health.isAvailable {
+                Text("Apple Health is not available on this device.")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else if health.isConnected {
+                HStack(spacing: 24) {
+                    healthStat(value: health.stepsToday.formatted(), unit: "steps", icon: "figure.walk", color: .brandGreen)
+                    healthStat(value: "\(Int(health.activeKcalToday.rounded()))", unit: "active kcal", icon: "flame.fill", color: .orange)
+                    Spacer()
+                }
+                QuestProgressBar(fraction: min(1, Double(health.stepsToday) / Double(stepGoal)),
+                                 tint: .brandGreen, complete: health.stepsToday >= stepGoal)
+                Text(health.stepsToday >= stepGoal
+                     ? "Step goal reached"
+                     : "\(stepGoal - health.stepsToday) steps to today's \(stepGoal.formatted()) goal")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("Connect Apple Health to count steps and active energy toward quests, and to save workouts to Health.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Button("Connect Apple Health") {
+                    Task { await health.requestAuthorization() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            if let error = health.lastError {
+                Text(error).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color.platformControlBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .task { await health.refreshToday() }
+    }
+
+    private func healthStat(value: String, unit: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value).font(.title3.weight(.semibold))
+                Text(unit).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

@@ -74,6 +74,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
     entitlements:
       path: Support/EndgameFitness-iOS.entitlements
+    # HealthKit capability (iOS only — the framework does not exist on macOS).
+    # SystemCapabilities is what Xcode writes when the capability is ticked.
+    attributes:
+      SystemCapabilities:
+        com.apple.HealthKit:
+          enabled: 1
 
 schemes:
   EndgameFitness-macOS:
