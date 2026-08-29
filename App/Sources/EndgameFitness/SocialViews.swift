@@ -73,7 +73,7 @@ struct SignInView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 380)
             }
-            .padding(32)
+            .adaptivePadding(32, phone: 20)
             .frame(maxWidth: .infinity)
         }
         .background(
