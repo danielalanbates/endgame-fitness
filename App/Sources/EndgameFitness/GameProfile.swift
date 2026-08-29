@@ -204,6 +204,7 @@ struct ActivityItem: Codable, Identifiable, Equatable {
         case "achievement": return "rosette"
         case "quest":       return "checkmark.seal.fill"
         case "challenge":   return "flag.2.crossed.fill"
+        case "raid_defeated": return "bolt.shield.fill"
         default:            return "figure.strengthtraining.traditional"
         }
     }
@@ -215,6 +216,7 @@ struct ActivityItem: Codable, Identifiable, Equatable {
         case "achievement": return .brandOrange
         case "quest":       return .brandGreen
         case "challenge":   return .brandOrange
+        case "raid_defeated": return .brandOrange
         default:            return .brandBlue
         }
     }
@@ -498,6 +500,108 @@ struct Achievement: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: Guild raids
+
+struct RaidBoss: Codable, Equatable {
+    var id: String
+    var name: String
+    var flavor: String?
+    var symbol: String
+    var gradient: [String]
+    var rewardXP: Int
+    var rewardTitle: String?
+    var rewardCosmetic: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, flavor, symbol, gradient
+        case rewardXP = "reward_xp"
+        case rewardTitle = "reward_title"
+        case rewardCosmetic = "reward_cosmetic"
+    }
+}
+
+struct RaidContributor: Codable, Identifiable, Equatable {
+    var rank: Int
+    var userID: String
+    var displayName: String
+    var level: Int
+    var avatarURL: String?
+    var damage: Int
+    var hits: Int
+    var isSelf: Bool
+
+    var id: String { userID }
+
+    enum CodingKeys: String, CodingKey {
+        case rank, level, damage, hits
+        case userID = "user_id"
+        case displayName = "display_name"
+        case avatarURL = "avatar_url"
+        case isSelf = "is_self"
+    }
+}
+
+/// This week's boss for the player's guild, as served by GET fitness/raid.
+struct RaidState: Codable, Equatable {
+    var id: String
+    var guildID: String
+    var weekStart: Int
+    var endsAt: Int
+    var secondsLeft: Int
+    var boss: RaidBoss
+    var hp: Int
+    var damageDone: Int
+    var hpRemaining: Int
+    var defeated: Bool
+    var defeatedAt: Int?
+    var memberCount: Int
+    var contributors: [RaidContributor]
+    var myDamage: Int
+    var myHits: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, boss, hp, defeated, contributors
+        case guildID = "guild_id"
+        case weekStart = "week_start"
+        case endsAt = "ends_at"
+        case secondsLeft = "seconds_left"
+        case damageDone = "damage_done"
+        case hpRemaining = "hp_remaining"
+        case defeatedAt = "defeated_at"
+        case memberCount = "member_count"
+        case myDamage = "my_damage"
+        case myHits = "my_hits"
+    }
+
+    /// 0–1 share of the boss's hp still standing.
+    var hpFraction: Double {
+        guard hp > 0 else { return 0 }
+        return min(1, max(0, Double(hp - damageDone) / Double(hp)))
+    }
+}
+
+/// What one sync did to the boss; comes back inside the sync response.
+struct RaidHit: Codable, Equatable {
+    var bossID: String
+    var bossName: String
+    var damage: Int
+    var hp: Int
+    var damageDone: Int
+    var defeated: Bool
+    var justDefeated: Bool
+    var rewardXP: Int
+
+    enum CodingKeys: String, CodingKey {
+        case damage, hp, defeated
+        case bossID = "boss_id"
+        case bossName = "boss_name"
+        case damageDone = "damage_done"
+        case justDefeated = "just_defeated"
+        case rewardXP = "reward_xp"
+    }
+}
+
+
 // MARK: - Service
 
 @MainActor
@@ -511,6 +615,10 @@ final class GameProfileService: ObservableObject {
     @Published private(set) var incomingRequests: [Friend] = []
     @Published private(set) var guild: Guild?
     @Published private(set) var guildMembers: [GuildMember] = []
+    @Published private(set) var raid: RaidState?
+    @Published private(set) var isLoadingRaid = false
+    /// Set when a sync lands damage on the guild boss; RaidCard shows it as a toast.
+    @Published var lastRaidHit: RaidHit?
     @Published private(set) var talents: TalentState?
     @Published private(set) var activeChallenges: [Challenge] = []
     @Published private(set) var pendingChallenges: [Challenge] = []
@@ -604,9 +712,10 @@ final class GameProfileService: ObservableObject {
         let serverTime: Int
         let profile: FitnessProfile
         let achievementsUnlocked: [String]?
+        let raid: RaidHit?
 
         enum CodingKeys: String, CodingKey {
-            case accepted, profile
+            case accepted, profile, raid
             case xpGained = "xp_gained"
             case levelsGained = "levels_gained"
             case serverTime = "server_time"
@@ -666,6 +775,10 @@ final class GameProfileService: ObservableObject {
             if response.xpGained > 0 { lastXPGain = response.xpGained }
             if let unlocked = response.achievementsUnlocked, !unlocked.isEmpty {
                 pendingAchievements = unlocked
+            }
+            if let hit = response.raid, hit.damage > 0 {
+                lastRaidHit = hit
+                await loadRaid()   // the boss moved; let the HP bar animate down
             }
             // A workout moves quest progress; refresh the board if anything went up.
             if !outbound.isEmpty { await loadQuests() }
@@ -893,7 +1006,25 @@ final class GameProfileService: ObservableObject {
         _ = try? await auth.requestRaw(
             "fitness/guild/leave", method: "POST", token: auth.token, body: nil
         )
+        raid = nil
         await loadGuild()
+    }
+
+    // MARK: Guild raid
+
+    private struct RaidResponse: Decodable { let raid: RaidState? }
+
+    /// This week's boss for the caller's guild. `raid` stays nil without a guild.
+    func loadRaid() async {
+        guard auth.isSignedIn else { return }
+        isLoadingRaid = true
+        defer { isLoadingRaid = false }
+        do {
+            let response: RaidResponse = try await auth.request("fitness/raid", method: "GET")
+            raid = response.raid
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     // MARK: Talents
@@ -996,5 +1127,7 @@ final class GameProfileService: ObservableObject {
         achievements = []
         pendingAchievements = []
         lastClaimedQuest = nil
+        raid = nil
+        lastRaidHit = nil
     }
 }

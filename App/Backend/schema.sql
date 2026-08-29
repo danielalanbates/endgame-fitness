@@ -261,3 +261,44 @@ CREATE INDEX IF NOT EXISTS idx_challenge_participants_user ON challenge_particip
 -- ALTER TABLE fitness_profiles ADD COLUMN friend_code TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fitness_profiles_friend_code
   ON fitness_profiles (friend_code) WHERE friend_code IS NOT NULL;
+
+-- ---------------------------------------------------------------- guild raids
+-- Same DDL as migrations/2026-08-29-guild-raids.sql (which also seeds the
+-- boss catalog; the worker upserts it from functions/_lib/raids.js anyway).
+
+CREATE TABLE IF NOT EXISTS raid_bosses (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  flavor          TEXT,
+  symbol          TEXT,                       -- SF Symbol used by the client
+  gradient        TEXT,                       -- JSON [hexStart, hexEnd]
+  base_hp         INTEGER NOT NULL,           -- hp for a one-member guild (1 hp = 1 lb)
+  reward_xp       INTEGER NOT NULL DEFAULT 0, -- paid to every contributor on defeat
+  reward_title    TEXT,
+  reward_cosmetic TEXT
+);
+
+-- One row per (guild, week). hp is snapshotted at creation from the member
+-- count so joining mid-week neither inflates nor shrinks the fight.
+CREATE TABLE IF NOT EXISTS guild_raids (
+  id           TEXT PRIMARY KEY,
+  guild_id     TEXT NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+  boss_id      TEXT NOT NULL REFERENCES raid_bosses(id),
+  week_start   INTEGER NOT NULL,              -- Monday 00:00 UTC, epoch seconds
+  hp           INTEGER NOT NULL,
+  damage_done  INTEGER NOT NULL DEFAULT 0,
+  defeated_at  INTEGER,
+  created_at   INTEGER NOT NULL,
+  UNIQUE (guild_id, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_guild_raids_guild ON guild_raids (guild_id, week_start DESC);
+
+CREATE TABLE IF NOT EXISTS guild_raid_contributions (
+  raid_id     TEXT NOT NULL REFERENCES guild_raids(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  damage      INTEGER NOT NULL DEFAULT 0,
+  hits        INTEGER NOT NULL DEFAULT 0,     -- number of sessions that landed
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (raid_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_raid_contrib_raid ON guild_raid_contributions (raid_id, damage DESC);

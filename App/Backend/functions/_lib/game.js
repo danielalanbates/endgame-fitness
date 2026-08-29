@@ -62,6 +62,7 @@ export const ACHIEVEMENTS = Object.freeze([
   { id: 'level_50',      title: 'Legend',         desc: 'Reach level 50',                   rarity: 'legendary', xp: 1000, icon: 'sparkles',            rule: (s) => s.level >= 50 },
   { id: 'first_friend',  title: 'Party of Two',   desc: 'Add your first friend',            rarity: 'common',    xp: 50,   icon: 'person.2.fill',       rule: (s) => s.friend_count >= 1 },
   { id: 'guild_join',    title: 'Banner Raised',  desc: 'Join or found a guild',            rarity: 'common',    xp: 75,   icon: 'shield.lefthalf.filled', rule: (s) => !!s.in_guild },
+  { id: 'raid_slayer',   title: 'Raid Slayer',    desc: 'Help your guild defeat a weekly raid boss', rarity: 'rare', xp: 150, icon: 'bolt.shield.fill', rule: (s) => s.raids_won >= 1 },
 ]);
 
 /* ------------------------------------------------------------------ */
@@ -206,7 +207,7 @@ export function newlyUnlocked(stats, unlocked) {
   const have = new Set(unlocked || []);
   const s = {
     total_workouts: 0, longest_streak: 0, total_volume: 0, level: 1,
-    friend_count: 0, in_guild: false, ...stats,
+    friend_count: 0, in_guild: false, raids_won: 0, ...stats,
   };
   return ACHIEVEMENTS.filter((a) => !have.has(a.id) && a.rule(s));
 }

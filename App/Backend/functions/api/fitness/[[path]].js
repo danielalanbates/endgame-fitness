@@ -38,6 +38,7 @@ import {
 import {
   boardFor, advance, eventForWorkout, eventForHealth, questDefinition, newlyUnlocked, achievementCatalog,
 } from '../../_lib/game.js';
+import { BOSS_CATALOG, bossForWeek, weekStart, hpForGuild, raidDamage, WEEK_SECS } from '../../_lib/raids.js';
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -80,6 +81,9 @@ export async function onRequest(context) {
         break;
       case 'ai':
         response = await handleAI(request, env, userId);
+        break;
+      case 'raid':
+        response = await getRaid(env, userId);
         break;
       case 'talents':
         response = await handleTalents(request, env, userId, path);
@@ -353,6 +357,7 @@ async function handleSync(request, env, userId) {
   if (!profile) return json({ error: 'Profile not found' }, 404);
 
   let xpGained = 0;
+  let raidDamageDealt = 0;   // guild raid damage from the NEW sessions in this batch
   const accepted = [];
   const levelBefore = profile.level;
 
@@ -438,6 +443,9 @@ async function handleSync(request, env, userId) {
       await pushActivity(env, userId, 'pr', `set ${prs} new personal record${prs === 1 ? '' : 's'}`,
         { session_id: session.id, count: prs });
     }
+    // Raid damage: only brand-new sessions hit the boss (revision updates were
+    // skipped above), and the PR bonus uses the server-verified PR count.
+    raidDamageDealt += raidDamage({ total_volume: volume, pr_count: prs });
     // Quests advance after the talent-adjusted XP for this session is final.
     await advanceQuests(env, userId, eventForWorkout({
       total_volume: volume, total_reps: reps, duration_secs: duration, prs,
@@ -480,6 +488,18 @@ async function handleSync(request, env, userId) {
     await pushActivity(env, userId, 'level_up', `reached level ${newLevel}`, { level: newLevel });
   }
 
+  // Guild raid: land this batch's damage on the weekly boss. Workout XP is
+  // already banked, so a raid failure can never cost someone their XP.
+  let raid = null;
+  if (raidDamageDealt > 0) {
+    try {
+      raid = await applyRaidDamage(env, userId, raidDamageDealt);
+    } catch (e) {
+      console.error('applyRaidDamage failed:', e && e.stack ? e.stack : e);
+    }
+  }
+
+  // Runs after the raid step so raid_slayer can unlock in the same sync.
   const unlocked = await checkAchievements(env, userId);
 
   // Hand back everything the client hasn't seen. Capped so a fresh install with
@@ -505,6 +525,7 @@ async function handleSync(request, env, userId) {
     levels_gained: levelsGained,
     talent_points_gained: pointsGained,
     achievements_unlocked: unlocked,
+    raid,
     sessions,
     has_more: sessions.length === 500,
     server_time: now(),
@@ -1311,6 +1332,15 @@ async function achievementStats(env, userId) {
   ).bind(userId, userId).first();
   const guild = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
     .bind(userId).first();
+  let raidsWon = 0;
+  try {
+    const r = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM guild_raid_contributions c
+         JOIN guild_raids g ON g.id = c.raid_id
+        WHERE c.user_id = ? AND c.damage > 0 AND g.defeated_at IS NOT NULL`
+    ).bind(userId).first();
+    raidsWon = r?.n || 0;
+  } catch { /* raid tables not migrated yet: no raids won */ }
   return {
     level: p.level,
     total_workouts: p.total_workouts,
@@ -1318,6 +1348,7 @@ async function achievementStats(env, userId) {
     longest_streak: p.longest_streak,
     friend_count: friends?.n || 0,
     in_guild: !!guild,
+    raids_won: raidsWon,
   };
 }
 
@@ -1415,4 +1446,220 @@ async function recordPersonalRecords(env, userId, session, performedAt) {
     console.error('recordPersonalRecords failed:', e && e.message);
     return 0;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Guild raids                                                         */
+/* ------------------------------------------------------------------ */
+
+// The catalog lives in code (_lib/raids.js); raid_bosses mirrors it so
+// guild_raids has a foreign key. Upsert lazily so a fresh database works
+// without anyone remembering to seed it.
+async function ensureBossRow(env, boss) {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO raid_bosses
+       (id, name, flavor, symbol, gradient, base_hp, reward_xp, reward_title, reward_cosmetic)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    boss.id, boss.name, boss.flavor, boss.symbol, JSON.stringify(boss.gradient),
+    boss.base_hp, boss.reward_xp, boss.reward_title, boss.reward_cosmetic
+  ).run();
+}
+
+/** The caller's guild id, or null. */
+async function guildIdOf(env, userId) {
+  const row = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  return row ? row.guild_id : null;
+}
+
+/**
+ * Find or open the guild's raid for the week containing `at`. hp is fixed at
+ * creation from the member count, so the boss does not grow when someone joins.
+ */
+async function currentRaid(env, guildId, at = now()) {
+  const start = weekStart(at);
+  let raid = await env.DB.prepare(
+    'SELECT * FROM guild_raids WHERE guild_id = ? AND week_start = ?'
+  ).bind(guildId, start).first();
+  if (raid) return raid;
+
+  const boss = bossForWeek(at);
+  await ensureBossRow(env, boss);
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM guild_members WHERE guild_id = ?')
+    .bind(guildId).first();
+  const hp = hpForGuild(boss, count?.n || 1);
+
+  // INSERT OR IGNORE + re-select handles two members syncing in the same second.
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO guild_raids (id, guild_id, boss_id, week_start, hp, damage_done, created_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?)`
+  ).bind(crypto.randomUUID(), guildId, boss.id, start, hp, now()).run();
+
+  return env.DB.prepare(
+    'SELECT * FROM guild_raids WHERE guild_id = ? AND week_start = ?'
+  ).bind(guildId, start).first();
+}
+
+function bossById(id) {
+  return BOSS_CATALOG.find((b) => b.id === id) || BOSS_CATALOG[0];
+}
+
+async function upsertContribution(env, raidId, userId, damage) {
+  await env.DB.prepare(
+    `INSERT INTO guild_raid_contributions (raid_id, user_id, damage, hits, updated_at)
+     VALUES (?, ?, ?, 1, ?)
+     ON CONFLICT (raid_id, user_id)
+     DO UPDATE SET damage = damage + excluded.damage, hits = hits + 1, updated_at = excluded.updated_at`
+  ).bind(raidId, userId, damage, now()).run();
+}
+
+/**
+ * Land `damage` on the caller's guild boss. Called from handleSync after XP is
+ * banked. Returns a summary for the sync response, or null if not in a guild.
+ */
+async function applyRaidDamage(env, userId, damage) {
+  const guildId = await guildIdOf(env, userId);
+  if (!guildId) return null;
+
+  const raid = await currentRaid(env, guildId);
+  if (!raid) return null;
+  const boss = bossById(raid.boss_id);
+
+  await upsertContribution(env, raid.id, userId, damage);
+
+  if (raid.defeated_at) {
+    // Boss already down this week; the hit is still recorded above so the
+    // contributor list stays honest.
+    return {
+      boss_id: boss.id, boss_name: boss.name, damage, hp: raid.hp,
+      damage_done: Math.min(raid.damage_done, raid.hp),
+      defeated: true, just_defeated: false, reward_xp: 0,
+    };
+  }
+
+  // Atomic increment; the defeat check reads back the result.
+  await env.DB.prepare('UPDATE guild_raids SET damage_done = damage_done + ? WHERE id = ?')
+    .bind(damage, raid.id).run();
+  const after = await env.DB.prepare('SELECT damage_done FROM guild_raids WHERE id = ?')
+    .bind(raid.id).first();
+  const damageDone = after?.damage_done || 0;
+
+  let justDefeated = false;
+  let rewardXp = 0;
+  if (damageDone >= raid.hp) {
+    // Only the request that flips defeated_at pays out, so a race between two
+    // final blows cannot double-reward (same guard checkAchievements uses).
+    const flip = await env.DB.prepare(
+      'UPDATE guild_raids SET defeated_at = ? WHERE id = ? AND defeated_at IS NULL'
+    ).bind(now(), raid.id).run();
+    if (flip.meta && flip.meta.changes > 0) {
+      justDefeated = true;
+      rewardXp = boss.reward_xp;
+      await rewardRaidContributors(env, raid.id, guildId, boss, userId);
+    }
+  }
+
+  return {
+    boss_id: boss.id,
+    boss_name: boss.name,
+    damage,
+    hp: raid.hp,
+    damage_done: Math.min(damageDone, raid.hp),
+    defeated: damageDone >= raid.hp,
+    just_defeated: justDefeated,
+    reward_xp: rewardXp,
+  };
+}
+
+/**
+ * On defeat every contributor gets the boss's XP through awardXp (level,
+ * talent points and level_up feed handled there), a raid_defeated feed item,
+ * and an achievement pass so `raid_slayer` (_lib/game.js) unlocks. The
+ * syncing user is skipped here for achievements because handleSync runs
+ * checkAchievements right after.
+ */
+async function rewardRaidContributors(env, raidId, guildId, boss, slayerId) {
+  const rows = await env.DB.prepare(
+    'SELECT user_id, damage FROM guild_raid_contributions WHERE raid_id = ? AND damage > 0'
+  ).bind(raidId).all();
+  const guild = await env.DB.prepare('SELECT name FROM guilds WHERE id = ?').bind(guildId).first();
+  const guildName = guild?.name || 'your guild';
+
+  for (const row of rows.results || []) {
+    const uid = row.user_id;
+    await awardXp(env, uid, boss.reward_xp, 'raid', raidId);
+    const finalBlow = uid === slayerId;
+    await pushActivity(env, uid, 'raid_defeated',
+      finalBlow
+        ? `landed the final blow on ${boss.name} with ${guildName}`
+        : `helped ${guildName} defeat ${boss.name} — ${Math.round(row.damage).toLocaleString()} damage`,
+      { raid_id: raidId, boss_id: boss.id, damage: row.damage, xp: boss.reward_xp, final_blow: finalBlow });
+    if (!finalBlow) await checkAchievements(env, uid);
+  }
+}
+
+// GET /api/fitness/raid
+async function getRaid(env, userId) {
+  const guildId = await guildIdOf(env, userId);
+  if (!guildId) return json({ raid: null, reason: 'no_guild' });
+
+  const at = now();
+  const raid = await currentRaid(env, guildId, at);
+  if (!raid) return json({ raid: null, reason: 'unavailable' });
+  const boss = bossById(raid.boss_id);
+
+  const top = await env.DB.prepare(
+    `SELECT c.user_id, c.damage, c.hits, p.display_name, p.level, u.avatar_url
+       FROM guild_raid_contributions c
+       JOIN fitness_profiles p ON p.user_id = c.user_id
+       JOIN users u ON u.id = c.user_id
+      WHERE c.raid_id = ?
+      ORDER BY c.damage DESC
+      LIMIT 10`
+  ).bind(raid.id).all();
+  const mine = await env.DB.prepare(
+    'SELECT damage, hits FROM guild_raid_contributions WHERE raid_id = ? AND user_id = ?'
+  ).bind(raid.id, userId).first();
+  const members = await env.DB.prepare('SELECT COUNT(*) AS n FROM guild_members WHERE guild_id = ?')
+    .bind(guildId).first();
+
+  const damageDone = Math.min(raid.damage_done, raid.hp);
+  return json({
+    raid: {
+      id: raid.id,
+      guild_id: guildId,
+      week_start: raid.week_start,
+      ends_at: raid.week_start + WEEK_SECS,
+      seconds_left: Math.max(0, raid.week_start + WEEK_SECS - at),
+      boss: {
+        id: boss.id,
+        name: boss.name,
+        flavor: boss.flavor,
+        symbol: boss.symbol,
+        gradient: boss.gradient,
+        reward_xp: boss.reward_xp,
+        reward_title: boss.reward_title,
+        reward_cosmetic: boss.reward_cosmetic,
+      },
+      hp: raid.hp,
+      damage_done: damageDone,
+      hp_remaining: Math.max(0, raid.hp - damageDone),
+      defeated: !!raid.defeated_at,
+      defeated_at: raid.defeated_at,
+      member_count: members?.n || 0,
+      contributors: (top.results || []).map((r, i) => ({
+        rank: i + 1,
+        user_id: r.user_id,
+        display_name: r.display_name,
+        level: r.level,
+        avatar_url: r.avatar_url,
+        damage: r.damage,
+        hits: r.hits,
+        is_self: r.user_id === userId,
+      })),
+      my_damage: mine?.damage || 0,
+      my_hits: mine?.hits || 0,
+    },
+  });
 }

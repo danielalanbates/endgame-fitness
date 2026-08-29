@@ -567,6 +567,9 @@ struct CommunityView: View {
                     .background(Color.platformControlBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
+                    // Weekly co-op boss: every member's synced volume is damage.
+                    RaidCard()
+
                     ForEach(game.guildMembers) { member in
                         HStack {
                             Text(member.displayName).fontWeight(.medium)
