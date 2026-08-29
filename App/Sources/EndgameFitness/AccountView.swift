@@ -75,7 +75,7 @@ struct AccountView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Account")
-        .frame(minWidth: 380, minHeight: 420)
+        .desktopMinFrame(minWidth: 380, minHeight: 420)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .onAppear(perform: loadFields)
         .onChange(of: game.profile) { _ in loadFields() }
@@ -94,7 +94,7 @@ struct AccountView: View {
         .sheet(isPresented: $showTalents) { TalentTreeView() }
         .sheet(isPresented: $showAvatarEditor) {
             AvatarQuestionnaireView(profile: $avatarProfile, isComplete: $avatarComplete)
-                .frame(minWidth: 480, minHeight: 560)
+                .desktopMinFrame(minWidth: 480, minHeight: 560)
         }
         .onChange(of: avatarComplete) { done in
             guard done else { return }

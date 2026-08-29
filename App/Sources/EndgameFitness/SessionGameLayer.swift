@@ -464,7 +464,7 @@ struct SessionSummaryView: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Session Complete")
-                .font(.largeTitle.bold())
+                .font(.screenTitle.bold())
 
             ShareCardView(summary: summary)
 

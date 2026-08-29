@@ -84,11 +84,11 @@ struct AvatarQuestionnaireView: View {
                     .buttonStyle(.borderedProminent)
                 }
             }
-            .padding(.horizontal, 40)
+            .padding(.horizontal, Platform.isDesktop ? 40 : 16)
             .padding(.bottom, 20)
         }
         .padding()
-        .frame(width: 700, height: 650)
+        .desktopSheetFrame(width: 700, height: 650)
         .sheet(isPresented: $showPreview) {
             AvatarPreviewView(profile: $profile, isComplete: $isComplete)
         }
@@ -298,7 +298,7 @@ struct AvatarPreviewView: View {
             }
         }
         .padding()
-        .frame(width: 700, height: 650)
+        .desktopSheetFrame(width: 700, height: 650)
         .onAppear {
             blobAvatar = BlobAvatar3D(profile: profile)
         }
@@ -423,7 +423,7 @@ struct AvatarEvolutionNotification: View {
                 }
             }
         }
-        .padding(30)
+        .adaptivePadding(30)
         .background(Color.platformWindowBackground)
         .cornerRadius(16)
         .shadow(radius: 20)

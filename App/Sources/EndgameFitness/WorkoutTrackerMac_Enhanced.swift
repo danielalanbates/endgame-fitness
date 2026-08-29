@@ -1965,11 +1965,11 @@ struct DashboardView: View {
                 // Greet by the name given during onboarding.
                 if let name = workoutManager.userProfile?.name, !name.isEmpty {
                     Text("Welcome back, \(name)")
-                        .font(.largeTitle)
+                        .font(.screenTitle)
                         .bold()
                 } else {
                     Text("Dashboard")
-                        .font(.largeTitle)
+                        .font(.screenTitle)
                         .bold()
                 }
 
@@ -2008,7 +2008,7 @@ struct DashboardView: View {
                 #endif
 
                 // Quick Stats
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 20) {
+                LazyVGrid(columns: adaptiveColumns(desktop: 3, phone: 2), spacing: 20) {
                     StatCard(title: "Today's Workouts", value: "\(workoutManager.todaysWorkouts)", icon: "figure.strengthtraining.traditional", color: .blue)
                     StatCard(title: "Weekly Progress", value: "\(workoutManager.weeklyWorkouts)/21", icon: "chart.bar.fill", color: .green)
                     StatCard(title: "Current Streak", value: "\(workoutManager.currentStreak) days", icon: "flame.fill", color: .orange)
@@ -2075,7 +2075,7 @@ struct WorkoutView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 Text("Workouts")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 // Active workout indicator
@@ -2085,10 +2085,12 @@ struct WorkoutView: View {
                             .foregroundColor(.brandGreen)
                             .font(.title2)
                             .symbolEffect(.pulse, options: .repeating)
-                        Text("Active")
-                            .font(.subheadline)
-                            .foregroundColor(.brandGreen)
-                            .bold()
+                        if Platform.isDesktop {
+                            Text("Active")
+                                .font(.subheadline)
+                                .foregroundColor(.brandGreen)
+                                .bold()
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -2112,7 +2114,7 @@ struct WorkoutView: View {
                         }) {
                             HStack {
                                 Image(systemName: "chevron.left")
-                                Text("Previous")
+                                if Platform.isDesktop { Text("Previous") }
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -2138,7 +2140,9 @@ struct WorkoutView: View {
                             }
                         }) {
                             HStack {
-                                Text(currentExerciseIndex < workout.exercises.count - 1 ? "Next" : "Finish")
+                                if Platform.isDesktop {
+                                    Text(currentExerciseIndex < workout.exercises.count - 1 ? "Next" : "Finish")
+                                }
                                 Image(systemName: currentExerciseIndex < workout.exercises.count - 1 ? "chevron.right" : "checkmark.circle.fill")
                             }
                             .padding(.horizontal, 12)
@@ -2604,7 +2608,7 @@ struct WorkoutCompletionView: View {
 
             Spacer()
         }
-        .frame(width: 500, height: 400)
+        .desktopSheetFrame(width: 500, height: 400)
         .padding()
         .onAppear {
             confettiTrigger = true
@@ -2627,7 +2631,7 @@ struct CustomizeWorkoutSheet: View {
             // Header
             HStack {
                 Text("Customize Workout")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 Spacer()
@@ -2721,7 +2725,7 @@ struct CustomizeWorkoutSheet: View {
             .buttonStyle(.plain)
             .padding(.horizontal)
         }
-        .frame(width: 500, height: 500)
+        .desktopSheetFrame(width: 500, height: 500)
     }
 }
 
@@ -2777,7 +2781,7 @@ struct AIWorkoutQuestionnaireView: View {
             // Header
             HStack {
                 Text("AI Workout Generator")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 Spacer()
@@ -2812,7 +2816,7 @@ struct AIWorkoutQuestionnaireView: View {
                             .bold()
                             .multilineTextAlignment(.center)
 
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                        LazyVGrid(columns: adaptiveColumns(desktop: 3, phone: 2), spacing: 16) {
                             ForEach(daysOptions, id: \.self) { days in
                                 BubbleOption(
                                     text: "\(days) days",
@@ -2835,7 +2839,7 @@ struct AIWorkoutQuestionnaireView: View {
                             .bold()
                             .multilineTextAlignment(.center)
 
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                        LazyVGrid(columns: adaptiveColumns(desktop: 3, phone: 2), spacing: 16) {
                             ForEach(durationOptions, id: \.self) { duration in
                                 BubbleOption(
                                     text: "\(duration) min",
@@ -2929,7 +2933,7 @@ struct AIWorkoutQuestionnaireView: View {
             }
             .padding()
         }
-        .frame(width: 700, height: 680)
+        .desktopSheetFrame(width: 700, height: 680)
     }
 
     func generateCustomAIWorkout() {
@@ -3024,11 +3028,11 @@ struct ProgressView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Progress Tracking")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 // Stats Overview
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 15) {
+                LazyVGrid(columns: adaptiveColumns(desktop: 4, phone: 2), spacing: 15) {
                     StatCard(title: "Total Workouts", value: "\(workoutManager.sessions.count)", icon: "list.bullet", color: .blue)
                     StatCard(title: "Current Streak", value: "\(workoutManager.currentStreak)", icon: "flame.fill", color: .orange)
                     StatCard(title: "Total Volume", value: "\(Int(totalVolume))", icon: "chart.bar.fill", color: .green)
@@ -3121,7 +3125,7 @@ struct HistoryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Workout History")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 if workoutManager.sessions.isEmpty {
@@ -3172,7 +3176,7 @@ struct WorkoutCalendarView: View {
             Text("12-Month Calendar")
                 .font(.headline)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 16) {
+            LazyVGrid(columns: adaptiveColumns(desktop: 4, phone: 2), spacing: 16) {
                 ForEach(0..<12, id: \.self) { monthOffset in
                     if let monthDate = Calendar.current.date(byAdding: .month, value: -monthOffset, to: Date()) {
                         MonthCalendarView(
@@ -3262,7 +3266,7 @@ struct ToolsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Fitness Tools")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 Text("Calculators and utilities to help track your fitness journey")
@@ -3427,7 +3431,7 @@ struct ToolDetailView: View {
 
             Spacer()
         }
-        .frame(width: 600, height: 700)
+        .desktopSheetFrame(width: 600, height: 700)
     }
 
     var toolTitle: String {
@@ -3914,7 +3918,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Settings")
-                .font(.largeTitle)
+                .font(.screenTitle)
                 .bold()
 
             Form {
@@ -4794,7 +4798,7 @@ struct AddExerciseSheet: View {
                                 }) {
                                     VStack(spacing: 8) {
                                         Image(systemName: bodyPartIcon(part))
-                                            .font(.largeTitle)
+                                            .font(.screenTitle)
                                         Text(part)
                                             .font(.caption)
                                     }
@@ -4942,7 +4946,7 @@ struct AddExerciseSheet: View {
             .padding(.top)
         }
         .padding()
-        .frame(width: 600, height: 600)
+        .desktopSheetFrame(width: 600, height: 600)
     }
 
     func bodyPartIcon(_ part: String) -> String {
@@ -5080,7 +5084,7 @@ struct GenerateProgramSheet: View {
             }
         }
         .padding()
-        .frame(width: 450, height: 350)
+        .desktopSheetFrame(width: 450, height: 350)
     }
 }
 
@@ -5181,7 +5185,7 @@ struct OnboardingView: View {
                 }
                 .padding()
 
-                // Content Area (no ScrollView wrapper)
+                // Content Area (scrolls on iPhone; fixed on the Mac window)
                 VStack(spacing: 30) {
                     switch currentStep {
                     case 0:
@@ -5212,6 +5216,8 @@ struct OnboardingView: View {
                     }
                 }
                 .padding()
+                .frame(maxWidth: .infinity)
+                .scrollableOnPhone()
                 .frame(maxHeight: .infinity)
 
                 // Navigation Buttons
@@ -5250,13 +5256,13 @@ struct OnboardingView: View {
                     }) {
                         HStack(spacing: 12) {
                             Text(currentStep < totalSteps - 1 ? "Continue" : "Get Started")
-                                .font(.title2)
+                                .font(Platform.isDesktop ? .title2 : .headline)
                                 .bold()
                             Image(systemName: currentStep < totalSteps - 1 ? "chevron.right" : "checkmark.circle.fill")
                                 .font(.title2)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
+                        .padding(.vertical, Platform.isDesktop ? 20 : 14)
                         .padding(.horizontal)
                         .background(canContinue ? Color.brandPurple : Color.gray.opacity(0.5))
                         .foregroundColor(.black)
@@ -5268,7 +5274,7 @@ struct OnboardingView: View {
                 .padding()
             }
         }
-        .frame(minWidth: 800, minHeight: 700)
+        .desktopMinFrame(minWidth: 800, minHeight: 700)
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -5345,7 +5351,7 @@ struct OnboardingView: View {
 
 struct WelcomeStep: View {
     var body: some View {
-        VStack(spacing: 40) {
+        VStack(spacing: Platform.isDesktop ? 40 : 24) {
             // Stick figure in deep squat with dumbbells overhead
             ZStack {
                 // Stick figure in squat
@@ -5370,7 +5376,9 @@ struct WelcomeStep: View {
             .frame(height: 140)
 
             Text("Endgame Fitness")
-                .font(.system(size: 52, weight: .bold))
+                .font(.system(size: Platform.isDesktop ? 52 : 36, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [.brandPurple, .brandBlue],
@@ -5424,7 +5432,7 @@ struct FeatureRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.largeTitle)
+                .font(.screenTitle)
                 .foregroundColor(color)
                 .frame(width: 50)
 
@@ -5450,9 +5458,10 @@ struct WaiverStep: View {
         VStack(spacing: 20) {
             VStack(spacing: 8) {
                 Text("⚖️ Important Legal Information")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
                     .foregroundColor(.black)
+                    .adaptiveHeading()
 
                 Text("Please read carefully before proceeding")
                     .font(.subheadline)
@@ -5545,7 +5554,7 @@ struct WaiverStep: View {
                 .padding()
             }
             .coordinateSpace(name: "scroll")
-            .frame(maxHeight: 400)
+            .frame(maxHeight: Platform.isDesktop ? 400 : 320)
             .background(Color.white.opacity(0.9))
             .cornerRadius(12)
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
@@ -5554,8 +5563,9 @@ struct WaiverStep: View {
 
             Toggle(isOn: $hasAcceptedWaivers) {
                 Text("I have read and agree to all terms, waivers, and disclaimers above")
-                    .font(.headline)
+                    .font(Platform.isDesktop ? .headline : .subheadline)
                     .foregroundColor(.black)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             #if os(macOS)
             .toggleStyle(.checkbox)
@@ -5657,7 +5667,8 @@ struct BasicInfoStep: View {
                     .font(.system(size: 40, weight: .light))
                     .foregroundStyle(Color.brandPurple)
                 Text("Tell us about yourself")
-                    .font(.largeTitle.bold())
+                    .font(.screenTitle.bold())
+                    .adaptiveHeading()
                 Text("Four quick answers to calibrate your programs.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -5681,7 +5692,7 @@ struct BasicInfoStep: View {
                         .onSubmit { focusedField = .age }
                 }
 
-                HStack(alignment: .top, spacing: 16) {
+                AdaptiveHStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Age").font(.headline)
                         TextField("34", text: $userAge)
@@ -5744,7 +5755,7 @@ struct BasicInfoStep: View {
                     }
                 }
             }
-            .padding(28)
+            .adaptivePadding(28)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .frame(maxWidth: 560)
         }
@@ -5848,9 +5859,10 @@ struct GoalsStep: View {
         VStack(spacing: 30) {
             VStack(spacing: 8) {
                 Text("What Are Your Goals?")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
                     .foregroundColor(.black)
+                    .adaptiveHeading()
 
                 Text("Select all that apply")
                     .font(.subheadline)
@@ -5925,13 +5937,15 @@ struct ExperienceLevelStep: View {
         VStack(spacing: 30) {
             VStack(spacing: 8) {
                 Text("💡 Experience Level")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
                     .foregroundColor(.black)
+                    .adaptiveHeading()
 
                 Text("This helps us suggest appropriate weights and programs")
                     .font(.subheadline)
                     .foregroundColor(.black)
+                    .multilineTextAlignment(.center)
             }
 
             VStack(spacing: 16) {
@@ -5989,9 +6003,10 @@ struct EquipmentStep: View {
         VStack(spacing: 30) {
             VStack(spacing: 8) {
                 Text("🏋️ Available Equipment")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
                     .foregroundColor(.black)
+                    .adaptiveHeading()
 
                 Text("We'll customize exercises for your setup")
                     .font(.subheadline)
@@ -6081,9 +6096,10 @@ struct StrengthAssessmentStep: View {
         VStack(spacing: 30) {
             VStack(spacing: 8) {
                 Text("💪 Strength Assessment")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
                     .foregroundColor(.black)
+                    .adaptiveHeading()
 
                 Text("Help us calibrate your program")
                     .font(.subheadline)
@@ -6115,7 +6131,7 @@ struct StrengthAssessmentStep: View {
                                 .stroke(Color.gray, lineWidth: 2)
                         )
                         .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
+                        .frame(maxWidth: 400)
                         .focused($focusedField, equals: .bench)
                 }
 
@@ -6139,7 +6155,7 @@ struct StrengthAssessmentStep: View {
                                 .stroke(Color.gray, lineWidth: 2)
                         )
                         .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
+                        .frame(maxWidth: 400)
                         .focused($focusedField, equals: .squat)
                 }
 
@@ -6163,7 +6179,7 @@ struct StrengthAssessmentStep: View {
                                 .stroke(Color.gray, lineWidth: 2)
                         )
                         .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
+                        .frame(maxWidth: 400)
                         .focused($focusedField, equals: .deadlift)
                 }
 
@@ -6172,7 +6188,7 @@ struct StrengthAssessmentStep: View {
                     .foregroundColor(.secondary)
                     .padding(.top, 8)
             }
-            .padding(30)
+            .adaptivePadding(30)
             .background(Color.white.opacity(0.9))
             .cornerRadius(16)
         }

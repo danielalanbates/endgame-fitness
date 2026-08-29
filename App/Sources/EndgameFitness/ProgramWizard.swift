@@ -63,7 +63,8 @@ struct GetSetUpView: View {
                     .font(.system(size: 44, weight: .light))
                     .foregroundStyle(Color.brandPurple)
                 Text("Welcome, \(firstName)")
-                    .font(.largeTitle.bold())
+                    .font(.screenTitle.bold())
+                    .adaptiveHeading()
                 Text("One step left: build the program you'll train on.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -156,14 +157,14 @@ struct ProgramWizardView: View {
                     default: splitStep
                     }
                 }
-                .padding(24)
+                .adaptivePadding(24)
                 .frame(maxWidth: 560)
             }
             .frame(maxWidth: .infinity)
 
             footer
         }
-        .frame(minWidth: 620, minHeight: 560)
+        .desktopMinFrame(minWidth: 620, minHeight: 560)
         .onAppear(perform: prefill)
     }
 

@@ -245,3 +245,88 @@ enum WorkoutTransfer {
         #endif
     }
 }
+
+// MARK: - Adaptive layout
+
+/// The UI was laid out for a 900x700 macOS window. These helpers keep that
+/// look on the Mac and relax it on a 390pt-wide iPhone without forking views.
+extension Font {
+    /// Page heading: `.largeTitle` on the Mac, `.title2` on iPhone.
+    static var screenTitle: Font { Platform.isDesktop ? .largeTitle : .title2 }
+}
+
+extension View {
+    /// Minimum window frame on the Mac. iOS fills whatever the screen gives.
+    @ViewBuilder
+    func desktopMinFrame(minWidth: CGFloat, minHeight: CGFloat) -> some View {
+        if Platform.isDesktop {
+            frame(minWidth: minWidth, minHeight: minHeight)
+        } else {
+            frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// Fixed sheet size on the Mac; iOS sheets already fill the screen.
+    @ViewBuilder
+    func desktopSheetFrame(width: CGFloat, height: CGFloat) -> some View {
+        if Platform.isDesktop {
+            frame(width: width, height: height)
+        } else {
+            frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// Fixed width on the Mac; on iPhone the view can shrink to fit but never
+    /// grows past the same width.
+    @ViewBuilder
+    func desktopWidth(_ width: CGFloat) -> some View {
+        if Platform.isDesktop {
+            frame(width: width)
+        } else {
+            frame(maxWidth: width)
+        }
+    }
+
+    /// Generous Mac padding, capped on iPhone so cards keep their content width.
+    func adaptivePadding(_ desktop: CGFloat, phone: CGFloat = 16) -> some View {
+        padding(Platform.isDesktop ? desktop : phone)
+    }
+
+    /// Wraps tall content in a vertical ScrollView on iPhone only.
+    @ViewBuilder
+    func scrollableOnPhone() -> some View {
+        if Platform.isDesktop {
+            self
+        } else {
+            ScrollView(.vertical, showsIndicators: false) { self }
+        }
+    }
+
+    /// Long headings: allow wrapping and shrink a little before clipping.
+    func adaptiveHeading() -> some View {
+        self
+            .multilineTextAlignment(.center)
+            .lineLimit(nil)
+            .minimumScaleFactor(0.75)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+/// Side-by-side on the Mac, stacked on iPhone.
+struct AdaptiveHStack<Content: View>: View {
+    var alignment: VerticalAlignment = .top
+    var spacing: CGFloat = 16
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let layout = Platform.isDesktop
+            ? AnyLayout(HStackLayout(alignment: alignment, spacing: spacing))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: spacing))
+        layout { content }
+    }
+}
+
+/// Fixed column count on the Mac, fewer on iPhone.
+func adaptiveColumns(desktop: Int, phone: Int, spacing: CGFloat? = nil) -> [GridItem] {
+    Array(repeating: GridItem(.flexible(), spacing: spacing), count: Platform.isDesktop ? desktop : phone)
+}

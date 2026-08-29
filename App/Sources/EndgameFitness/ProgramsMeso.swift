@@ -280,7 +280,7 @@ struct ProgramsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Choose Your Program")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 if hasActiveProgram {
@@ -585,8 +585,10 @@ struct CustomWorkoutBuilderView: View {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     Text("Create Your Own Workout")
-                        .font(.largeTitle)
+                        .font(.screenTitle)
                         .bold()
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
                     Spacer()
                     Button("Cancel") { dismiss() }
                         .buttonStyle(.bordered)
@@ -812,7 +814,7 @@ struct MesocycleView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Mesocycle Training")
-                    .font(.largeTitle)
+                    .font(.screenTitle)
                     .bold()
 
                 // Current phase + progress
