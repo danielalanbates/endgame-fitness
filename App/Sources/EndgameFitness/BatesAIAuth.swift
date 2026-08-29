@@ -317,6 +317,14 @@ final class BatesAIAuth: NSObject, ObservableObject {
         signOutLocally()
     }
 
+    /// Permanently deletes the membership on the server, then clears local
+    /// state. Throws (and keeps the session) if the server refused.
+    func deleteAccount() async throws {
+        guard let token else { throw AuthError.notSignedIn }
+        _ = try await requestRaw("auth/account", method: "DELETE", token: token, body: nil)
+        signOutLocally()
+    }
+
     private func signOutLocally() {
         token = nil
         user = nil

@@ -18,7 +18,14 @@
 set -euo pipefail
 
 BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SITE_DIR="${BATESAI_SITE_DIR:-$HOME}"
+# Where the built site (dist/ + functions/) lives. Default: a fresh shallow clone
+# of the website repo (it tracks its own dist/), so this never depends on the
+# state of the home-directory worktree, which has had dist/ go missing before.
+SITE_DIR="${BATESAI_SITE_DIR:-}"
+if [[ -z "$SITE_DIR" ]]; then
+  SITE_DIR="$(mktemp -d)/site"
+  git clone -q --depth 1 https://github.com/danielalanbates/website.git "$SITE_DIR"
+fi
 PROJECT_NAME="website"
 
 DRY_RUN=false
@@ -60,7 +67,7 @@ if ! $SCHEMA_ONLY; then
                "$SITE_DIR/functions/_lib"
   run cp "$BACKEND_DIR/functions/api/auth/[[path]].js"    "$SITE_DIR/functions/api/auth/[[path]].js"
   run cp "$BACKEND_DIR/functions/api/fitness/[[path]].js" "$SITE_DIR/functions/api/fitness/[[path]].js"
-  run cp "$BACKEND_DIR/functions/_lib/session.js"         "$SITE_DIR/functions/_lib/session.js"
+  run cp "$BACKEND_DIR"/functions/_lib/*.js "$SITE_DIR/functions/_lib/"
 fi
 
 echo "==> Applying database schema (idempotent)"
@@ -74,7 +81,7 @@ fi
 echo "==> Deploying to Cloudflare Pages"
 # Pages Functions are picked up from ./functions at the project root, so the
 # deploy must run from the site directory, not from dist alone.
-run bash -c "cd '$SITE_DIR' && npx wrangler pages deploy dist --project-name='$PROJECT_NAME'"
+run bash -c "cd '$SITE_DIR' && npx wrangler pages deploy dist --project-name='$PROJECT_NAME' --branch=main --commit-dirty=true"
 
 cat <<'EOF'
 

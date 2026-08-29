@@ -45,6 +45,7 @@ struct FitnessProfile: Codable, Equatable {
     var units: String
     var title: String?
     var isPublic: Bool
+    var friendCode: String?
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
@@ -67,6 +68,7 @@ struct FitnessProfile: Codable, Equatable {
         case heightInches = "height_inches"
         case birthYear = "birth_year"
         case isPublic = "is_public"
+        case friendCode = "friend_code"
     }
 
     /// 0–1 progress through the current level, for the XP bar.
@@ -107,6 +109,17 @@ struct FitnessProfile: Codable, Equatable {
     }
 }
 
+/// One exercise's completed sets, uploaded so the server can detect personal
+/// records (best weight per rep count) — the client never decides a PR itself.
+struct SyncExercise: Codable, Equatable {
+    struct Set: Codable, Equatable {
+        var reps: Int
+        var weight: Double
+    }
+    var name: String
+    var sets: [Set]
+}
+
 struct SyncSession: Codable, Identifiable, Equatable {
     var id: String
     var performedAt: Int
@@ -117,9 +130,10 @@ struct SyncSession: Codable, Identifiable, Equatable {
     var totalReps: Int
     var xpEarned: Int?
     var clientRev: Int
+    var exercises: [SyncExercise]? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, exercises
         case performedAt = "performed_at"
         case programID = "program_id"
         case durationSecs = "duration_secs"
@@ -189,6 +203,7 @@ struct ActivityItem: Codable, Identifiable, Equatable {
         case "pr":          return "trophy.fill"
         case "achievement": return "rosette"
         case "quest":       return "checkmark.seal.fill"
+        case "challenge":   return "flag.2.crossed.fill"
         default:            return "figure.strengthtraining.traditional"
         }
     }
@@ -199,6 +214,7 @@ struct ActivityItem: Codable, Identifiable, Equatable {
         case "pr":          return .brandYellow
         case "achievement": return .brandOrange
         case "quest":       return .brandGreen
+        case "challenge":   return .brandOrange
         default:            return .brandBlue
         }
     }
@@ -258,6 +274,230 @@ struct GuildMember: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Talents
+
+struct TalentBranch: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var color: String
+    var icon: String
+
+    var tint: Color {
+        switch color {
+        case "red":    return .brandOrange
+        case "green":  return .brandGreen
+        case "purple": return .brandPurple
+        default:       return .brandBlue
+        }
+    }
+}
+
+struct TalentNode: Codable, Identifiable, Equatable {
+    struct Requirement: Codable, Equatable {
+        var id: String
+        var rank: Int
+    }
+    var id: String
+    var branch: String
+    var tier: Int
+    var maxRank: Int
+    var requires: [Requirement]
+    var name: String
+    var icon: String
+    var description: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, branch, tier, requires, name, icon, description
+        case maxRank = "max_rank"
+    }
+}
+
+struct TalentTree: Codable, Equatable {
+    var version: Int
+    var branches: [TalentBranch]
+    var nodes: [TalentNode]
+}
+
+/// The server's view of the player's talents. Validation is server-side; the
+/// client mirrors the same rules purely to grey out buttons.
+struct TalentState: Codable, Equatable {
+    static let pointsPerTier = 3
+
+    var tree: TalentTree
+    var ranks: [String: Int]
+    var unspent: Int
+    var spent: Int
+
+    func rank(of id: String) -> Int { ranks[id] ?? 0 }
+
+    func spentInBranch(_ branch: String) -> Int {
+        tree.nodes.filter { $0.branch == branch }.reduce(0) { $0 + rank(of: $1.id) }
+    }
+
+    /// nil when a point can be spent, otherwise the reason it cannot.
+    func blocker(for node: TalentNode) -> String? {
+        if unspent < 1 { return "No unspent points" }
+        if rank(of: node.id) >= node.maxRank { return "Max rank" }
+        let needed = (node.tier - 1) * Self.pointsPerTier
+        if spentInBranch(node.branch) < needed { return "Spend \(needed) points in this branch first" }
+        for req in node.requires where rank(of: req.id) < req.rank {
+            let name = tree.nodes.first { $0.id == req.id }?.name ?? req.id
+            return "Requires \(name) rank \(req.rank)"
+        }
+        return nil
+    }
+}
+
+struct Challenge: Codable, Identifiable, Equatable {
+    struct Standing: Codable, Identifiable, Equatable {
+        var userID: String
+        var displayName: String
+        var level: Int
+        var avatarURL: String?
+        var score: Double
+        var sessions: Int
+        var rank: Int
+        var isSelf: Bool
+
+        var id: String { userID }
+
+        enum CodingKeys: String, CodingKey {
+            case level, score, sessions, rank
+            case userID = "user_id"
+            case displayName = "display_name"
+            case avatarURL = "avatar_url"
+            case isSelf = "is_self"
+        }
+    }
+
+    var id: String
+    var kind: String            // duel | guild
+    var metric: String          // volume | workouts | streak
+    var creatorID: String
+    var opponentID: String?
+    var guildID: String?
+    var startsAt: Int
+    var endsAt: Int
+    var status: String          // pending | active | finished
+    var winnerID: String?
+    var isCreator: Bool
+    var awaitingMe: Bool
+    var standings: [Standing]
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, metric, status, standings
+        case creatorID = "creator_id"
+        case opponentID = "opponent_id"
+        case guildID = "guild_id"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case winnerID = "winner_id"
+        case isCreator = "is_creator"
+        case awaitingMe = "awaiting_me"
+    }
+
+    var isDuel: Bool { kind == "duel" }
+    var me: Standing? { standings.first { $0.isSelf } }
+    var them: Standing? { standings.first { !$0.isSelf } }
+    var didWin: Bool { winnerID != nil && winnerID == me?.userID }
+
+    var metricLabel: String {
+        switch metric {
+        case "workouts": return "Workouts"
+        case "streak":   return "Streak"
+        default:         return "Volume"
+        }
+    }
+
+    var metricIcon: String {
+        switch metric {
+        case "workouts": return "figure.strengthtraining.traditional"
+        case "streak":   return "flame.fill"
+        default:         return "scalemass.fill"
+        }
+    }
+
+    func format(_ score: Double) -> String {
+        switch metric {
+        case "workouts": return "\(Int(score))"
+        case "streak":   return "\(Int(score))d"
+        default:         return PlayerCardView.compactNumber(score) + " lb"
+        }
+    }
+
+    var timeRemaining: String {
+        let secs = endsAt - Int(Date().timeIntervalSince1970)
+        if secs <= 0 { return "Ended" }
+        if secs < 3600 { return "\(max(1, secs / 60))m left" }
+        if secs < 86400 { return "\(secs / 3600)h left" }
+        return "\(secs / 86400)d left"
+    }
+}
+
+struct Quest: Codable, Identifiable, Equatable {
+    var id: String
+    var questKey: String
+    var kind: String            // daily | weekly
+    var title: String
+    var description: String
+    var icon: String
+    var metric: String?
+    var target: Double
+    var progress: Double
+    var xpReward: Int
+    var expiresAt: Int?
+    var completedAt: Int?
+    var claimed: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, title, description, icon, metric, target, progress, claimed
+        case questKey = "quest_key"
+        case xpReward = "xp_reward"
+        case expiresAt = "expires_at"
+        case completedAt = "completed_at"
+    }
+
+    var fraction: Double { target > 0 ? min(1, max(0, progress / target)) : 0 }
+    var isComplete: Bool { completedAt != nil }
+    var isClaimable: Bool { isComplete && !claimed }
+    var isDaily: Bool { kind == "daily" }
+
+    /// "3,200 / 5,000" style progress label, dropping decimals for counts.
+    var progressLabel: String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        let p = f.string(from: NSNumber(value: progress.rounded(.down))) ?? "0"
+        let t = f.string(from: NSNumber(value: target)) ?? "0"
+        return "\(p) / \(t)"
+    }
+}
+
+struct Achievement: Codable, Identifiable, Equatable {
+    var id: String
+    var title: String
+    var desc: String
+    var rarity: String          // common | rare | epic | legendary
+    var xp: Int
+    var icon: String
+    var unlocked: Bool
+    var unlockedAt: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, desc, rarity, xp, icon, unlocked
+        case unlockedAt = "unlocked_at"
+    }
+
+    var rarityColor: Color {
+        switch rarity {
+        case "rare":      return .brandBlue
+        case "epic":      return .brandPurple
+        case "legendary": return .brandOrange
+        default:          return .gray
+        }
+    }
+}
+
 // MARK: - Service
 
 @MainActor
@@ -271,6 +511,19 @@ final class GameProfileService: ObservableObject {
     @Published private(set) var incomingRequests: [Friend] = []
     @Published private(set) var guild: Guild?
     @Published private(set) var guildMembers: [GuildMember] = []
+    @Published private(set) var talents: TalentState?
+    @Published private(set) var activeChallenges: [Challenge] = []
+    @Published private(set) var pendingChallenges: [Challenge] = []
+    @Published private(set) var finishedChallenges: [Challenge] = []
+
+    @Published private(set) var dailyQuests: [Quest] = []
+    @Published private(set) var weeklyQuests: [Quest] = []
+    @Published private(set) var achievements: [Achievement] = []
+
+    /// Set when a sync unlocks achievements, so the UI can celebrate once.
+    @Published var pendingAchievements: [String] = []
+    /// The quest most recently claimed, for the claim animation.
+    @Published var lastClaimedQuest: Quest?
 
     @Published private(set) var isSyncing = false
     @Published var lastError: String?
@@ -317,7 +570,8 @@ final class GameProfileService: ObservableObject {
         performedAt: Date = Date(),
         durationSecs: Int,
         totalVolume: Double,
-        totalReps: Int
+        totalReps: Int,
+        exercises: [SyncExercise]? = nil
     ) {
         var queue = pending
         // Replace rather than append if this id is already queued, so an edited
@@ -331,7 +585,8 @@ final class GameProfileService: ObservableObject {
             totalVolume: totalVolume,
             totalReps: totalReps,
             xpEarned: nil,
-            clientRev: (queue.first { $0.id == id }?.clientRev ?? 0) + 1
+            clientRev: (queue.first { $0.id == id }?.clientRev ?? 0) + 1,
+            exercises: exercises
         )
         queue.removeAll { $0.id == id }
         queue.append(session)
@@ -348,12 +603,14 @@ final class GameProfileService: ObservableObject {
         let levelsGained: Int
         let serverTime: Int
         let profile: FitnessProfile
+        let achievementsUnlocked: [String]?
 
         enum CodingKeys: String, CodingKey {
             case accepted, profile
             case xpGained = "xp_gained"
             case levelsGained = "levels_gained"
             case serverTime = "server_time"
+            case achievementsUnlocked = "achievements_unlocked"
         }
     }
 
@@ -378,6 +635,16 @@ final class GameProfileService: ObservableObject {
                     ]
                     if let name = session.name { dict["name"] = name }
                     if let programID = session.programID { dict["program_id"] = programID }
+                    if let exercises = session.exercises, !exercises.isEmpty {
+                        dict["payload"] = [
+                            "exercises": exercises.map { exercise -> [String: Any] in
+                                [
+                                    "name": exercise.name,
+                                    "sets": exercise.sets.map { ["reps": $0.reps, "weight": $0.weight] },
+                                ]
+                            },
+                        ]
+                    }
                     return dict
                 },
             ]
@@ -394,6 +661,11 @@ final class GameProfileService: ObservableObject {
             profile = response.profile
             if response.levelsGained > 0 { pendingLevelUps = response.levelsGained }
             if response.xpGained > 0 { lastXPGain = response.xpGained }
+            if let unlocked = response.achievementsUnlocked, !unlocked.isEmpty {
+                pendingAchievements = unlocked
+            }
+            // A workout moves quest progress; refresh the board if anything went up.
+            if !outbound.isEmpty { await loadQuests() }
 
             lastError = nil
             return true
@@ -429,7 +701,75 @@ final class GameProfileService: ObservableObject {
         async let feedTask: Void = loadFeed()
         async let friendsTask: Void = loadFriends()
         async let guildTask: Void = loadGuild()
-        _ = await (profileTask, feedTask, friendsTask, guildTask)
+        async let challengesTask: Void = loadChallenges()
+        async let questTask: Void = loadQuests()
+        _ = await (profileTask, feedTask, friendsTask, guildTask, challengesTask, questTask)
+    }
+
+    // MARK: Quests & achievements
+
+    private struct QuestsResponse: Decodable {
+        let daily: [Quest]
+        let weekly: [Quest]
+    }
+    private struct ClaimResponse: Decodable {
+        let xpGained: Int
+        let levelsGained: Int
+        let quest: Quest
+        enum CodingKeys: String, CodingKey {
+            case quest
+            case xpGained = "xp_gained"
+            case levelsGained = "levels_gained"
+        }
+    }
+    private struct AchievementsResponse: Decodable { let achievements: [Achievement] }
+
+    var claimableQuestCount: Int {
+        (dailyQuests + weeklyQuests).filter(\.isClaimable).count
+    }
+
+    func loadQuests() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let response: QuestsResponse = try await auth.request("fitness/quests", method: "GET")
+            dailyQuests = response.daily
+            weeklyQuests = response.weekly
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Claims a completed quest. XP is paid by the server on claim, so the
+    /// profile is refreshed afterwards to pick up the new total.
+    func claimQuest(_ quest: Quest) async {
+        guard auth.isSignedIn, quest.isClaimable else { return }
+        do {
+            let response: ClaimResponse = try await auth.request(
+                "fitness/quests/\(quest.id)/claim", method: "POST", body: [:]
+            )
+            lastClaimedQuest = response.quest
+            if response.xpGained > 0 { lastXPGain = response.xpGained }
+            if response.levelsGained > 0 { pendingLevelUps = response.levelsGained }
+            replaceQuest(response.quest)
+            await loadProfile()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func replaceQuest(_ quest: Quest) {
+        if let i = dailyQuests.firstIndex(where: { $0.id == quest.id }) { dailyQuests[i] = quest }
+        if let i = weeklyQuests.firstIndex(where: { $0.id == quest.id }) { weeklyQuests[i] = quest }
+    }
+
+    func loadAchievements() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let response: AchievementsResponse = try await auth.request("fitness/achievements", method: "GET")
+            achievements = response.achievements
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func loadProfile() async {
@@ -496,14 +836,25 @@ final class GameProfileService: ObservableObject {
         }
     }
 
-    func requestFriend(email: String) async {
-        guard auth.isSignedIn else { return }
-        _ = try? await auth.requestRaw(
-            "fitness/friends/request", method: "POST",
-            token: auth.token, body: ["email": email]
-        )
+    /// `query` is an email or a friend code; the server tells them apart.
+    /// Returns an error message to show, or nil on success.
+    @discardableResult
+    func requestFriend(query: String) async -> String? {
+        guard auth.isSignedIn else { return "Not signed in." }
+        var failure: String?
+        do {
+            _ = try await auth.requestRaw(
+                "fitness/friends/request", method: "POST",
+                token: auth.token, body: ["query": query.trimmingCharacters(in: .whitespaces)]
+            )
+        } catch {
+            failure = error.localizedDescription
+        }
         await loadFriends()
+        return failure
     }
+
+    func requestFriend(email: String) async { _ = await requestFriend(query: email) }
 
     func respondToFriendRequest(userID: String, accept: Bool) async {
         guard auth.isSignedIn else { return }
@@ -542,6 +893,87 @@ final class GameProfileService: ObservableObject {
         await loadGuild()
     }
 
+    // MARK: Talents
+
+    func loadTalents() async {
+        guard auth.isSignedIn else { return }
+        do {
+            talents = try await auth.request("fitness/talents", method: "GET")
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Spends one point. Returns the server's rejection reason, or nil on success.
+    @discardableResult
+    func spendTalent(_ talentID: String) async -> String? {
+        guard auth.isSignedIn else { return "Not signed in" }
+        do {
+            talents = try await auth.request(
+                "fitness/talents/spend", method: "POST", body: ["talent_id": talentID]
+            )
+            await loadProfile()
+            return nil
+        } catch {
+            lastError = error.localizedDescription
+            return error.localizedDescription
+        }
+    }
+
+    func respecTalents() async {
+        guard auth.isSignedIn else { return }
+        do {
+            talents = try await auth.request("fitness/talents/respec", method: "POST", body: [:])
+            await loadProfile()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    // MARK: Challenges
+
+    private struct ChallengesResponse: Decodable {
+        let pending: [Challenge]
+        let active: [Challenge]
+        let finished: [Challenge]
+    }
+
+    func loadChallenges() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let response: ChallengesResponse = try await auth.request("fitness/challenges", method: "GET")
+            pendingChallenges = response.pending
+            activeChallenges = response.active
+            finishedChallenges = response.finished
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Returns the server's error message on failure, nil on success.
+    @discardableResult
+    func createChallenge(kind: String, metric: String, opponentUserID: String?, days: Int) async -> String? {
+        guard auth.isSignedIn else { return "Sign in first." }
+        var body: [String: Any] = ["kind": kind, "metric": metric, "days": days]
+        if let opponentUserID { body["opponent_user_id"] = opponentUserID }
+        do {
+            _ = try await auth.requestRaw("fitness/challenges", method: "POST", token: auth.token, body: body)
+            await loadChallenges()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    func respondToChallenge(id: String, accept: Bool) async {
+        guard auth.isSignedIn else { return }
+        _ = try? await auth.requestRaw(
+            "fitness/challenges/\(id)/\(accept ? "accept" : "decline")",
+            method: "POST", token: auth.token, body: nil
+        )
+        await loadChallenges()
+    }
+
     /// Clears everything on sign-out. The pending queue is deliberately kept:
     /// if the same person signs back in, their unsynced workouts still upload.
     func reset() {
@@ -552,5 +984,14 @@ final class GameProfileService: ObservableObject {
         incomingRequests = []
         guild = nil
         guildMembers = []
+        activeChallenges = []
+        pendingChallenges = []
+        finishedChallenges = []
+        talents = nil
+        dailyQuests = []
+        weeklyQuests = []
+        achievements = []
+        pendingAchievements = []
+        lastClaimedQuest = nil
     }
 }

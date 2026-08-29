@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Local Xcode export for TestFlight (macOS, signed .pkg). Used by scripts/ship.sh. -->
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>destination</key>
+    <string>export</string>
+    <key>teamID</key>
+    <string>MG4YW8XX2Z</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>EC92881F03ECB13449DDD839E2E276767C1C1F92</string>
+    <key>installerSigningCertificate</key>
+    <string>049686F40318329C1EBBB41B7C5E66500D924422</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>org.batesai.endgamefitness</key>
+        <string>Endgame Fitness macOS AppStore 2026-08-28</string>
+    </dict>
+</dict>
+</plist>

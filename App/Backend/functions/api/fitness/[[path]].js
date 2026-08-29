@@ -17,9 +17,27 @@
  *   POST   guild                   create a guild { name, motto }
  *   POST   guild/join              { guild_id }
  *   POST   guild/leave
+ *   GET    talents                 tree definition + allocated ranks + unspent points
+ *   POST   talents/spend           { talent_id } — one point, server-validated
+ *   POST   talents/respec          refund every point
+ *   GET    challenges              mine: pending / active / finished (+ live standings)
+ *   POST   challenges              { kind, metric, opponent_user_id | (guild), days }
+ *   POST   challenges/:id/accept
+ *   POST   challenges/:id/decline
+ *   GET    quests                  active daily + weekly quests (generated on read)
+ *   POST   quests/:id/claim        claim a completed quest → XP + feed item
+ *   GET    achievements            catalog + unlocked state
  */
 
 import { requireUser, json, withCors, corsHeaders, now } from '../../_lib/session.js';
+import { computeStandings, settle, validateCreate } from '../../_lib/challenges.js';
+import {
+  TALENT_TREE, nodeById, ranksFromRows, pointsSpent, validateSpend,
+  applyTalentEffects, streakShieldDays, bonusTalentPoints,
+} from '../../_lib/talents.js';
+import {
+  boardFor, advance, eventForWorkout, questDefinition, newlyUnlocked, achievementCatalog,
+} from '../../_lib/game.js';
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -62,6 +80,20 @@ export async function onRequest(context) {
         break;
       case 'ai':
         response = await handleAI(request, env, userId);
+        break;
+      case 'talents':
+        response = await handleTalents(request, env, userId, path);
+        break;
+      case 'challenges':
+        response = await handleChallenges(request, env, userId, path);
+        break;
+      case 'quests':
+        response = path[1] && path[2] === 'claim'
+          ? await claimQuest(request, env, userId, path[1])
+          : await getQuests(env, userId);
+        break;
+      case 'achievements':
+        response = await getAchievements(env, userId);
         break;
       default:
         response = json({ error: 'Unknown endpoint' }, 404);
@@ -133,7 +165,39 @@ async function handleAI(request, env, userId) {
 /* Profile                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Friend codes: a short, shareable handle so people can add each other in the
+ * gym without typing an email. Generated lazily the first time a profile is
+ * read; the unique index makes a collision a retry rather than a duplicate.
+ */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
+function randomFriendCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+}
+async function ensureFriendCode(env, userId) {
+  const row = await env.DB.prepare('SELECT friend_code FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  if (!row || row.friend_code) return row ? row.friend_code : null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = randomFriendCode();
+    try {
+      const res = await env.DB.prepare(
+        'UPDATE fitness_profiles SET friend_code = ? WHERE user_id = ? AND friend_code IS NULL'
+      ).bind(code, userId).run();
+      if (res.meta && res.meta.changes === 0) break; // someone else set it meanwhile
+      return code;
+    } catch (e) {
+      if (!/UNIQUE|constraint/i.test(String(e && e.message))) throw e;
+    }
+  }
+  const again = await env.DB.prepare('SELECT friend_code FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  return again ? again.friend_code : null;
+}
+
 async function getProfile(env, userId) {
+  await ensureFriendCode(env, userId);
   const profile = await env.DB.prepare(
     `SELECT p.*, u.email, u.avatar_url AS account_avatar
        FROM fitness_profiles p JOIN users u ON u.id = p.user_id
@@ -215,6 +279,7 @@ function shapeProfile(row) {
     avatar_config: avatar,
     title: row.title,
     is_public: !!row.is_public,
+    friend_code: row.friend_code || null,
   };
 }
 
@@ -250,15 +315,17 @@ function xpForWorkout({ total_volume = 0, total_reps = 0, duration_secs = 0 }) {
   return Math.max(10, Math.round(volumeXp + repXp + timeXp));
 }
 
-function streakAfter(lastDate, performedDate) {
+function streakAfter(lastDate, performedDate, shieldDays = 0) {
   // Returns 'continue' | 'reset' | 'same-day' given two YYYY-MM-DD strings.
+  // `shieldDays` (Streak Shield talent) is how many missed days are forgiven.
   if (!lastDate) return 'continue';
   if (lastDate === performedDate) return 'same-day';
   const last = Date.parse(`${lastDate}T00:00:00Z`);
   const cur = Date.parse(`${performedDate}T00:00:00Z`);
   if (Number.isNaN(last) || Number.isNaN(cur)) return 'continue';
   const days = Math.round((cur - last) / 86400000);
-  return days === 1 ? 'continue' : days <= 0 ? 'same-day' : 'reset';
+  if (days <= 0) return 'same-day';
+  return days - 1 <= shieldDays ? 'continue' : 'reset';
 }
 
 const isoDay = (epochSeconds) => new Date(epochSeconds * 1000).toISOString().slice(0, 10);
@@ -296,6 +363,15 @@ async function handleSync(request, env, userId) {
   let totalVolume = profile.total_volume;
   let totalReps = profile.total_reps;
 
+  // Talent effects are server-side: load ranks + the social context they key on.
+  const talentRows = await env.DB.prepare('SELECT talent_id, rank FROM talents WHERE user_id = ?')
+    .bind(userId).all();
+  const ranks = ranksFromRows(talentRows.results);
+  const friendCount = (await friendIdsOf(env, userId)).length;
+  const guildRow = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  const shieldDays = streakShieldDays(ranks);
+
   // Oldest first so streak arithmetic walks forward in time.
   incoming.sort((a, b) => (a.performed_at || 0) - (b.performed_at || 0));
 
@@ -329,7 +405,18 @@ async function handleSync(request, env, userId) {
       continue;
     }
 
-    const xp = xpForWorkout({ total_volume: volume, total_reps: reps, duration_secs: duration });
+    // Streak first so Second Wind sees the streak this session produces.
+    const day = isoDay(performedAt);
+    const transition = streakAfter(lastWorkoutDate, day, shieldDays);
+    if (transition === 'continue') currentStreak += 1;
+    else if (transition === 'reset') currentStreak = 1;
+    if (transition !== 'same-day') lastWorkoutDate = day;
+    longestStreak = Math.max(longestStreak, currentStreak);
+
+    const baseXp = xpForWorkout({ total_volume: volume, total_reps: reps, duration_secs: duration });
+    const xp = applyTalentEffects(baseXp, ranks, {
+      volume, streak: currentStreak, friends: friendCount, inGuild: !!guildRow,
+    });
 
     await env.DB.prepare(
       `INSERT INTO workout_sessions
@@ -346,12 +433,15 @@ async function handleSync(request, env, userId) {
     totalVolume += volume;
     totalReps += reps;
 
-    const day = isoDay(performedAt);
-    const transition = streakAfter(lastWorkoutDate, day);
-    if (transition === 'continue') currentStreak += 1;
-    else if (transition === 'reset') currentStreak = 1;
-    if (transition !== 'same-day') lastWorkoutDate = day;
-    longestStreak = Math.max(longestStreak, currentStreak);
+    const prs = await recordPersonalRecords(env, userId, session, performedAt);
+    if (prs > 0) {
+      await pushActivity(env, userId, 'pr', `set ${prs} new personal record${prs === 1 ? '' : 's'}`,
+        { session_id: session.id, count: prs });
+    }
+    // Quests advance after the talent-adjusted XP for this session is final.
+    await advanceQuests(env, userId, eventForWorkout({
+      total_volume: volume, total_reps: reps, duration_secs: duration, prs,
+    }));
 
     await env.DB.prepare(
       'INSERT INTO xp_transactions (id, user_id, amount, reason, source_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
@@ -367,6 +457,7 @@ async function handleSync(request, env, userId) {
   const newXp = profile.xp + xpGained;
   const newLevel = levelForXp(newXp);
   const levelsGained = Math.max(0, newLevel - levelBefore);
+  const pointsGained = levelsGained + bonusTalentPoints(ranks, levelBefore, newLevel);
 
   await env.DB.prepare(
     `UPDATE fitness_profiles
@@ -375,13 +466,15 @@ async function handleSync(request, env, userId) {
             total_workouts = ?, total_volume = ?, total_reps = ?, updated_at = ?
       WHERE user_id = ?`
   ).bind(
-    newXp, newLevel, levelsGained, currentStreak, longestStreak, lastWorkoutDate,
+    newXp, newLevel, pointsGained, currentStreak, longestStreak, lastWorkoutDate,
     totalWorkouts, totalVolume, totalReps, now(), userId
   ).run();
 
   if (levelsGained > 0) {
     await pushActivity(env, userId, 'level_up', `reached level ${newLevel}`, { level: newLevel });
   }
+
+  const unlocked = await checkAchievements(env, userId);
 
   // Hand back everything the client hasn't seen. Capped so a fresh install with
   // years of history pages through instead of timing out on one request.
@@ -404,6 +497,8 @@ async function handleSync(request, env, userId) {
     accepted,
     xp_gained: xpGained,
     levels_gained: levelsGained,
+    talent_points_gained: pointsGained,
+    achievements_unlocked: unlocked,
     sessions,
     has_more: sessions.length === 500,
     server_time: now(),
@@ -496,6 +591,8 @@ async function reactToActivity(request, env, userId, activityId) {
     `INSERT INTO activity_reactions (activity_id, user_id, emoji, created_at)
      VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`
   ).bind(activityId, userId, emoji, now()).run();
+
+  if (activity.user_id !== userId) await advanceQuests(env, userId, { reactions: 1 });
 
   return json({ success: true });
 }
@@ -602,15 +699,27 @@ async function handleFriends(request, env, userId, path) {
     const body = await request.json().catch(() => ({}));
     let targetId = body.user_id;
 
-    if (!targetId && body.email) {
+    // One field, two shapes: "ABC234" is a friend code, anything with an @ is
+    // an email. The client sends whichever the user typed as `query`.
+    const query = String(body.query || '').trim();
+    const code = String(body.code || (query && !query.includes('@') ? query : '')).trim().toUpperCase();
+    const email = String(body.email || (query.includes('@') ? query : '')).trim().toLowerCase();
+
+    if (!targetId && code) {
+      const target = await env.DB.prepare('SELECT user_id FROM fitness_profiles WHERE friend_code = ?')
+        .bind(code).first();
+      if (!target) return json({ error: 'No player has that friend code' }, 404);
+      targetId = target.user_id;
+    }
+    if (!targetId && email) {
       const target = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
-        .bind(String(body.email).toLowerCase()).first();
+        .bind(email).first();
       // Deliberately the same response whether or not the account exists, so this
       // endpoint can't be used to enumerate which emails are registered.
       if (!target) return json({ success: true, status: 'pending' });
       targetId = target.id;
     }
-    if (!targetId) return json({ error: 'user_id or email is required' }, 400);
+    if (!targetId) return json({ error: 'user_id, code or email is required' }, 400);
     if (targetId === userId) return json({ error: 'You cannot friend yourself' }, 400);
 
     const [low, high] = pair(userId, targetId);
@@ -643,6 +752,11 @@ async function handleFriends(request, env, userId, path) {
       await env.DB.prepare(
         `UPDATE friendships SET status = 'accepted', updated_at = ? WHERE user_low = ? AND user_high = ?`
       ).bind(now(), low, high).run();
+      // Both sides gained a friend.
+      for (const uid of [userId, otherId]) {
+        await advanceQuests(env, uid, { friends: 1 });
+        await checkAchievements(env, uid);
+      }
     } else {
       await env.DB.prepare('DELETE FROM friendships WHERE user_low = ? AND user_high = ?')
         .bind(low, high).run();
@@ -707,6 +821,7 @@ async function handleGuild(request, env, userId, path) {
       `INSERT INTO guild_members (guild_id, user_id, role, joined_at) VALUES (?, ?, 'owner', ?)`
     ).bind(guildId, userId, now()).run();
 
+    await checkAchievements(env, userId);
     return json({ success: true, guild_id: guildId }, 201);
   }
 
@@ -730,6 +845,7 @@ async function handleGuild(request, env, userId, path) {
     await env.DB.prepare(
       `INSERT INTO guild_members (guild_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`
     ).bind(guildId, userId, now()).run();
+    await checkAchievements(env, userId);
     return json({ success: true });
   }
 
@@ -761,4 +877,536 @@ async function handleGuild(request, env, userId, path) {
   }
 
   return json({ error: 'Unknown endpoint' }, 404);
+}
+
+/* ------------------------------------------------------------------ */
+/* Talents                                                             */
+/* ------------------------------------------------------------------ */
+
+async function talentState(env, userId) {
+  const profile = await env.DB.prepare('SELECT talent_points FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  if (!profile) return null;
+  const rows = await env.DB.prepare('SELECT talent_id, rank FROM talents WHERE user_id = ?')
+    .bind(userId).all();
+  const ranks = ranksFromRows(rows.results);
+  return {
+    tree: TALENT_TREE,
+    ranks,
+    unspent: profile.talent_points,
+    spent: pointsSpent(ranks),
+  };
+}
+
+async function handleTalents(request, env, userId, path) {
+  const action = path[1] || '';
+
+  if (request.method === 'GET' && !action) {
+    const state = await talentState(env, userId);
+    return state ? json(state) : json({ error: 'Profile not found' }, 404);
+  }
+
+  if (action === 'spend' && request.method === 'POST') {
+    const { talent_id: talentId } = await request.json().catch(() => ({}));
+    if (!talentId) return json({ error: 'talent_id is required' }, 400);
+
+    const state = await talentState(env, userId);
+    if (!state) return json({ error: 'Profile not found' }, 404);
+    const check = validateSpend(state.ranks, state.unspent, talentId);
+    if (!check.ok) return json({ error: check.error }, 409);
+    const node = nodeById(talentId);
+
+    // Both statements are guarded so two racing requests cannot overspend: the
+    // decrement only lands while a point exists, and the rank only climbs while
+    // below max. D1 batch runs as one transaction.
+    const [dec] = await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE fitness_profiles SET talent_points = talent_points - 1, updated_at = ? WHERE user_id = ? AND talent_points > 0'
+      ).bind(now(), userId),
+      env.DB.prepare(
+        `INSERT INTO talents (user_id, talent_id, rank) VALUES (?, ?, 1)
+         ON CONFLICT (user_id, talent_id) DO UPDATE SET rank = rank + 1 WHERE rank < ?`
+      ).bind(userId, talentId, node.max_rank),
+    ]);
+    if (dec && dec.meta && dec.meta.changes === 0) {
+      return json({ error: 'No unspent talent points' }, 409);
+    }
+    return json({ success: true, ...(await talentState(env, userId)) });
+  }
+
+  if (action === 'respec' && request.method === 'POST') {
+    const state = await talentState(env, userId);
+    if (!state) return json({ error: 'Profile not found' }, 404);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM talents WHERE user_id = ?').bind(userId),
+      env.DB.prepare(
+        'UPDATE fitness_profiles SET talent_points = talent_points + ?, updated_at = ? WHERE user_id = ?'
+      ).bind(state.spent, now(), userId),
+    ]);
+    return json({ success: true, refunded: state.spent, ...(await talentState(env, userId)) });
+  }
+
+  return json({ error: 'Unknown endpoint' }, 404);
+}
+
+/* ------------------------------------------------------------------ */
+/* Challenges                                                          */
+/* ------------------------------------------------------------------ */
+
+async function handleChallenges(request, env, userId, path) {
+  const id = path[1] || '';
+  const action = path[2] || '';
+
+  if (request.method === 'GET' && !id) return listChallenges(env, userId);
+  if (request.method === 'POST' && !id) return createChallenge(request, env, userId);
+  if (request.method === 'POST' && id && (action === 'accept' || action === 'decline')) {
+    return respondToChallenge(env, userId, id, action === 'accept');
+  }
+  return json({ error: 'Unknown endpoint' }, 404);
+}
+
+async function createChallenge(request, env, userId) {
+  const body = await request.json().catch(() => ({}));
+  const v = validateCreate(body);
+  if (!v.ok) return json({ error: v.error }, 400);
+
+  const t = now();
+  const challengeId = crypto.randomUUID();
+  const endsAt = t + v.days * 86400;
+
+  if (v.kind === 'duel') {
+    const opponentId = String(body.opponent_user_id);
+    if (opponentId === userId) return json({ error: 'You cannot duel yourself' }, 400);
+    const friends = await friendIdsOf(env, userId);
+    if (!friends.includes(opponentId)) return json({ error: 'You can only duel a friend' }, 403);
+
+    const open = await env.DB.prepare(
+      `SELECT id FROM challenges
+        WHERE kind = 'duel' AND status IN ('pending','active')
+          AND ((creator_id = ? AND opponent_id = ?) OR (creator_id = ? AND opponent_id = ?))`
+    ).bind(userId, opponentId, opponentId, userId).first();
+    if (open) return json({ error: 'You already have an open duel with this friend' }, 409);
+
+    // Duels start when accepted; starts_at is provisional until then.
+    await env.DB.prepare(
+      `INSERT INTO challenges (id, kind, metric, creator_id, opponent_id, guild_id, starts_at, ends_at, status, created_at)
+       VALUES (?, 'duel', ?, ?, ?, NULL, ?, ?, 'pending', ?)`
+    ).bind(challengeId, v.metric, userId, opponentId, t, endsAt, t).run();
+    for (const uid of [userId, opponentId]) {
+      await env.DB.prepare(
+        'INSERT INTO challenge_participants (challenge_id, user_id, joined_at) VALUES (?, ?, ?)'
+      ).bind(challengeId, uid, t).run();
+    }
+    return json({ success: true, challenge_id: challengeId, status: 'pending' }, 201);
+  }
+
+  // guild challenge: creator must be owner/officer; enrol every current member.
+  const membership = await env.DB.prepare('SELECT guild_id, role FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  if (!membership) return json({ error: 'You are not in a guild' }, 404);
+  if (!['owner', 'officer'].includes(membership.role)) {
+    return json({ error: 'Only guild owners and officers can start a guild challenge' }, 403);
+  }
+  const running = await env.DB.prepare(
+    `SELECT id FROM challenges WHERE guild_id = ? AND status = 'active'`
+  ).bind(membership.guild_id).first();
+  if (running) return json({ error: 'Your guild already has an active challenge' }, 409);
+
+  await env.DB.prepare(
+    `INSERT INTO challenges (id, kind, metric, creator_id, opponent_id, guild_id, starts_at, ends_at, status, created_at)
+     VALUES (?, 'guild', ?, ?, NULL, ?, ?, ?, 'active', ?)`
+  ).bind(challengeId, v.metric, userId, membership.guild_id, t, endsAt, t).run();
+  const members = await env.DB.prepare('SELECT user_id FROM guild_members WHERE guild_id = ?')
+    .bind(membership.guild_id).all();
+  for (const m of members.results || []) {
+    await env.DB.prepare(
+      'INSERT INTO challenge_participants (challenge_id, user_id, joined_at) VALUES (?, ?, ?)'
+    ).bind(challengeId, m.user_id, t).run();
+  }
+  await pushActivity(env, userId, 'challenge', `started a ${v.days}-day guild ${v.metric} challenge`,
+    { challenge_id: challengeId, metric: v.metric });
+  return json({ success: true, challenge_id: challengeId, status: 'active' }, 201);
+}
+
+async function respondToChallenge(env, userId, challengeId, accept) {
+  const row = await env.DB.prepare('SELECT * FROM challenges WHERE id = ?').bind(challengeId).first();
+  if (!row) return json({ error: 'Challenge not found' }, 404);
+  if (row.kind !== 'duel' || row.status !== 'pending') return json({ error: 'Nothing to respond to' }, 409);
+  // Only the invited side may answer — the creator cannot self-accept.
+  if (row.opponent_id !== userId) return json({ error: 'Not your invite' }, 403);
+
+  const t = now();
+  if (accept) {
+    // The clock starts now, for the originally requested duration.
+    const days = Math.max(1, Math.round((row.ends_at - row.starts_at) / 86400));
+    await env.DB.prepare(
+      `UPDATE challenges SET status = 'active', starts_at = ?, ends_at = ? WHERE id = ?`
+    ).bind(t, t + days * 86400, challengeId).run();
+    await pushActivity(env, userId, 'challenge', `accepted a ${days}-day ${row.metric} duel`,
+      { challenge_id: challengeId, metric: row.metric, opponent_id: row.creator_id });
+    return json({ success: true, status: 'active' });
+  }
+  await env.DB.prepare(`UPDATE challenges SET status = 'declined' WHERE id = ?`).bind(challengeId).run();
+  return json({ success: true, status: 'declined' });
+}
+
+async function loadParticipants(env, challengeId) {
+  const rows = await env.DB.prepare(
+    `SELECT cp.user_id, p.display_name, p.level, u.avatar_url
+       FROM challenge_participants cp
+       JOIN fitness_profiles p ON p.user_id = cp.user_id
+       JOIN users u ON u.id = cp.user_id
+      WHERE cp.challenge_id = ?`
+  ).bind(challengeId).all();
+  return rows.results || [];
+}
+
+async function sessionsInWindow(env, userIds, startsAt, endsAt) {
+  const map = new Map();
+  if (!userIds.length) return map;
+  const rows = await env.DB.prepare(
+    `SELECT user_id, performed_at, total_volume FROM workout_sessions
+      WHERE user_id IN (${userIds.map(() => '?').join(',')})
+        AND performed_at >= ? AND performed_at < ?`
+  ).bind(...userIds, startsAt, endsAt).all();
+  for (const r of rows.results || []) {
+    if (!map.has(r.user_id)) map.set(r.user_id, []);
+    map.get(r.user_id).push(r);
+  }
+  return map;
+}
+
+/** Standings + lazy settlement for one challenge row. */
+async function hydrateChallenge(env, row, userId) {
+  const participants = await loadParticipants(env, row.id);
+  const sessions = await sessionsInWindow(env, participants.map((p) => p.user_id), row.starts_at, row.ends_at);
+  const standings = computeStandings(row, participants, sessions);
+
+  if (row.status === 'active' && now() >= row.ends_at) {
+    // Claim the settlement atomically so two concurrent GETs cannot double-award.
+    const claimed = await env.DB.prepare(
+      `UPDATE challenges SET status = 'finished', settled_at = ? WHERE id = ? AND status = 'active'`
+    ).bind(now(), row.id).run();
+    if (claimed.meta && claimed.meta.changes === 1) {
+      const outcome = settle(row, standings);
+      await env.DB.prepare('UPDATE challenges SET winner_id = ? WHERE id = ?')
+        .bind(outcome.winner_id, row.id).run();
+      for (const award of outcome.awards) {
+        // awardXp is the one XP-outside-sync helper: xp txn, level/talent-point
+        // recompute and the level-up feed post all live there.
+        await awardXp(env, award.user_id, award.amount, award.reason, row.id);
+      }
+      const name = (uid) => (participants.find((p) => p.user_id === uid) || {}).display_name || 'someone';
+      if (outcome.winner_id) {
+        await pushActivity(env, outcome.winner_id, 'challenge',
+          row.kind === 'duel'
+            ? `won a ${row.metric} duel against ${name(standings.find((s) => s.user_id !== outcome.winner_id)?.user_id)}`
+            : `topped the guild ${row.metric} challenge`,
+          { challenge_id: row.id, metric: row.metric, kind: row.kind });
+      } else if (row.kind === 'duel' && outcome.awards.length) {
+        await pushActivity(env, row.creator_id, 'challenge', `drew a ${row.metric} duel`, { challenge_id: row.id });
+      }
+      row = { ...row, status: 'finished', winner_id: outcome.winner_id, settled_at: now() };
+    } else {
+      row = (await env.DB.prepare('SELECT * FROM challenges WHERE id = ?').bind(row.id).first()) || row;
+    }
+  }
+
+  return {
+    id: row.id,
+    kind: row.kind,
+    metric: row.metric,
+    creator_id: row.creator_id,
+    opponent_id: row.opponent_id,
+    guild_id: row.guild_id,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    status: row.status,
+    winner_id: row.winner_id,
+    is_creator: row.creator_id === userId,
+    awaiting_me: row.status === 'pending' && row.opponent_id === userId,
+    standings: standings.map((s) => ({
+      user_id: s.user_id,
+      display_name: s.display_name,
+      level: s.level,
+      avatar_url: s.avatar_url,
+      score: s.score,
+      sessions: s.sessions,
+      rank: s.rank,
+      is_self: s.user_id === userId,
+    })),
+  };
+}
+
+async function listChallenges(env, userId) {
+  const rows = await env.DB.prepare(
+    `SELECT c.* FROM challenges c
+       JOIN challenge_participants cp ON cp.challenge_id = c.id
+      WHERE cp.user_id = ? AND c.status IN ('pending','active','finished')
+      ORDER BY c.created_at DESC
+      LIMIT 40`
+  ).bind(userId).all();
+
+  const pending = [];
+  const active = [];
+  const finished = [];
+  for (const row of rows.results || []) {
+    const c = await hydrateChallenge(env, row, userId);
+    if (c.status === 'pending') pending.push(c);
+    else if (c.status === 'active') active.push(c);
+    else if (c.status === 'finished') finished.push(c);
+  }
+  return json({ pending, active, finished: finished.slice(0, 10), server_time: now() });
+}
+
+/* ------------------------------------------------------------------ */
+/* Quests & achievements                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Award XP outside the sync path (quest claims, achievements). Re-reads the
+ * profile so it composes with whatever handleSync just wrote. Returns levels
+ * gained so callers can post a level-up.
+ */
+async function awardXp(env, userId, amount, reason, sourceId) {
+  const profile = await env.DB.prepare('SELECT xp, level FROM fitness_profiles WHERE user_id = ?')
+    .bind(userId).first();
+  if (!profile) return 0;
+  const newXp = profile.xp + amount;
+  const newLevel = levelForXp(newXp);
+  const gained = Math.max(0, newLevel - profile.level);
+  await env.DB.prepare(
+    `UPDATE fitness_profiles SET xp = ?, level = ?, talent_points = talent_points + ?, updated_at = ?
+      WHERE user_id = ?`
+  ).bind(newXp, newLevel, gained, now(), userId).run();
+  await env.DB.prepare(
+    'INSERT INTO xp_transactions (id, user_id, amount, reason, source_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), userId, amount, reason, sourceId || null, now()).run();
+  if (gained > 0) {
+    await pushActivity(env, userId, 'level_up', `reached level ${newLevel}`, { level: newLevel });
+  }
+  return gained;
+}
+
+/**
+ * Make sure the user's board for right now exists. Deterministic ids make this
+ * an idempotent INSERT OR IGNORE, so it is safe to call on every read/event.
+ */
+async function ensureBoard(env, userId, epoch = now()) {
+  const board = boardFor(userId, epoch);
+  const stmt = env.DB.prepare(
+    `INSERT OR IGNORE INTO quests
+       (id, user_id, quest_key, kind, target, progress, xp_reward, expires_at, completed_at, claimed)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, 0)`
+  );
+  await env.DB.batch(board.map((q) => stmt.bind(q.id, userId, q.key, q.kind, q.target, q.xp, q.expires_at)));
+  return board;
+}
+
+function shapeQuest(row) {
+  const def = questDefinition(row.quest_key) || {};
+  return {
+    id: row.id,
+    quest_key: row.quest_key,
+    kind: row.kind,
+    title: def.title || row.quest_key,
+    description: def.desc || '',
+    icon: def.icon || 'checkmark.seal.fill',
+    metric: def.metric || null,
+    target: row.target,
+    progress: row.progress,
+    xp_reward: row.xp_reward,
+    expires_at: row.expires_at,
+    completed_at: row.completed_at,
+    claimed: !!row.claimed,
+  };
+}
+
+async function activeQuestRows(env, userId) {
+  const rows = await env.DB.prepare(
+    `SELECT * FROM quests WHERE user_id = ? AND expires_at > ?
+      ORDER BY CASE kind WHEN 'daily' THEN 0 ELSE 1 END, quest_key`
+  ).bind(userId, now()).all();
+  return rows.results || [];
+}
+
+async function getQuests(env, userId) {
+  await ensureBoard(env, userId);
+  const rows = await activeQuestRows(env, userId);
+  const quests = rows.map(shapeQuest);
+  return json({
+    daily: quests.filter((q) => q.kind === 'daily'),
+    weekly: quests.filter((q) => q.kind === 'weekly'),
+    server_time: now(),
+  });
+}
+
+/**
+ * Apply an event ({workouts, volume, reps, minutes, prs, reactions, friends})
+ * to every active, unfinished quest. Completion is recorded here; XP is paid
+ * out on claim so the player gets the moment.
+ */
+async function advanceQuests(env, userId, event) {
+  try {
+    await ensureBoard(env, userId);
+    const rows = await activeQuestRows(env, userId);
+    for (const row of rows) {
+      if (row.completed_at) continue;
+      const next = advance(row, event);
+      if (next === row.progress) continue;
+      const done = next >= row.target;
+      await env.DB.prepare(
+        'UPDATE quests SET progress = ?, completed_at = ? WHERE id = ?'
+      ).bind(next, done ? now() : null, row.id).run();
+    }
+  } catch (e) {
+    console.error('advanceQuests failed:', e && e.message);
+  }
+}
+
+async function claimQuest(request, env, userId, questId) {
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const row = await env.DB.prepare('SELECT * FROM quests WHERE id = ? AND user_id = ?')
+    .bind(questId, userId).first();
+  if (!row) return json({ error: 'Quest not found' }, 404);
+  if (!row.completed_at) return json({ error: 'Quest not complete' }, 409);
+  if (row.claimed) return json({ success: true, xp_gained: 0, levels_gained: 0, quest: shapeQuest(row) });
+
+  // Flip claimed first with a guard so a double-tap cannot pay twice.
+  const flip = await env.DB.prepare(
+    'UPDATE quests SET claimed = 1 WHERE id = ? AND user_id = ? AND claimed = 0'
+  ).bind(questId, userId).run();
+  if (!flip.meta || flip.meta.changes === 0) {
+    return json({ success: true, xp_gained: 0, levels_gained: 0, quest: shapeQuest({ ...row, claimed: 1 }) });
+  }
+
+  const gained = await awardXp(env, userId, row.xp_reward, 'quest', row.id);
+  const def = questDefinition(row.quest_key);
+  await pushActivity(env, userId, 'quest',
+    `completed the ${row.kind} quest "${def ? def.title : row.quest_key}"`,
+    { quest_key: row.quest_key, kind: row.kind, xp: row.xp_reward });
+
+  return json({
+    success: true,
+    xp_gained: row.xp_reward,
+    levels_gained: gained,
+    quest: shapeQuest({ ...row, claimed: 1 }),
+  });
+}
+
+/** Snapshot the numbers the achievement rules look at. */
+async function achievementStats(env, userId) {
+  const p = await env.DB.prepare(
+    'SELECT level, total_workouts, total_volume, longest_streak FROM fitness_profiles WHERE user_id = ?'
+  ).bind(userId).first();
+  if (!p) return null;
+  const friends = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM friendships WHERE status = 'accepted' AND (user_low = ? OR user_high = ?)`
+  ).bind(userId, userId).first();
+  const guild = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
+    .bind(userId).first();
+  return {
+    level: p.level,
+    total_workouts: p.total_workouts,
+    total_volume: p.total_volume,
+    longest_streak: p.longest_streak,
+    friend_count: friends?.n || 0,
+    in_guild: !!guild,
+  };
+}
+
+/** Unlock anything newly earned. Returns the ids unlocked on this call. */
+async function checkAchievements(env, userId) {
+  try {
+    const stats = await achievementStats(env, userId);
+    if (!stats) return [];
+    const have = await env.DB.prepare('SELECT achievement_id FROM achievements WHERE user_id = ?')
+      .bind(userId).all();
+    const fresh = newlyUnlocked(stats, (have.results || []).map((r) => r.achievement_id));
+    const ids = [];
+    for (const a of fresh) {
+      const ins = await env.DB.prepare(
+        `INSERT OR IGNORE INTO achievements (user_id, achievement_id, unlocked_at, progress) VALUES (?, ?, ?, 1.0)`
+      ).bind(userId, a.id, now()).run();
+      if (!ins.meta || ins.meta.changes === 0) continue; // raced; already paid
+      await awardXp(env, userId, a.xp, 'achievement', a.id);
+      await pushActivity(env, userId, 'achievement', `unlocked "${a.title}"`,
+        { achievement_id: a.id, rarity: a.rarity, xp: a.xp });
+      ids.push(a.id);
+    }
+    // Level-based rules may become true only after the XP just paid.
+    if (ids.length) {
+      const again = await checkAchievements(env, userId);
+      ids.push(...again);
+    }
+    return ids;
+  } catch (e) {
+    console.error('checkAchievements failed:', e && e.message);
+    return [];
+  }
+}
+
+async function getAchievements(env, userId) {
+  const rows = await env.DB.prepare(
+    'SELECT achievement_id, unlocked_at FROM achievements WHERE user_id = ?'
+  ).bind(userId).all();
+  const unlockedAt = new Map((rows.results || []).map((r) => [r.achievement_id, r.unlocked_at]));
+  const items = achievementCatalog().map((a) => ({
+    ...a,
+    unlocked: unlockedAt.has(a.id),
+    unlocked_at: unlockedAt.get(a.id) || null,
+  }));
+  return json({
+    achievements: items,
+    unlocked_count: unlockedAt.size,
+    total_count: items.length,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Personal records                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Walk a session payload's exercise/set tree (if the client sent one) and
+ * upsert personal_records. Returns how many records were newly set/beaten.
+ * The current native client uploads aggregates only, so this is a no-op until
+ * it starts sending `payload.exercises[].sets[]{weight, reps}`.
+ */
+async function recordPersonalRecords(env, userId, session, performedAt) {
+  try {
+    const payload = session.payload && typeof session.payload === 'object' ? session.payload : session;
+    const exercises = Array.isArray(payload.exercises) ? payload.exercises : [];
+    let count = 0;
+    for (const ex of exercises) {
+      const name = String(ex.name || ex.exercise || '').trim();
+      const sets = Array.isArray(ex.sets) ? ex.sets : [];
+      if (!name || !sets.length) continue;
+      const best = new Map(); // reps -> best weight
+      for (const set of sets) {
+        const reps = Math.round(Number(set.reps) || 0);
+        const weight = Number(set.weight) || 0;
+        if (reps <= 0 || weight <= 0) continue;
+        if (!best.has(reps) || best.get(reps) < weight) best.set(reps, weight);
+      }
+      for (const [reps, weight] of best) {
+        const existing = await env.DB.prepare(
+          'SELECT weight FROM personal_records WHERE user_id = ? AND exercise = ? AND reps = ?'
+        ).bind(userId, name, reps).first();
+        if (existing && existing.weight >= weight) continue;
+        const e1rm = Math.round(weight * (1 + reps / 30));
+        await env.DB.prepare(
+          `INSERT INTO personal_records (user_id, exercise, reps, weight, estimated_1rm, achieved_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, exercise, reps) DO UPDATE SET
+             weight = excluded.weight, estimated_1rm = excluded.estimated_1rm, achieved_at = excluded.achieved_at`
+        ).bind(userId, name, reps, weight, e1rm, performedAt).run();
+        count += 1;
+      }
+    }
+    return count;
+  } catch (e) {
+    console.error('recordPersonalRecords failed:', e && e.message);
+    return 0;
+  }
 }
