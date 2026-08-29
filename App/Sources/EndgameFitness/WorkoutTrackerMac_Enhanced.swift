@@ -396,10 +396,118 @@ class WorkoutManager: ObservableObject {
     }
 
     func generateInitialProgram() {
-        guard let profile = userProfile else { return }
+        guard userProfile != nil else { return }
 
         // Start with optimal preset by default
         generateProgramWithPreset(preset: "optimal")
+    }
+
+    // MARK: - Program Wizard generation
+
+    /// Builds the mesocycle from the full wizard config: chosen weekdays,
+    /// split, session length, goal emphasis, injuries. Mesocycle length,
+    /// deload and progression style are persisted for the coaching views.
+    func generateProgram(with config: ProgramConfig) {
+        let weekOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        var days = weekOrder.filter { config.weekdays.contains($0) }
+        // Fill in sensible days if fewer were picked than daysPerWeek.
+        if days.count < config.daysPerWeek {
+            for d in weekOrder where !days.contains(d) && days.count < config.daysPerWeek {
+                days.append(d)
+            }
+            days = weekOrder.filter { days.contains($0) }
+        }
+        days = Array(days.prefix(config.daysPerWeek))
+
+        let split = resolvedSplit(for: config)
+        let focus = focusString(for: config.primaryGoal)
+
+        var schedule: [ScheduledWorkout] = []
+        for (i, day) in days.enumerated() {
+            let (label, group): (String, String)
+            switch split {
+            case .fullBody:
+                label = "Full Body \(["A", "B", "C", "D", "E", "F"][i % 6])"
+                group = "Full Body"
+            case .upperLower:
+                label = i % 2 == 0 ? "Upper Body" : "Lower Body"
+                group = i % 2 == 0 ? "Upper" : "Lower"
+            case .ppl, .auto:
+                label = ["Push Day", "Pull Day", "Leg Day"][i % 3]
+                group = ["Push", "Pull", "Legs"][i % 3]
+            }
+
+            var exercises = generateExercises(for: group, duration: config.sessionLength, focus: focus)
+            exercises = injurySafe(exercises, injuries: config.injuries)
+            if config.primaryGoal == .longevity {
+                exercises.append("Mobility Flow 10 min")
+                exercises.append("Zone 2 Cardio 15 min")
+            }
+
+            schedule.append(ScheduledWorkout(
+                dayOfWeek: day,
+                workoutType: label,
+                exercises: exercises,
+                estimatedDuration: config.sessionLength
+            ))
+        }
+
+        weeklySchedule = schedule
+
+        // Persist the cycle-level knobs for the coaching/mesocycle views.
+        let d = UserDefaults.standard
+        d.set(config.mesocycleWeeks, forKey: "mesocycleWeeks")
+        d.set(config.includeDeload, forKey: "deloadEnabled")
+        d.set(config.progression.rawValue, forKey: "progressionStyle")
+        d.set(Date().timeIntervalSince1970, forKey: "programStartDate")
+
+        saveData()
+    }
+
+    func resolvedSplit(for config: ProgramConfig) -> ProgramSplit {
+        guard config.split == .auto else { return config.split }
+        if config.primaryGoal == .longevity && config.daysPerWeek <= 4 { return .fullBody }
+        switch config.daysPerWeek {
+        case ..<4:
+            let strengthy = config.primaryGoal == .getStronger || config.primaryGoal == .buildMuscle
+            return (config.daysPerWeek == 3 && strengthy && config.experienceLevel != .beginner) ? .ppl : .fullBody
+        case 4: return .upperLower
+        default: return .ppl
+        }
+    }
+
+    private func focusString(for goal: TrainingGoal) -> String {
+        switch goal {
+        case .getStronger: return "Strength"
+        case .buildMuscle: return "Muscle Building"
+        case .loseWeight: return "Fat Loss"
+        case .improveEndurance: return "Endurance"
+        case .longevity, .increaseFlexibility, .generalFitness: return "General"
+        }
+    }
+
+    // Swap out exercises that conflict with flagged limitations, keeping the
+    // set/rep scheme suffix (e.g. " 4x8") when one is present.
+    private func injurySafe(_ exercises: [String], injuries: Set<String>) -> [String] {
+        guard !injuries.isEmpty else { return exercises }
+        return exercises.map { ex in
+            let l = ex.lowercased()
+            let scheme = ex.range(of: #" \d+x[\w-]+$"#, options: .regularExpression)
+                .map { String(ex[$0]) } ?? ""
+            if injuries.contains("Low back"),
+               l.contains("deadlift") || l.contains("bent-over") || l.contains("barbell row") || l.contains("good morning") {
+                return "Chest-Supported Rows" + scheme
+            }
+            if injuries.contains("Shoulder"),
+               l.contains("overhead press") || l.contains("push press") || l.contains("snatch") || l.contains("dips") || l.contains("handstand") {
+                return "Landmine Press" + scheme
+            }
+            if injuries.contains("Knee"),
+               l.contains("jump") || l.contains("lunge") || l.contains("leg extension") || l.contains("step-up") || l.contains("pistol") {
+                return "Hip Thrusts" + scheme
+            }
+            return ex
+        }
     }
 
     // Generate program with specific preset and modulation settings
@@ -1478,6 +1586,7 @@ class PersistenceService {
     static let shared = PersistenceService()
     private let sessionsURL: URL
     private let programsURL: URL
+    private let scheduleURL: URL
 
     private init() {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -1488,6 +1597,7 @@ class PersistenceService {
 
         sessionsURL = appFolder.appendingPathComponent("workout_sessions.json")
         programsURL = appFolder.appendingPathComponent("workout_programs.json")
+        scheduleURL = appFolder.appendingPathComponent("weekly_schedule.json")
     }
 
     func save(sessions: [WorkoutSession]) {
@@ -1520,6 +1630,20 @@ class PersistenceService {
         } catch {
             print("Error saving programs: \(error)")
         }
+    }
+
+    func save(schedule: [ScheduledWorkout]) {
+        do {
+            let data = try JSONEncoder().encode(schedule)
+            try data.write(to: scheduleURL)
+        } catch {
+            print("Error saving schedule: \(error)")
+        }
+    }
+
+    func loadSchedule() -> [ScheduledWorkout] {
+        guard let data = try? Data(contentsOf: scheduleURL) else { return [] }
+        return (try? JSONDecoder().decode([ScheduledWorkout].self, from: data)) ?? []
     }
 
     func loadPrograms() -> [WorkoutProgram] {
@@ -1621,7 +1745,7 @@ struct ContentView: View {
     private var sidebar: some View {
         // Sidebar
         VStack(alignment: .leading, spacing: 10) {
-            Text("WorkoutTracker")
+            Text("Endgame Fitness")
                 .font(.title2)
                 .bold()
                 .padding(.bottom)
@@ -1781,8 +1905,35 @@ struct SidebarButton: View {
 // MARK: - Dashboard View
 struct DashboardView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
+    @State private var showProgramWizard = false
+
+    private var todaysScheduledWorkout: ScheduledWorkout? {
+        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        let today = dayNames[Calendar.current.component(.weekday, from: Date()) - 1]
+        return workoutManager.weeklySchedule.first { $0.dayOfWeek == today }
+    }
+
+    // First login: nothing trained, no program built yet. Show a calm
+    // setup state instead of the full grid.
+    private var needsSetup: Bool {
+        workoutManager.sessions.isEmpty && workoutManager.weeklySchedule.isEmpty
+    }
 
     var body: some View {
+        Group {
+            if needsSetup {
+                GetSetUpView(onBuildProgram: { showProgramWizard = true })
+            } else {
+                fullDashboard
+            }
+        }
+        .sheet(isPresented: $showProgramWizard) {
+            ProgramWizardView()
+                .environmentObject(workoutManager)
+        }
+    }
+
+    private var fullDashboard: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Greet by the name given during onboarding.
@@ -1796,6 +1947,21 @@ struct DashboardView: View {
                         .bold()
                 }
 
+                // Today: streak, XP ring, today's workout CTA, friends strip, live duel
+                TodayCardCluster(
+                    localStreak: workoutManager.currentStreak,
+                    todaysWorkout: todaysScheduledWorkout,
+                    workoutDoneToday: workoutManager.todaysWorkouts > 0,
+                    onStartWorkout: {
+                        if let scheduled = todaysScheduledWorkout {
+                            workoutManager.startScheduledWorkout(scheduled)
+                        } else {
+                            workoutManager.startNewWorkout()
+                        }
+                    },
+                    onOpenCommunity: { workoutManager.selectedTab = 7 }
+                )
+
                 // AI Coach Insight - Inspiring Message
                 AICoachInsightCard(workoutManager: workoutManager)
 
@@ -1806,6 +1972,9 @@ struct DashboardView: View {
 
                 // Today's Workout / Next Workout
                 WorkoutScheduleCard(workoutManager: workoutManager)
+
+                // Today's Quests (server-generated; jumps to Community → Quests)
+                TodaysQuestsCard { workoutManager.selectedTab = 7 }
 
                 // Quick Stats
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 20) {
@@ -3693,6 +3862,7 @@ struct SettingsView: View {
     @AppStorage("defaultRestTime") private var defaultRestTime = 90
     @AppStorage("weeklyGoal") private var weeklyGoal = 5
     @EnvironmentObject var workoutManager: WorkoutManager
+    @State private var showAccount = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -3701,6 +3871,20 @@ struct SettingsView: View {
                 .bold()
 
             Form {
+                Section("Account") {
+                    Button {
+                        showAccount = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "person.crop.circle")
+                            Text(BatesAIAuth.shared.user?.email ?? "Account")
+                            Spacer()
+                            Text("Manage").foregroundColor(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Section("Units") {
                     Toggle("Use Metric Units (kg)", isOn: $useMetric)
                 }
@@ -3762,6 +3946,7 @@ struct SettingsView: View {
             Spacer()
         }
         .padding()
+        .sheet(isPresented: $showAccount) { NavigationStack { AccountView() } }
     }
 }
 
@@ -3891,8 +4076,11 @@ struct AICoachInsightCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text(insights[currentInsightIndex].emoji)
-                    .font(.system(size: 40))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(Color.brandPurple)
+                    .frame(width: 44, height: 44)
+                    .background(Color.brandPurple.opacity(0.12), in: Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("AI Coach")
@@ -4955,7 +5143,12 @@ struct OnboardingView: View {
         switch currentStep {
         case 0: return hasAcceptedWaivers
         case 1: return true
-        case 2: return !userName.isEmpty && !userAge.isEmpty && !userWeight.isEmpty && !userHeight.isEmpty
+        case 2:
+            let t = { (v: String) in v.trimmingCharacters(in: .whitespaces) }
+            return !t(userName).isEmpty
+                && Int(t(userAge)) != nil
+                && Double(t(userWeight)) != nil
+                && Double(t(userHeight)) != nil
         case 3: return !selectedGoals.isEmpty
         case 4: return true
         case 5: return true
@@ -4995,11 +5188,13 @@ struct OnboardingView: View {
             benchPress5RM: bench,
             squat5RM: squat,
             deadlift5RM: deadlift,
-            initialWeight: weight
+            initialWeight: weight,
+            unitPreference: UserDefaults.standard.string(forKey: "unitPreference") ?? "imperial"
         )
 
         workoutManager.userProfile = profile
-        workoutManager.generateInitialProgram()
+        // No instant routine any more: the Program Wizard on the dashboard
+        // collects the full training preferences before generating.
         workoutManager.saveData()
 
         print("✅ Completing onboarding, setting hasCompletedOnboarding = true")
@@ -5037,7 +5232,7 @@ struct WelcomeStep: View {
             }
             .frame(height: 140)
 
-            Text("WorkoutTracker")
+            Text("Endgame Fitness")
                 .font(.system(size: 52, weight: .bold))
                 .foregroundStyle(
                     LinearGradient(
@@ -5272,123 +5467,154 @@ struct BasicInfoStep: View {
     @Binding var userHeight: String
 
     @FocusState private var focusedField: Field?
+    @AppStorage("unitPreference") private var unitPreference = "imperial"
 
-    enum Field {
-        case name, age, weight, height
+    enum Field { case name, age, weight }
+
+    // Canonical storage is ALWAYS pounds + inches (userWeight/userHeight),
+    // so nothing downstream changes. Metric mode just converts at the edge.
+    private var weightKgBinding: Binding<String> {
+        Binding(
+            get: {
+                guard let lb = Double(userWeight) else { return "" }
+                let kg = lb / 2.20462
+                return kg == kg.rounded() ? String(Int(kg)) : String(format: "%.1f", kg)
+            },
+            set: { newValue in
+                let cleaned = String(newValue.filter { $0.isNumber || $0 == "." }.prefix(6))
+                if let kg = Double(cleaned) {
+                    userWeight = String(format: "%.1f", kg * 2.20462)
+                } else if cleaned.isEmpty {
+                    userWeight = ""
+                }
+            }
+        )
+    }
+    private var heightCmBinding: Binding<Int> {
+        Binding(
+            get: { Int(((Double(userHeight) ?? 68) * 2.54).rounded()) },
+            set: { userHeight = String(Int((Double($0) / 2.54).rounded())) }
+        )
+    }
+
+    // Height is entered as feet + inches (no one thinks in total inches);
+    // the parent still stores plain inches in userHeight, so nothing
+    // downstream changes.
+    private var feetBinding: Binding<Int> {
+        Binding(
+            get: { Int(Double(userHeight) ?? 68) / 12 },
+            set: { userHeight = String($0 * 12 + Int(Double(userHeight) ?? 68) % 12) }
+        )
+    }
+    private var inchesBinding: Binding<Int> {
+        Binding(
+            get: { Int(Double(userHeight) ?? 68) % 12 },
+            set: { userHeight = String((Int(Double(userHeight) ?? 68) / 12) * 12 + $0) }
+        )
     }
 
     var body: some View {
-        VStack(spacing: 30) {
-            VStack(spacing: 8) {
-                Text("👤 Tell Us About Yourself")
-                    .font(.largeTitle)
-                    .bold()
-                    .foregroundColor(.black)
-
-                Text("Help us personalize your experience")
+        VStack(spacing: 28) {
+            VStack(spacing: 6) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(Color.brandPurple)
+                Text("Tell us about yourself")
+                    .font(.largeTitle.bold())
+                Text("Four quick answers to calibrate your programs.")
                     .font(.subheadline)
-                    .foregroundColor(.black)
+                    .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("What's your name?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Name", text: $userName)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
+            VStack(alignment: .leading, spacing: 20) {
+                Picker("Units", selection: $unitPreference) {
+                    Text("Imperial").tag("imperial")
+                    Text("Metric").tag("metric")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 240)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Name").font(.headline)
+                    TextField("Your name", text: $userName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.title3)
                         .focused($focusedField, equals: .name)
+                        .onSubmit { focusedField = .age }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("How old are you?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Age", text: $userAge)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
-                        .focused($focusedField, equals: .age)
-                }
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Age").font(.headline)
+                        TextField("34", text: $userAge)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.title3)
+                            .frame(width: 90)
+                            .focused($focusedField, equals: .age)
+                            .onSubmit { focusedField = .weight }
+                            .onChange(of: userAge) { v in
+                                userAge = String(v.filter(\.isNumber).prefix(3))
+                            }
+                    }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Current weight (lbs)?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Weight", text: $userWeight)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
-                        .focused($focusedField, equals: .weight)
-                }
+                    if unitPreference == "metric" {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Weight (kg)").font(.headline)
+                            TextField("84", text: weightKgBinding)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.title3)
+                                .frame(width: 110)
+                                .focused($focusedField, equals: .weight)
+                        }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Height (inches)?")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    TextField("Height (e.g., 70 for 5'10\")", text: $userHeight)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundColor(.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 2)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .frame(width: 400)
-                        .focused($focusedField, equals: .height)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Height (cm)").font(.headline)
+                            Picker("", selection: heightCmBinding) {
+                                ForEach(120...220, id: \.self) { Text("\($0) cm").tag($0) }
+                            }
+                            .labelsHidden()
+                            .frame(width: 110)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Weight (lb)").font(.headline)
+                            TextField("185", text: $userWeight)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.title3)
+                                .frame(width: 110)
+                                .focused($focusedField, equals: .weight)
+                                .onChange(of: userWeight) { v in
+                                    userWeight = String(v.filter { $0.isNumber || $0 == "." }.prefix(6))
+                                }
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Height").font(.headline)
+                            HStack(spacing: 8) {
+                                Picker("", selection: feetBinding) {
+                                    ForEach(3...7, id: \.self) { Text("\($0) ft").tag($0) }
+                                }
+                                .labelsHidden()
+                                .frame(width: 90)
+                                Picker("", selection: inchesBinding) {
+                                    ForEach(0...11, id: \.self) { Text("\($0) in").tag($0) }
+                                }
+                                .labelsHidden()
+                                .frame(width: 90)
+                            }
+                        }
+                    }
                 }
             }
-            .padding(30)
-            .background(Color.white.opacity(0.9))
-            .cornerRadius(16)
+            .padding(28)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: 560)
         }
         .padding()
         .onAppear {
-            // Force window to front and make it key
             Platform.activate()
-            #if os(macOS)
-            DispatchQueue.main.async {
-                if let window = NSApp.keyWindow ?? NSApp.windows.first {
-                    window.makeKeyAndOrderFront(nil)
-                    window.makeFirstResponder(window.contentView)
-                }
-            }
-            #endif
-
-            // Set focus to name field
+            if userHeight.isEmpty { userHeight = "68" }   // sensible default; pickers can't be blank
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 focusedField = .name
             }
@@ -5471,19 +5697,20 @@ struct GoalsStep: View {
     @Binding var selectedGoals: Set<TrainingGoal>
     @Binding var showMedicalDisclaimer: Bool
 
-    let goals: [(TrainingGoal, String, String, Color)] = [
-        (.buildMuscle, "💪", "Build Muscle", .brandPurple),
-        (.getStronger, "⚡", "Get Stronger", .brandBlue),
-        (.loseWeight, "🔥", "Lose Weight", .brandOrange),
-        (.improveEndurance, "🏃", "Improve Endurance", .brandGreen),
-        (.increaseFlexibility, "🧘", "Increase Flexibility", .brandYellow),
-        (.generalFitness, "🎯", "General Fitness", .gray)
+    let goals: [(TrainingGoal, String, String, String, Color)] = [
+        (.buildMuscle, "figure.strengthtraining.traditional", "Build Muscle", "Add size with hypertrophy work", .brandPurple),
+        (.getStronger, "bolt.fill", "Get Stronger", "Push your big-lift numbers up", .brandBlue),
+        (.loseWeight, "flame.fill", "Lose Weight", "Burn fat, keep your muscle", .brandOrange),
+        (.improveEndurance, "figure.run", "Improve Endurance", "Build stamina and work capacity", .brandGreen),
+        (.increaseFlexibility, "figure.flexibility", "Increase Flexibility", "Move better, stretch further", .brandYellow),
+        (.generalFitness, "target", "General Fitness", "A balanced all-round program", .gray),
+        (.longevity, "heart.text.square", "Longevity", "Train to stay strong, mobile and healthy for decades", .brandGreen)
     ]
 
     var body: some View {
         VStack(spacing: 30) {
             VStack(spacing: 8) {
-                Text("🎯 What Are Your Goals?")
+                Text("What Are Your Goals?")
                     .font(.largeTitle)
                     .bold()
                     .foregroundColor(.black)
@@ -5494,7 +5721,7 @@ struct GoalsStep: View {
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 200))], spacing: 16) {
-                ForEach(goals, id: \.0) { goal, emoji, name, color in
+                ForEach(goals, id: \.0) { goal, symbol, name, blurb, color in
                     Button(action: {
                         if selectedGoals.contains(goal) {
                             selectedGoals.remove(goal)
@@ -5506,13 +5733,21 @@ struct GoalsStep: View {
                             }
                         }
                     }) {
-                        VStack(spacing: 12) {
-                            Text(emoji)
-                                .font(.system(size: 40))
+                        VStack(spacing: 10) {
+                            Image(systemName: symbol)
+                                .font(.system(size: 34, weight: .medium))
+                                .foregroundStyle(color)
+                                .frame(height: 40)
 
                             Text(name)
                                 .font(.headline)
                                 .foregroundColor(.black)
+
+                            Text(blurb)
+                                .font(.caption)
+                                .foregroundColor(.black.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -5673,9 +5908,36 @@ struct StrengthAssessmentStep: View {
     @Binding var deadlift5RM: String
 
     @FocusState private var focusedField: Field?
+    @AppStorage("unitPreference") private var unitPreference = "imperial"
 
     enum Field {
         case bench, squat, deadlift
+    }
+
+    private var isMetric: Bool { unitPreference == "metric" }
+
+    // Canonical storage stays pounds; metric mode converts at the edge.
+    private func unitBinding(_ lb: Binding<String>) -> Binding<String> {
+        guard isMetric else { return lb }
+        return Binding(
+            get: {
+                guard let v = Double(lb.wrappedValue) else { return "" }
+                return String(Int((v / 2.20462).rounded()))
+            },
+            set: { newValue in
+                let cleaned = String(newValue.filter(\.isNumber).prefix(4))
+                if let kg = Double(cleaned) {
+                    lb.wrappedValue = String(Int((kg * 2.20462).rounded()))
+                } else if cleaned.isEmpty {
+                    lb.wrappedValue = ""
+                }
+            }
+        )
+    }
+
+    private func placeholder(_ lbExample: Int) -> String {
+        isMetric ? "Weight in kg (e.g., \(Int((Double(lbExample) / 2.20462).rounded())))"
+                 : "Weight in lbs (e.g., \(lbExample))"
     }
 
     var body: some View {
@@ -5704,7 +5966,7 @@ struct StrengthAssessmentStep: View {
                             .font(.headline)
                             .foregroundColor(.black)
                     }
-                    TextField("Weight in lbs (e.g., 185)", text: $benchPress5RM)
+                    TextField(placeholder(185), text: unitBinding($benchPress5RM))
                         .textFieldStyle(.plain)
                         .font(.body)
                         .foregroundColor(.black)
@@ -5728,7 +5990,7 @@ struct StrengthAssessmentStep: View {
                             .font(.headline)
                             .foregroundColor(.black)
                     }
-                    TextField("Weight in lbs (e.g., 225)", text: $squat5RM)
+                    TextField(placeholder(225), text: unitBinding($squat5RM))
                         .textFieldStyle(.plain)
                         .font(.body)
                         .foregroundColor(.black)
@@ -5752,7 +6014,7 @@ struct StrengthAssessmentStep: View {
                             .font(.headline)
                             .foregroundColor(.black)
                     }
-                    TextField("Weight in lbs (e.g., 275)", text: $deadlift5RM)
+                    TextField(placeholder(275), text: unitBinding($deadlift5RM))
                         .textFieldStyle(.plain)
                         .font(.body)
                         .foregroundColor(.black)
@@ -5804,6 +6066,7 @@ enum TrainingGoal: String, Hashable, Codable {
     case improveEndurance = "Improve Endurance"
     case increaseFlexibility = "Increase Flexibility"
     case generalFitness = "General Fitness"
+    case longevity = "Longevity"
 }
 
 enum ExperienceLevel: String, Codable {
@@ -5835,6 +6098,8 @@ struct UserProfile: Codable {
     var initialWeight: Double?
     var level: Int = 1
     var currentXP: Int = 0
+    // "imperial" or "metric"; optional so older saved profiles still decode.
+    var unitPreference: String? = nil
 }
 
 struct ScheduledWorkout: Identifiable, Codable {

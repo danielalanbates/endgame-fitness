@@ -13,35 +13,33 @@ export function base64UrlDecode(str) {
   return new TextDecoder().decode(base64UrlToBytes(str));
 }
 
-async function verifyHMAC(data, signature, secret) {
-  if (!/^[0-9a-f]+$/i.test(signature) || signature.length % 2 !== 0) return false;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
-  );
-  const sigBytes = Uint8Array.from(signature.match(/.{2}/g).map((b) => parseInt(b, 16)));
-  return crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(data));
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function verifyJWT(token, secret) {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    if (!(await verifyHMAC(`${parts[0]}.${parts[1]}`, parts[2], secret))) return null;
-    const payload = JSON.parse(base64UrlDecode(parts[1]));
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
+function readCookie(request, name) {
+  const header = request.headers.get('Cookie') || '';
+  for (const part of header.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === name) return rest.join('=');
   }
+  return null;
 }
 
-/** Returns the authenticated user id, or null. */
+/**
+ * Returns the authenticated user id, or null. Accepts the app's Bearer token or
+ * the website's batesai_session cookie — both are opaque tokens whose SHA-256
+ * lives in the shared `sessions` table.
+ */
 export async function requireUser(request, env) {
   const header = request.headers.get('Authorization') || '';
-  if (!header.startsWith('Bearer ')) return null;
-  const payload = await verifyJWT(header.slice(7), env.JWT_SECRET);
-  return payload?.userId || null;
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : readCookie(request, 'batesai_session');
+  if (!token) return null;
+  const row = await env.DB.prepare(
+    'SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?'
+  ).bind(await sha256Hex(token), Math.floor(Date.now() / 1000)).first();
+  return row?.user_id || null;
 }
 
 export function json(body, status = 200) {

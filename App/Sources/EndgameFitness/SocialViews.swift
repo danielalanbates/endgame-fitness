@@ -192,10 +192,15 @@ struct PlayerCardView: View {
     let profile: FitnessProfile
     var compact = false
 
+    @State private var showTalents = false
+    @State private var showAccount = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 14) {
             HStack(spacing: 12) {
-                avatar
+                Button { showAccount = true } label: { avatar }
+                    .buttonStyle(.plain)
+                    .help("Account")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.displayName)
@@ -215,6 +220,14 @@ struct PlayerCardView: View {
 
                 Spacer()
 
+                if profile.talentPoints > 0 {
+                    Button { showTalents = true } label: {
+                        TalentPointsBadge(points: profile.talentPoints)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Spend talent points")
+                }
+
                 if profile.currentStreak > 0 {
                     VStack(spacing: 0) {
                         Text("🔥").font(compact ? .body : .title3)
@@ -232,15 +245,18 @@ struct PlayerCardView: View {
                     stat("Workouts", "\(profile.totalWorkouts)")
                     stat("Volume", Self.compactNumber(profile.totalVolume) + " lb")
                     stat("Best streak", "\(profile.longestStreak)d")
-                    if profile.talentPoints > 0 {
-                        stat("Talent pts", "\(profile.talentPoints)", tint: .brandPurple)
+                    Button { showTalents = true } label: {
+                        stat("Talents", profile.talentPoints > 0 ? "\(profile.talentPoints) to spend" : "View", tint: .brandPurple)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
         .padding(compact ? 12 : 18)
         .background(Color.platformControlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .sheet(isPresented: $showTalents) { TalentTreeView() }
+        .sheet(isPresented: $showAccount) { NavigationStack { AccountView() } }
     }
 
     private var avatar: some View {
@@ -317,6 +333,8 @@ struct CommunityView: View {
         case leaderboard = "Leaderboard"
         case friends = "Friends"
         case guild = "Guild"
+        case challenges = "Challenges"
+        case quests = "Quests"
         var id: String { rawValue }
 
         var icon: String {
@@ -325,6 +343,8 @@ struct CommunityView: View {
             case .leaderboard: return "trophy.fill"
             case .friends:     return "person.2.fill"
             case .guild:       return "shield.lefthalf.filled"
+            case .challenges:  return "flag.2.crossed.fill"
+            case .quests:      return "checkmark.seal.fill"
             }
         }
     }
@@ -357,6 +377,8 @@ struct CommunityView: View {
                 case .leaderboard: leaderboardList
                 case .friends:     friendsList
                 case .guild:       guildPane
+                case .challenges:  ChallengesView()
+                case .quests:      QuestsAndAchievementsPane()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -369,6 +391,8 @@ struct CommunityView: View {
                 case .leaderboard: await game.loadLeaderboard(scope: leaderboardScope, metric: leaderboardMetric)
                 case .friends:     await game.loadFriends()
                 case .guild:       await game.loadGuild()
+                case .challenges:  await game.loadChallenges()
+                case .quests:      await game.loadQuests()
                 }
             }
         }

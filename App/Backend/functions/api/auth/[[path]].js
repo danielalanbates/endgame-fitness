@@ -25,7 +25,7 @@ const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 
-const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // matches the website's batesai_session cookie
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -236,7 +236,7 @@ async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl }) {
   // Match on (provider, sub) first — it is the only stable identifier Apple gives
   // us. Email can change or be a rotating private-relay address.
   let user = await env.DB.prepare(
-    'SELECT * FROM users WHERE oauth_provider = ? AND oauth_sub = ?'
+    'SELECT * FROM users WHERE oauth_provider = ? AND oauth_id = ?'
   ).bind(provider, sub).first();
 
   if (!user) {
@@ -244,10 +244,10 @@ async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl }) {
     if (user) {
       // Existing password account signing in with the same email via OAuth: link them.
       await env.DB.prepare(
-        'UPDATE users SET oauth_provider = ?, oauth_sub = ?, updated_at = ? WHERE id = ?'
+        'UPDATE users SET oauth_provider = ?, oauth_id = ?, updated_at = ? WHERE id = ?'
       ).bind(provider, sub, now, user.id).run();
       user.oauth_provider = provider;
-      user.oauth_sub = sub;
+      user.oauth_id = sub;
     }
   }
 
@@ -255,7 +255,7 @@ async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl }) {
     const userId = crypto.randomUUID();
     const displayName = name || normalizedEmail.split('@')[0];
     await env.DB.prepare(
-      `INSERT INTO users (id, email, password_hash, name, avatar_url, oauth_provider, oauth_sub, created_at, updated_at)
+      `INSERT INTO users (id, email, password_hash, name, avatar_url, oauth_provider, oauth_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(userId, normalizedEmail, '', displayName, avatarUrl, provider, sub, now, now).run();
 
@@ -267,7 +267,7 @@ async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl }) {
       name: displayName,
       avatar_url: avatarUrl,
       oauth_provider: provider,
-      oauth_sub: sub,
+      oauth_id: sub,
     };
   } else {
     // Backfill a name/avatar if we have one now and didn't before.
@@ -298,17 +298,43 @@ async function ensureFitnessProfile(env, userId, displayName) {
   }
 }
 
+/**
+ * Sessions are opaque random tokens; only their SHA-256 is stored, and the
+ * same `sessions` table backs the website's batesai_session cookie. So a token
+ * minted here works for the web (as a cookie) and a web cookie works here (as a
+ * Bearer token) — one membership, one session store, no signing secret.
+ */
 async function issueSession(env, user) {
-  const token = await generateJWT(user.id, user.email, env.JWT_SECRET);
+  const token = base64UrlFromBytes(crypto.getRandomValues(new Uint8Array(32)));
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  try {
-    await env.DB.prepare(
-      'INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)'
-    ).bind(crypto.randomUUID(), user.id, await sha256Hex(token), expiresAt).run();
-  } catch (e) {
-    console.error('Session insert failed:', e && e.message);
-  }
+  await env.DB.prepare(
+    'INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), user.id, await sha256Hex(token), expiresAt).run();
   return token;
+}
+
+/** Bearer token (or website cookie) -> user row, or null. */
+export async function sessionUser(request, env) {
+  const authHeader = request.headers.get('Authorization') || '';
+  let token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) token = readCookie(request, 'batesai_session') || '';
+  if (!token) token = new URL(request.url).searchParams.get('token') || '';
+  if (!token) return null;
+  const row = await env.DB.prepare(
+    `SELECT u.id, u.email, u.name, u.avatar_url, u.membership_tier, s.expires_at
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = ? AND s.expires_at > ?`
+  ).bind(await sha256Hex(token), Math.floor(Date.now() / 1000)).first();
+  return row || null;
+}
+
+function readCookie(request, name) {
+  const header = request.headers.get('Cookie') || '';
+  for (const part of header.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === name) return rest.join('=');
+  }
+  return null;
 }
 
 function publicUser(user) {
@@ -317,7 +343,7 @@ function publicUser(user) {
     email: user.email,
     name: user.name,
     avatar_url: user.avatar_url || null,
-    membership: user.membership || 'free',
+    membership: user.membership_tier || user.membership || 'free',
   };
 }
 
@@ -373,34 +399,19 @@ async function handleRegister(request, env) {
 }
 
 async function handleVerify(request, env) {
-  const authHeader = request.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || new URL(request.url).searchParams.get('token');
-  if (!token) return json({ valid: false, error: 'No token provided' }, 401);
-
-  const payload = await verifyJWT(token, env.JWT_SECRET);
-  if (!payload) return json({ valid: false, error: 'Invalid token' }, 401);
-
-  const user = await env.DB.prepare(
-    'SELECT id, email, name, avatar_url FROM users WHERE id = ?'
-  ).bind(payload.userId).first();
-
-  if (!user) return json({ valid: false, error: 'User not found' }, 404);
+  const user = await sessionUser(request, env);
+  if (!user) return json({ valid: false, error: 'Invalid or missing token' }, 401);
   return json({ valid: true, user: publicUser(user) }, 200);
 }
 
 async function handleLogout(request, env) {
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    const payload = await verifyJWT(token, env.JWT_SECRET);
-    if (payload) {
-      try {
-        await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?')
-          .bind(await sha256Hex(token))
-          .run();
-      } catch (e) {
-        console.error('Logout cleanup failed:', e && e.message);
-      }
+  const authHeader = request.headers.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : readCookie(request, 'batesai_session');
+  if (token) {
+    try {
+      await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256Hex(token)).run();
+    } catch (e) {
+      console.error('Logout cleanup failed:', e && e.message);
     }
   }
   return json({ message: 'Logged out successfully' }, 200);
@@ -554,29 +565,10 @@ async function handleOAuth(request, env, url, path) {
 /* JWT / crypto utilities                                              */
 /* ------------------------------------------------------------------ */
 
-async function generateJWT(userId, email, secret) {
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const now = Math.floor(Date.now() / 1000);
-  const payload = { userId, email, iat: now, exp: now + SESSION_TTL_SECONDS };
-
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const signature = await signHMAC(`${encodedHeader}.${encodedPayload}`, secret);
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
-
-export async function verifyJWT(token, secret) {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const [encodedHeader, encodedPayload, signature] = parts;
-    if (!(await verifyHMAC(`${encodedHeader}.${encodedPayload}`, signature, secret))) return null;
-    const payload = JSON.parse(base64UrlDecode(encodedPayload));
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+function base64UrlFromBytes(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function base64UrlEncode(str) {
@@ -594,25 +586,6 @@ function base64UrlToBytes(str) {
 
 function base64UrlDecode(str) {
   return new TextDecoder().decode(base64UrlToBytes(str));
-}
-
-async function signHMAC(data, secret) {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
-  return toHex(new Uint8Array(signature));
-}
-
-async function verifyHMAC(data, signature, secret) {
-  if (!/^[0-9a-f]+$/i.test(signature) || signature.length % 2 !== 0) return false;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
-  );
-  const sigBytes = Uint8Array.from(signature.match(/.{2}/g).map((b) => parseInt(b, 16)));
-  return crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(data));
 }
 
 async function sha256Hex(value) {
