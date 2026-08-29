@@ -23,8 +23,10 @@ import UIKit
 /// builds against this alias instead of hard-coding AppKit.
 #if os(macOS)
 typealias PlatformColor = NSColor
+typealias PlatformImage = NSImage
 #else
 typealias PlatformColor = UIColor
+typealias PlatformImage = UIImage
 #endif
 
 /// The scalar `SCNVector3` is built from: `CGFloat` on macOS, `Float` on iOS.
@@ -94,6 +96,30 @@ enum Platform {
     static func tick() {
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    /// Impact haptic used by the session game layer. No-op on the Mac.
+    enum ImpactStrength { case light, medium, heavy }
+    static func impact(_ strength: ImpactStrength) {
+        #if os(iOS)
+        let style: UIImpactFeedbackGenerator.FeedbackStyle
+        switch strength {
+        case .light: style = .light
+        case .medium: style = .medium
+        case .heavy: style = .heavy
+        }
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+        #endif
+    }
+
+    /// Put an image on the general pasteboard (share-card "copy" on the Mac).
+    static func copyImageToPasteboard(_ image: PlatformImage) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+        #else
+        UIPasteboard.general.image = image
         #endif
     }
 
