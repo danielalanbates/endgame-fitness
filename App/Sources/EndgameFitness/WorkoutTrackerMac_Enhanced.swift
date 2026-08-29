@@ -241,12 +241,14 @@ class WorkoutManager: ObservableObject {
         currentWorkout = WorkoutSession()
         isWorkoutActive = true
         selectedTab = 1
+        SessionGame.shared.sessionStarted() // SessionGameLayer hook
     }
 
     func startScheduledWorkout(_ scheduledWorkout: ScheduledWorkout, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 135) {
         currentWorkout = WorkoutSession()
         isWorkoutActive = true
         selectedTab = 1
+        SessionGame.shared.sessionStarted() // SessionGameLayer hook
 
         // Add exercises from scheduled workout with custom defaults
         for exerciseName in scheduledWorkout.exercises {
@@ -275,12 +277,19 @@ class WorkoutManager: ObservableObject {
     }
 
     func addSetToExercise(exerciseId: UUID, reps: Int, weight: Double) {
-        guard let workoutIndex = sessions.firstIndex(where: { $0.id == currentWorkout?.id }) else { return }
+        // The old `sessions.firstIndex(... currentWorkout?.id)` guard always failed
+        // (an active workout is only appended to `sessions` on completion), so no
+        // set could ever be logged. Removed.
         guard let exerciseIndex = currentWorkout?.exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
 
         let newSet = ExerciseSet(reps: reps, weight: weight, completed: true)
         currentWorkout?.exercises[exerciseIndex].sets.append(newSet)
         objectWillChange.send()
+
+        // SessionGameLayer hook: XP pop-up, combo/PR detection, rest timer.
+        if let workout = currentWorkout {
+            SessionGame.shared.setLogged(newSet, in: workout.exercises[exerciseIndex], workout: workout, history: sessions)
+        }
     }
 
     func updateSet(exerciseId: UUID, setId: UUID, reps: Int, weight: Double) {
@@ -295,6 +304,8 @@ class WorkoutManager: ObservableObject {
     func completeWorkout() {
         guard var workout = currentWorkout else { return }
         workout.completed = true
+        // SessionGameLayer hook: duration was never recorded, so the server saw 0.
+        if workout.duration == nil { workout.duration = Date().timeIntervalSince(workout.date) }
         sessions.append(workout)
 
         // Track performance for future AI programming
@@ -2056,6 +2067,7 @@ struct WorkoutView: View {
     @State private var selectedScheduledWorkoutIndex = 0
     @State private var currentExerciseIndex = 0
     @State private var showCelebration = false
+    @State private var sessionSummary: SessionSummary? // SessionGameLayer hook
 
     let muscleGroups = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core"]
 
@@ -2083,6 +2095,8 @@ struct WorkoutView: View {
                     .background(Color.brandGreen.opacity(0.2))
                     .cornerRadius(20)
                 }
+
+                if workoutManager.isWorkoutActive { SessionXPBadge() } // SessionGameLayer hook
 
                 Spacer()
 
@@ -2154,6 +2168,8 @@ struct WorkoutView: View {
                         .background(Color.accentColor.opacity(0.1))
                         .cornerRadius(10)
 
+                        RestTimerBar() // SessionGameLayer hook
+
                         // Exercises
                         ForEach(Array(workout.exercises.enumerated()), id: \.element.id) { index, exercise in
                             ExerciseCard(
@@ -2176,6 +2192,7 @@ struct WorkoutView: View {
                         .tint(.blue)
                     }
                 }
+                .overlay(XPPopupOverlay()) // SessionGameLayer hook
             } else {
                 // Show programmed workouts
                 if !workoutManager.weeklySchedule.isEmpty {
@@ -2319,9 +2336,17 @@ struct WorkoutView: View {
         .sheet(isPresented: $showCelebration) {
             WorkoutCompletionView(onComplete: {
                 showCelebration = false
+                // SessionGameLayer hook: snapshot the summary before the workout is cleared.
+                let summary = workoutManager.currentWorkout.map {
+                    SessionSummary.make(from: $0, streak: max(workoutManager.currentStreak, 1))
+                }
                 workoutManager.completeWorkout()
                 currentExerciseIndex = 0
+                sessionSummary = summary
             })
+        }
+        .sheet(item: $sessionSummary) { summary in // SessionGameLayer hook
+            SessionSummaryView(summary: summary, onDone: { sessionSummary = nil })
         }
         .onAppear {
             // Set today's workout as default
@@ -2391,6 +2416,8 @@ struct ExerciseCard: View {
                 Text("\(Int(exercise.totalVolume)) lbs")
                     .font(.caption)
                     .foregroundColor(.secondary)
+
+                ExerciseRestOverride(exerciseName: exercise.name) // SessionGameLayer hook
             }
 
             // Sets
@@ -2472,9 +2499,8 @@ struct ExerciseCard: View {
                     Button("Add") {
                         WorkoutManager.shared.addSetToExercise(exerciseId: exercise.id, reps: reps, weight: weight)
                         showAddSet = false
-
-                        // Start rest timer
-                        restTimer = RestTimer(duration: 90)
+                        // SessionGameLayer hook: rest timer now starts in SessionGame.setLogged
+                        // (the old RestTimer here was never displayed and only beeped).
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -3947,6 +3973,8 @@ struct SettingsView: View {
                         Text("workouts")
                     }
                 }
+
+                SessionGameSettingsSection() // SessionGameLayer hook
 
                 Section("Data Management") {
                     Button("Export Workouts") {
