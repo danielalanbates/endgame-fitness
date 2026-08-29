@@ -53,6 +53,8 @@ export async function onRequest(context) {
         return withCors(await handleOAuth(request, env, url, path), env, origin);
       case 'native':
         return withCors(await handleNative(request, env, path), env, origin);
+      case 'account':
+        return withCors(await handleAccount(request, env, path), env, origin);
       default:
         return withCors(json({ error: 'Unknown endpoint' }, 404), env, origin);
     }
@@ -348,6 +350,67 @@ function publicUser(user) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Account deletion (App Store Review 5.1.1(v): in-app, no web detour)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * DELETE /api/auth/account  (Bearer token or website cookie)
+ *
+ * Removes the membership row. Every fitness table references users(id) with
+ * ON DELETE CASCADE, so profile, sessions, workouts, XP, feed, friendships,
+ * guild membership, talents, quests and achievements all go with it. A guild
+ * the user owned is handed to its longest-serving member first so the other
+ * members are not orphaned. The response body is the same whether or not the
+ * row existed, so a replayed request is harmless.
+ */
+async function handleAccount(request, env, path) {
+  const action = path[1] || '';
+  if (request.method === 'DELETE' || (request.method === 'POST' && action === 'delete')) {
+    const user = await sessionUser(request, env);
+    if (!user) return json({ error: 'Not signed in' }, 401);
+
+    const ownedGuilds = await env.DB.prepare('SELECT id FROM guilds WHERE owner_id = ?')
+      .bind(user.id).all();
+    for (const guild of ownedGuilds.results || []) {
+      const heir = await env.DB.prepare(
+        'SELECT user_id FROM guild_members WHERE guild_id = ? AND user_id != ? ORDER BY joined_at ASC LIMIT 1'
+      ).bind(guild.id, user.id).first();
+      if (heir) {
+        await env.DB.batch([
+          env.DB.prepare("UPDATE guild_members SET role = 'owner' WHERE guild_id = ? AND user_id = ?")
+            .bind(guild.id, heir.user_id),
+          env.DB.prepare('UPDATE guilds SET owner_id = ? WHERE id = ?').bind(heir.user_id, guild.id),
+        ]);
+      } else {
+        await env.DB.prepare('DELETE FROM guilds WHERE id = ?').bind(guild.id).run();
+      }
+    }
+
+    // Tables that predate ON DELETE CASCADE on this database are cleared
+    // explicitly; the rest cascade from the users row.
+    const explicit = [
+      'sessions', 'fitness_profiles', 'workout_sessions', 'xp_transactions', 'activity_feed',
+      'activity_reactions', 'talents', 'achievements', 'quests', 'personal_records',
+      'guild_members', 'challenge_participants', 'subscriptions', 'user_settings',
+      'workout_programs', 'programs', 'meso_cycles', 'progress_metrics', 'talent_unlocks',
+    ];
+    const statements = explicit.map((table) =>
+      env.DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(user.id)
+    );
+    statements.push(
+      env.DB.prepare('DELETE FROM friendships WHERE user_low = ? OR user_high = ?').bind(user.id, user.id),
+      env.DB.prepare('DELETE FROM challenges WHERE creator_id = ? OR opponent_id = ?').bind(user.id, user.id),
+      env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id)
+    );
+    // batch() runs as one transaction; a failure in any statement rolls back
+    // and the account stays intact rather than half-deleted.
+    await env.DB.batch(statements);
+    return json({ deleted: true }, 200);
+  }
+  return json({ error: 'Method not allowed' }, 405);
+}
+
+/* ------------------------------------------------------------------ */
 /* Email + password                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -636,7 +699,7 @@ function corsHeaders(env, origin) {
   const value = !allowed.length ? '*' : allowed.includes(origin) ? origin : allowed[0];
   return {
     'Access-Control-Allow-Origin': value,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     Vary: 'Origin',
   };

@@ -21,6 +21,9 @@ struct AccountView: View {
     @State private var avatarProfile = AvatarBodyProfile.defaultBlob
     @State private var avatarComplete = false
     @State private var showTalents = false
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
 
     private let membersURL = URL(string: "https://batesai.org/members")!
 
@@ -60,10 +63,13 @@ struct AccountView: View {
 
             Section {
                 Button("Sign out", role: .destructive) { showSignOutConfirm = true }
-                Link("Delete account (batesai.org)", destination: membersURL)
-                    .foregroundStyle(.secondary)
+                Button(isDeleting ? "Deleting…" : "Delete account…", role: .destructive) { showDeleteConfirm = true }
+                    .disabled(isDeleting)
+                if let deleteError {
+                    Text(deleteError).font(.caption).foregroundStyle(.red)
+                }
             } footer: {
-                Text("Account deletion is handled on batesai.org and removes your membership across all BatesAI apps.")
+                Text("Deleting your account permanently removes your BatesAI membership, profile, workouts, XP, friends and guild membership across all BatesAI apps. This cannot be undone.")
                     .font(.caption)
             }
         }
@@ -79,6 +85,12 @@ struct AccountView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog("Delete your account?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete permanently", role: .destructive) { Task { await deleteAccount() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Everything tied to \(auth.user?.email ?? "this account") is erased. There is no recovery.")
+        }
         .sheet(isPresented: $showTalents) { TalentTreeView() }
         .sheet(isPresented: $showAvatarEditor) {
             AvatarQuestionnaireView(profile: $avatarProfile, isComplete: $avatarComplete)
@@ -89,6 +101,19 @@ struct AccountView: View {
             avatarComplete = false
             showAvatarEditor = false
             Task { await saveAvatar() }
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeleting = true
+        deleteError = nil
+        defer { isDeleting = false }
+        do {
+            try await auth.deleteAccount()
+            game.reset()
+            dismiss()
+        } catch {
+            deleteError = error.localizedDescription
         }
     }
 
