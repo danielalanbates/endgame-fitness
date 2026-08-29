@@ -36,7 +36,7 @@ import {
   applyTalentEffects, streakShieldDays, bonusTalentPoints,
 } from '../../_lib/talents.js';
 import {
-  boardFor, advance, eventForWorkout, questDefinition, newlyUnlocked, achievementCatalog,
+  boardFor, advance, eventForWorkout, eventForHealth, questDefinition, newlyUnlocked, achievementCatalog,
 } from '../../_lib/game.js';
 
 export async function onRequest(context) {
@@ -453,6 +453,12 @@ async function handleSync(request, env, userId) {
 
     accepted.push(session.id);
   }
+
+  // Apple Health numbers (steps_today / active_kcal_today) arrive on every
+  // sync, sessions or not. Steps feed the "Step Count" daily quest; the
+  // client's reading is trusted the same way session volume is.
+  const healthEvent = eventForHealth(body);
+  if (healthEvent) await advanceQuests(env, userId, healthEvent);
 
   const newXp = profile.xp + xpGained;
   const newLevel = levelForXp(newXp);

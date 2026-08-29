@@ -23,6 +23,9 @@
 //   prs       — +1 per personal record set
 //   reactions — +1 per reaction the user gives to a friend's activity
 //   friends   — +1 per accepted friendship
+//   steps     — today's step count from Apple Health (`steps_today` on the
+//               sync payload). ABSOLUTE, not additive: progress is the highest
+//               reading seen for the period, so re-syncs cannot double-count.
 export const DAILY_QUESTS = Object.freeze([
   { key: 'log_workout',   title: 'Show Up',        desc: 'Log a workout today',                    metric: 'workouts',  target: 1,    xp: 40,  icon: 'figure.strengthtraining.traditional' },
   { key: 'volume_5k',     title: 'Move Iron',      desc: 'Move 5,000 lb of total volume',          metric: 'volume',    target: 5000, xp: 60,  icon: 'scalemass.fill' },
@@ -30,6 +33,7 @@ export const DAILY_QUESTS = Object.freeze([
   { key: 'minutes_30',    title: 'Half Hour Hero', desc: 'Train for 30 minutes',                   metric: 'minutes',   target: 30,   xp: 45,  icon: 'timer' },
   { key: 'react_friend',  title: 'Hype Squad',     desc: "React to a friend's activity",           metric: 'reactions', target: 1,    xp: 20,  icon: 'hands.clap.fill' },
   { key: 'volume_10k',    title: 'Heavy Day',      desc: 'Move 10,000 lb of total volume',         metric: 'volume',    target: 10000, xp: 90, icon: 'flame.fill' },
+  { key: 'steps_8k',      title: 'Step Count',     desc: 'Walk 8,000 steps (Apple Health)',        metric: 'steps',     target: 8000, xp: 50,  icon: 'figure.walk', absolute: true },
 ]);
 
 export const WEEKLY_QUESTS = Object.freeze([
@@ -167,7 +171,16 @@ export function advance(quest, event) {
   if (!def) return Number(quest.progress) || 0;
   const delta = Number(event[def.metric]) || 0;
   if (delta <= 0) return Number(quest.progress) || 0;
-  return Math.min(Number(quest.target), (Number(quest.progress) || 0) + delta);
+  const progress = Number(quest.progress) || 0;
+  // Absolute metrics (steps) report a running total, so take the max instead of summing.
+  const next = def.absolute ? Math.max(progress, delta) : progress + delta;
+  return Math.min(Number(quest.target), next);
+}
+
+/** Convert the Health fields on a sync payload into a quest event (or null). */
+export function eventForHealth({ steps_today = 0 } = {}) {
+  const steps = Math.max(0, Math.floor(Number(steps_today) || 0));
+  return steps > 0 ? { steps } : null;
 }
 
 /** Convert a synced session into a quest event. */
