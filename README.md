@@ -34,31 +34,33 @@ _archive/2026-07-30/            everything retired, with WHY_ARCHIVED.md
 
 ## Building
 
-There is **no Xcode on the development machine** — Command Line Tools only, and
-not enough free disk to install one. That shapes everything:
+**Xcode 26.6 is installed** on the development Mac (since 2026-08-28). Two ways
+to build:
 
 ```bash
-# Type-check / build the macOS app locally (this works, and is fast)
+# Fast macOS binary for local verification (seconds, no bundle, no signing)
 cd App/Sources/EndgameFitness
-swiftc -parse-as-library -target arm64-apple-macos14.0 -o /tmp/EndgameFitness *.swift
+xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -o /tmp/EndgameFitness *.swift
+
+# Real archives (macOS + iOS), signed with the Apple Distribution certificate
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+SKIP_UPLOAD=1 scripts/ship.sh both
 ```
 
-`-parse-as-library` is required: without it the compiler treats the file holding
-`@main` as a script and refuses to build.
-
-**iOS cannot be compiled locally** (no iOS SDK). Both platforms build in GitHub
-Actions on every push — see `.github/workflows/ci.yml`. Treat CI as the authority
-on whether the iOS build is healthy.
+`-parse-as-library` is required for the swiftc path: without it the compiler
+treats the file holding `@main` as a script and refuses to build.
 
 ## Shipping to TestFlight
 
-`.github/workflows/testflight.yml`, run manually. It archives, signs, exports and
-uploads through the App Store Connect API with no local Xcode — the same path
-that shipped Descend Watch.
+`scripts/ship.sh ios|macos|both [version] [build]` — XcodeGen → archive →
+export (`App/ExportOptions-iOS.plist` / `-macOS.plist`) → upload through the
+App Store Connect Build Upload API (`scripts/upload_asc.py`). Needs the ASC API
+key at `~/Library/Application Support/BatesAI/keys/AuthKey_32R84GFV2F.p8` and
+**an App Store Connect app record for `org.batesai.endgamefitness`** (see
+`Docs/STATUS.md`).
 
-Secrets it needs (repository settings): `ASC_KEY_ID`, `ASC_ISSUER_ID`,
-`ASC_PRIVATE_KEY`, `DEVELOPMENT_TEAM`, `BUILD_CERTIFICATE`, `P12_PASSWORD`,
-`PROVISIONING_IOS`, `PROVISIONING_MACOS`.
+`.github/workflows/testflight.yml` does the same thing on GitHub Actions and is
+kept for when the account's Actions billing works again.
 
 ## The backend
 
@@ -98,26 +100,8 @@ signed-in user are both available. A workout in a basement gym is never lost.
 
 ## Status
 
-**Working and verified:**
-
-- macOS app compiles clean and runs — 73 view/model types, Charts, full onboarding.
-- Auth client, sync engine and social/game UI all compile into the app.
-- Backend workers written and syntax-checked; 12/12 security tests passing
-  against the real production file.
-- **The iOS target compiles.** CI is green on iOS, macOS and the backend tests:
-  <https://github.com/danielalanbates/endgame-fitness>
-
-**Not done yet:**
-
-- The backend has **never been deployed**. `https://batesai.org/api/auth/verify`
-  still returns the site's HTML. Blocked on `npx wrangler login`, which is
-  interactive and has to be run by hand.
-- The iOS app has never been **run** — only compiled. iPhone navigation is also
-  still wrong (a sidebar, not a tab bar); see the TODO in `Platform.swift`.
-- Nothing has been near TestFlight. The App Store Connect app record, signing
-  certificates and provisioning profiles do not exist yet.
-- The game layer is built but **unproven end to end**, because proving it needs a
-  deployed backend and a real signed-in account.
-- The macOS UI has not been visually verified since the auth gate was added.
-
-`Docs/STATUS.md` tracks the live version of this list.
+See `Docs/STATUS.md` — kept current per session. As of 2026-08-28: backend live at
+batesai.org (membership sign-in, sync, quests, achievements, talents, challenges,
+friend codes, account deletion all verified end to end from the macOS app);
+Xcode 26 installed and archives build locally; TestFlight waits only on the App
+Store Connect app record.

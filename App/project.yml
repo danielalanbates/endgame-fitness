@@ -1,8 +1,7 @@
 # XcodeGen spec for Endgame Fitness.
 #
-# There is no Xcode on the development machine (Command Line Tools only, and not
-# enough free disk to install it), so the .xcodeproj is generated in CI rather
-# than committed. Regenerate locally or in CI with:
+# The .xcodeproj is generated (locally by scripts/ship.sh, or in CI) rather than
+# committed, so the spec here is the source of truth. Regenerate with:
 #
 #   xcodegen generate --spec App/project.yml
 #

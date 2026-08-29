@@ -1,0 +1,476 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		027C83B7AF83737A3370EE72 /* TalentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82031AC26C4C08D12D1F190E /* TalentViews.swift */; };
+		06D6CEF3178E73B99397ADAB /* BatesAIAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7812C6DE8548CF33AEC29D18 /* BatesAIAuth.swift */; };
+		135CDD9A6096CE0005D0F095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E6D0F3A37C36D923BC4BA9 /* RootView.swift */; };
+		1AD07D332B819F1123CCE2CE /* GameProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821287317E68F40835358AF /* GameProfile.swift */; };
+		26C0E258697859D53CF169CF /* ChallengeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A00FF687D610286E92EF090 /* ChallengeViews.swift */; };
+		299106A37F16E451B41932C6 /* ProgramsMeso.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */; };
+		2A859A5E1D08088D128ECDBC /* WorkoutTrackerMac_Enhanced.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */; };
+		426152B504F7980CBFEB1665 /* AvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */; };
+		4D6610C1CCD25BA60E645791 /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18610C77DB91BEA7EC1BA5A5 /* Platform.swift */; };
+		50FC4855FC6E5084EFE49DAC /* ChallengeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A00FF687D610286E92EF090 /* ChallengeViews.swift */; };
+		5444EAC1D43825A758731B22 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2228E449771268BB42ECC45 /* AccountView.swift */; };
+		5E2E43F25D92D096CB26EA57 /* TalentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82031AC26C4C08D12D1F190E /* TalentViews.swift */; };
+		6825E2C20483B468FA56FE5E /* SocialViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8B46915952B7C6D49E4C37 /* SocialViews.swift */; };
+		689484BE8BA670DAE626263F /* QuestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC59F06D0943992C800DD58 /* QuestViews.swift */; };
+		74AEA1DD412B7BA7E1DFBED8 /* BatesAIAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7812C6DE8548CF33AEC29D18 /* BatesAIAuth.swift */; };
+		766DD7499E8F3D86B1B660B5 /* QuestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC59F06D0943992C800DD58 /* QuestViews.swift */; };
+		7A03CE3354AA8F5A2F787E72 /* GameProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821287317E68F40835358AF /* GameProfile.swift */; };
+		872944C7107E2C7A2DE10427 /* ProgramsMeso.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */; };
+		9FD34B89A19914192EAB893E /* WorkoutTrackerMac_Enhanced.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */; };
+		A87CBB0C6A479E1C686EFBDD /* SocialViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8B46915952B7C6D49E4C37 /* SocialViews.swift */; };
+		A9319CB8126B245A07723522 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E6D0F3A37C36D923BC4BA9 /* RootView.swift */; };
+		AAD427FB7B598309316DB616 /* ProgramWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5483094B001F034CD09101C6 /* ProgramWizard.swift */; };
+		D7955A2ABEB59B3971A5AFA7 /* AvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */; };
+		DBBCF29A9BBE4CCF84AAD66A /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18610C77DB91BEA7EC1BA5A5 /* Platform.swift */; };
+		DDE59FAD789E3B54CCAF07E7 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2228E449771268BB42ECC45 /* AccountView.swift */; };
+		F00DBB7E4A63871575F9C630 /* AvatarSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */; };
+		FAFFC307F1425D93E6C686CE /* ProgramWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5483094B001F034CD09101C6 /* ProgramWizard.swift */; };
+		FDDFCC51B23A92CFE38FF8E0 /* AvatarSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		18610C77DB91BEA7EC1BA5A5 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
+		43E9D286F6151E132AB12184 /* EndgameFitness-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "EndgameFitness-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarSystem.swift; sourceTree = "<group>"; };
+		5483094B001F034CD09101C6 /* ProgramWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramWizard.swift; sourceTree = "<group>"; };
+		567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTrackerMac_Enhanced.swift; sourceTree = "<group>"; };
+		5D8B46915952B7C6D49E4C37 /* SocialViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialViews.swift; sourceTree = "<group>"; };
+		7812C6DE8548CF33AEC29D18 /* BatesAIAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatesAIAuth.swift; sourceTree = "<group>"; };
+		7A00FF687D610286E92EF090 /* ChallengeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChallengeViews.swift; sourceTree = "<group>"; };
+		80E6D0F3A37C36D923BC4BA9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		82031AC26C4C08D12D1F190E /* TalentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalentViews.swift; sourceTree = "<group>"; };
+		961638BC59C4AB9DB7B3BCAB /* EndgameFitness-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "EndgameFitness-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9821287317E68F40835358AF /* GameProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProfile.swift; sourceTree = "<group>"; };
+		AFC59F06D0943992C800DD58 /* QuestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestViews.swift; sourceTree = "<group>"; };
+		C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarViews.swift; sourceTree = "<group>"; };
+		D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramsMeso.swift; sourceTree = "<group>"; };
+		F2228E449771268BB42ECC45 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		080386FBFCAD657B703AD8E9 /* EndgameFitness */ = {
+			isa = PBXGroup;
+			children = (
+				F2228E449771268BB42ECC45 /* AccountView.swift */,
+				4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */,
+				C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */,
+				7812C6DE8548CF33AEC29D18 /* BatesAIAuth.swift */,
+				7A00FF687D610286E92EF090 /* ChallengeViews.swift */,
+				9821287317E68F40835358AF /* GameProfile.swift */,
+				18610C77DB91BEA7EC1BA5A5 /* Platform.swift */,
+				D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */,
+				5483094B001F034CD09101C6 /* ProgramWizard.swift */,
+				AFC59F06D0943992C800DD58 /* QuestViews.swift */,
+				80E6D0F3A37C36D923BC4BA9 /* RootView.swift */,
+				5D8B46915952B7C6D49E4C37 /* SocialViews.swift */,
+				82031AC26C4C08D12D1F190E /* TalentViews.swift */,
+				567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */,
+			);
+			path = EndgameFitness;
+			sourceTree = "<group>";
+		};
+		80F3D31DA7D501E609F20968 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				080386FBFCAD657B703AD8E9 /* EndgameFitness */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		C978E5E06F93E52501A50AB6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				43E9D286F6151E132AB12184 /* EndgameFitness-iOS.app */,
+				961638BC59C4AB9DB7B3BCAB /* EndgameFitness-macOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FE4AD34B91D59412C167C19B = {
+			isa = PBXGroup;
+			children = (
+				80F3D31DA7D501E609F20968 /* Sources */,
+				C978E5E06F93E52501A50AB6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C0043D710194FE000BC23CA9 /* EndgameFitness-macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B588219F78F0171F3D79B7CB /* Build configuration list for PBXNativeTarget "EndgameFitness-macOS" */;
+			buildPhases = (
+				E089FA869BE9417300EC5F75 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "EndgameFitness-macOS";
+			packageProductDependencies = (
+			);
+			productName = "EndgameFitness-macOS";
+			productReference = 961638BC59C4AB9DB7B3BCAB /* EndgameFitness-macOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F9B54A95A3D332D6924C0277 /* EndgameFitness-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DA9F242FAFBD5352AFDDF0C5 /* Build configuration list for PBXNativeTarget "EndgameFitness-iOS" */;
+			buildPhases = (
+				68EA9042DDE75DD1AA832350 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "EndgameFitness-iOS";
+			packageProductDependencies = (
+			);
+			productName = "EndgameFitness-iOS";
+			productReference = 43E9D286F6151E132AB12184 /* EndgameFitness-iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9D2F3A53624B9334BAB35D3B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					C0043D710194FE000BC23CA9 = {
+						DevelopmentTeam = MG4YW8XX2Z;
+						ProvisioningStyle = Manual;
+					};
+					F9B54A95A3D332D6924C0277 = {
+						DevelopmentTeam = MG4YW8XX2Z;
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 70B84786743E7CBE5FCAD7AC /* Build configuration list for PBXProject "EndgameFitness" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = FE4AD34B91D59412C167C19B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F9B54A95A3D332D6924C0277 /* EndgameFitness-iOS */,
+				C0043D710194FE000BC23CA9 /* EndgameFitness-macOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		68EA9042DDE75DD1AA832350 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5444EAC1D43825A758731B22 /* AccountView.swift in Sources */,
+				F00DBB7E4A63871575F9C630 /* AvatarSystem.swift in Sources */,
+				D7955A2ABEB59B3971A5AFA7 /* AvatarViews.swift in Sources */,
+				06D6CEF3178E73B99397ADAB /* BatesAIAuth.swift in Sources */,
+				26C0E258697859D53CF169CF /* ChallengeViews.swift in Sources */,
+				7A03CE3354AA8F5A2F787E72 /* GameProfile.swift in Sources */,
+				4D6610C1CCD25BA60E645791 /* Platform.swift in Sources */,
+				FAFFC307F1425D93E6C686CE /* ProgramWizard.swift in Sources */,
+				872944C7107E2C7A2DE10427 /* ProgramsMeso.swift in Sources */,
+				689484BE8BA670DAE626263F /* QuestViews.swift in Sources */,
+				A9319CB8126B245A07723522 /* RootView.swift in Sources */,
+				6825E2C20483B468FA56FE5E /* SocialViews.swift in Sources */,
+				027C83B7AF83737A3370EE72 /* TalentViews.swift in Sources */,
+				9FD34B89A19914192EAB893E /* WorkoutTrackerMac_Enhanced.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E089FA869BE9417300EC5F75 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DDE59FAD789E3B54CCAF07E7 /* AccountView.swift in Sources */,
+				FDDFCC51B23A92CFE38FF8E0 /* AvatarSystem.swift in Sources */,
+				426152B504F7980CBFEB1665 /* AvatarViews.swift in Sources */,
+				74AEA1DD412B7BA7E1DFBED8 /* BatesAIAuth.swift in Sources */,
+				50FC4855FC6E5084EFE49DAC /* ChallengeViews.swift in Sources */,
+				1AD07D332B819F1123CCE2CE /* GameProfile.swift in Sources */,
+				DBBCF29A9BBE4CCF84AAD66A /* Platform.swift in Sources */,
+				AAD427FB7B598309316DB616 /* ProgramWizard.swift in Sources */,
+				299106A37F16E451B41932C6 /* ProgramsMeso.swift in Sources */,
+				766DD7499E8F3D86B1B660B5 /* QuestViews.swift in Sources */,
+				135CDD9A6096CE0005D0F095 /* RootView.swift in Sources */,
+				A87CBB0C6A479E1C686EFBDD /* SocialViews.swift in Sources */,
+				5E2E43F25D92D096CB26EA57 /* TalentViews.swift in Sources */,
+				2A859A5E1D08088D128ECDBC /* WorkoutTrackerMac_Enhanced.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		03118E84519EFCB7920EB425 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Support/EndgameFitness-iOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				INFOPLIST_FILE = "Support/Info-iOS.plist";
+				INSTALL_PATH = /Applications;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.batesai.endgamefitness;
+				PRODUCT_NAME = "Endgame Fitness";
+				PROVISIONING_PROFILE_SPECIFIER = "Endgame Fitness IOS_APP_STORE";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2BFA3F437B22FDE618DEBE42 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Support/EndgameFitness-iOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				INFOPLIST_FILE = "Support/Info-iOS.plist";
+				INSTALL_PATH = /Applications;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.batesai.endgamefitness;
+				PRODUCT_NAME = "Endgame Fitness";
+				PROVISIONING_PROFILE_SPECIFIER = "Endgame Fitness IOS_APP_STORE";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6C74F4C06B4433FD82F5B11E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Support/EndgameFitness-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "Support/Info-macOS.plist";
+				INSTALL_PATH = /Applications;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.batesai.endgamefitness;
+				PRODUCT_NAME = "Endgame Fitness";
+				PROVISIONING_PROFILE_SPECIFIER = "Endgame Fitness MAC_APP_STORE";
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+			};
+			name = Debug;
+		};
+		843F7A4F251A22154E8188FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Support/EndgameFitness-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "Support/Info-macOS.plist";
+				INSTALL_PATH = /Applications;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.batesai.endgamefitness;
+				PRODUCT_NAME = "Endgame Fitness";
+				PROVISIONING_PROFILE_SPECIFIER = "Endgame Fitness MAC_APP_STORE";
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+			};
+			name = Release;
+		};
+		DC8C4F0844C08017087A2A20 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = MG4YW8XX2Z;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		E788654B8E7F556F49CD801E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = MG4YW8XX2Z;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		70B84786743E7CBE5FCAD7AC /* Build configuration list for PBXProject "EndgameFitness" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DC8C4F0844C08017087A2A20 /* Debug */,
+				E788654B8E7F556F49CD801E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B588219F78F0171F3D79B7CB /* Build configuration list for PBXNativeTarget "EndgameFitness-macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6C74F4C06B4433FD82F5B11E /* Debug */,
+				843F7A4F251A22154E8188FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DA9F242FAFBD5352AFDDF0C5 /* Build configuration list for PBXNativeTarget "EndgameFitness-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2BFA3F437B22FDE618DEBE42 /* Debug */,
+				03118E84519EFCB7920EB425 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9D2F3A53624B9334BAB35D3B /* Project object */;
+}
