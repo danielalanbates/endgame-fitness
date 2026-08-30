@@ -39,6 +39,13 @@ struct RootView: View {
                    CommandLine.arguments.count > i + 2 {
                     await auth.signIn(email: CommandLine.arguments[i + 1], password: CommandLine.arguments[i + 2])
                 }
+                // `-ef.skipOnboarding` and `-ef.tab <n>` jump straight to a tab so
+                // every screen can be screenshotted with `simctl io` (no taps).
+                if CommandLine.arguments.contains("-ef.skipOnboarding") { hasCompletedOnboarding = true }
+                if let i = CommandLine.arguments.firstIndex(of: "-ef.tab"), CommandLine.arguments.count > i + 1,
+                   let tab = Int(CommandLine.arguments[i + 1]) {
+                    workoutManager.selectedTab = tab
+                }
                 #endif
                 if auth.isSignedIn { await game.loadAll() }
             }

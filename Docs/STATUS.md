@@ -10,10 +10,10 @@ via batesai.org membership; TestFlight on macOS + iOS.
 | Area | State |
 |---|---|
 | App Store Connect record | **EXISTS** — "Endgame Fitness RPG", app id `6806675925`, bundle `org.batesai.endgamefitness`, SKU `org.batesai.endgamefitness`. Created through Xcode Organizer → Distribute App (REST `POST /v1/apps` is 403). "Endgame Fitness" as a store name is taken by another developer; rename in ASC if a better free name is found. |
-| Signed builds | `scripts/ship.sh both 1.0.0 <build>` archives, exports and uploads locally (Xcode 26.6 + iOS 26.5 platform). Build 3 (both platforms) was REJECTED in processing — see "Build 3 post-mortem". Build 4 fixes are committed (`41299e3`); result recorded in `Docs/SHIP_LOG.md`. |
+| Signed builds | `scripts/ship.sh both 1.0.0 <build>` archives, exports and uploads locally (Xcode 26.6 + iOS 26.5 platform). Build 3 (both platforms) was REJECTED in processing — see "Build 3 post-mortem". **Build 1.0.0 (6) is VALID on both platforms** (see `Docs/SHIP_LOG.md`); TestFlight internal group created, Daniel invited. |
 | Backend | Live on batesai.org (Cloudflare Pages `website` + D1 `batesai-db`). Guild raids + Step Count quest deployed and migrated 2026-08-29; smoke: `/api/fitness/{profile,quests,raid,achievements,talents,challenges}` all 200, a synced 12,000 lb session dealt 12,250 raid damage. |
-| iOS UI | Ran in the Simulator for the FIRST time today. Sign-in renders; onboarding overflowed the phone width → adaptive layout pass merged (Platform.swift helpers). Post-merge UI still needs a screen-by-screen simulator pass. |
-| macOS UI | `/Applications/Endgame Fitness.app` = build 3 archive re-signed ad-hoc (works locally; App Store profile builds cannot launch outside the store). Previous copy archived to iCloud `EndgameFitness/_archive/apps/2026-08-29-pre-build3/`. |
+| iOS UI | Ran in the Simulator for the FIRST time today. Sign-in, onboarding, Home, Workouts, Community feed verified on iPhone 17 Pro / iOS 26.5 after the layout pass (`Docs/screenshots/2026-08-29-ios/`). Known nit: Community segment labels truncate ("Leader…", "Challe…") on 390pt — use icons or a scrollable segmented control. Drive with `-ef.autologin`, `-ef.skipOnboarding`, `-ef.tab <n>` (DEBUG). |
+| macOS UI | Build 6 verified live: sign-in → dashboard (Level 6) → Community feed → Guild raid card (`Docs/screenshots/2026-08-29-macos/`). `/Applications/Endgame Fitness.app` = build 6 archive re-signed ad-hoc (works locally; App Store profile builds cannot launch outside the store). Previous copies archived to iCloud `EndgameFitness/_archive/apps/2026-08-29-*`. |
 
 ## What changed today
 
@@ -69,7 +69,6 @@ via batesai.org membership; TestFlight on macOS + iOS.
 
 ## Not verified — do not claim
 
-- Build 4 processing result (see `Docs/SHIP_LOG.md`, written after upload).
 - Native Sign in with Apple, HealthKit permission sheet + workout write, rest
   timer notification delivery, haptics, ShareLink, raid card rendering — all
   typecheck-only; none exercised on a device. The raid *server* path is
@@ -80,8 +79,7 @@ via batesai.org membership; TestFlight on macOS + iOS.
 
 ## Next steps (in order)
 
-1. Confirm build 4 = VALID on ASC; create a TestFlight internal group and add
-   Daniel's Apple ID as a tester (ASC API: `betaGroups`, `betaTesters`).
+1. Accept the TestFlight invite (email to danielalanbates@live.com); install build 6 on iPhone + Mac; exercise Sign in with Apple and the HealthKit permission sheet on device.
 2. Simulator pass over every iOS screen with `-ef.autologin`, fix what the
    layout helpers missed (set rows, charts, sheets).
 3. Apply raid reward title/cosmetic to the profile/avatar; show raid results in
