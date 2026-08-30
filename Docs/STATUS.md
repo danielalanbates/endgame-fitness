@@ -1,159 +1,109 @@
 # Endgame Fitness — status and next actions
 
-_Updated 2026-08-28 (autonomous session; supersedes the 2026-08-18 status)._
+_Updated 2026-08-29 (autonomous session; supersedes the 2026-08-28 status)._
 
 Goal: world-class fitness app that blurs social game and training log; profiles
 via batesai.org membership; TestFlight on macOS + iOS.
 
-## What changed today (all verified unless marked)
+## Where things stand (2026-08-29, evening)
 
-- **Merged the long-open feature branch into main** (PR #2, was PR #1
-  `feat/membership-sessions-live`): quests + achievements, talent tree with
-  server-side XP effects, friend duels / guild challenges, Account screen,
-  Program Wizard, opaque sessions shared with the website (`users.oauth_id`,
-  no JWT secret). Two conflict hunks (route table, schedule persistence) —
-  main's persistence kept, both route tables kept.
-- **Backend re-deployed to production.** A 2026-08-22 website deploy had
-  silently dropped the fitness API (`/api/auth/verify` returned the SPA HTML).
-  The functions now also live in the **website repo** (website PR #6) so the next
-  site deploy keeps them. `_lib/auth.js` on the website accepts the app's Bearer
-  token, so `/api/auth/me` and `/logout` work for native clients too.
-- **In-app account deletion** — `DELETE /api/auth/account` (+ `Delete account…`
-  in Account with confirmation). One D1 batch (transactional) clears every
-  fitness table, hands owned guilds to the longest-serving member, deletes the
-  user. App Store Review 5.1.1(v) needs this; the old "delete on batesai.org"
-  link pointed at a page that does not exist. Verified: register → delete →
-  token dead → login fails.
-- **Friend codes** — `fitness_profiles.friend_code` (6-char, lazily generated,
-  unique partial index; column added to the live D1 by hand). Friends pane shows
-  your code with Copy and one "Friend code or email" field;
-  `POST friends/request {query}` accepts either. Bad code → 404 shown inline.
-- **PR detection now real** — the client uploads completed sets per exercise
-  (`payload.exercises[].sets[]{reps,weight}`); the server's
-  `recordPersonalRecords` was a documented no-op before. Verified: Bench 225×5
-  → `personal_records` row + `pr` feed item; "New Heights" quest can fire.
-- Settings: "Sec-onds"/"Goal" placeholder labels no longer render in the
-  grouped form (`labelsHidden()`).
-- **Xcode 26.6 installed on this Mac** (App Store, via Accessibility — `mas`
-  needs sudo). `xcodebuild` works with
-  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`; the licence was
-  already accepted system-wide. This removes the GitHub-Actions dependency:
-  `scripts/ship.sh ios|macos|both` archives, exports and uploads locally.
-  Provisioning profiles `Endgame Fitness IOS_APP_STORE` / `MAC_APP_STORE` are
-  downloaded from ASC into `~/Library/MobileDevice/Provisioning Profiles`.
-- macOS app driven end-to-end against live membership (smoke account):
-  sign-in → dashboard → Community (feed, leaderboard, friends, guild,
-  challenges, quests, achievements) → talents sheet → settings/account.
-  Screenshots: `Docs/screenshots/2026-08-28-macos/`.
+| Area | State |
+|---|---|
+| App Store Connect record | **EXISTS** — "Endgame Fitness RPG", app id `6806675925`, bundle `org.batesai.endgamefitness`, SKU `org.batesai.endgamefitness`. Created through Xcode Organizer → Distribute App (REST `POST /v1/apps` is 403). "Endgame Fitness" as a store name is taken by another developer; rename in ASC if a better free name is found. |
+| Signed builds | `scripts/ship.sh both 1.0.0 <build>` archives, exports and uploads locally (Xcode 26.6 + iOS 26.5 platform). Build 3 (both platforms) was REJECTED in processing — see "Build 3 post-mortem". **Build 1.0.0 (6) is VALID on both platforms** (see `Docs/SHIP_LOG.md`); TestFlight internal group created, Daniel invited. |
+| Backend | Live on batesai.org (Cloudflare Pages `website` + D1 `batesai-db`). Guild raids + Step Count quest deployed and migrated 2026-08-29; smoke: `/api/fitness/{profile,quests,raid,achievements,talents,challenges}` all 200, a synced 12,000 lb session dealt 12,250 raid damage. |
+| iOS UI | Ran in the Simulator for the FIRST time today. Sign-in, onboarding, Home, Workouts, Community feed verified on iPhone 17 Pro / iOS 26.5 after the layout pass (`Docs/screenshots/2026-08-29-ios/`). Known nit: Community segment labels truncate ("Leader…", "Challe…") on 390pt — use icons or a scrollable segmented control. Drive with `-ef.autologin`, `-ef.skipOnboarding`, `-ef.tab <n>` (DEBUG). |
+| macOS UI | Build 6 verified live: sign-in → dashboard (Level 6) → Community feed → Guild raid card (`Docs/screenshots/2026-08-29-macos/`). `/Applications/Endgame Fitness.app` = build 6 archive re-signed ad-hoc (works locally; App Store profile builds cannot launch outside the store). Previous copies archived to iCloud `EndgameFitness/_archive/apps/2026-08-29-*`. |
 
-## Live API smoke (2026-08-28)
+## What changed today
 
-```
-POST /api/auth/login          -> token (43 chars, opaque)
-GET  /api/auth/verify         -> {"valid":true,"user":{...,"membership":"free"}}
-GET  /api/auth/me             -> {"signedIn":true,...}   (website endpoint, Bearer accepted)
-GET  /api/fitness/profile     -> level 3, friend_code "F5BEP6"
-GET  /api/fitness/quests      -> daily: Show Up / Hype Squad / Move Iron; weekly: Party Up / New Heights
-GET  /api/fitness/talents     -> tree v1, 3 branches
-GET  /api/fitness/achievements-> catalog + unlocked
-GET  /api/fitness/challenges  -> {pending:[],active:[],finished:[]}
-POST /api/fitness/sync (with payload) -> xp_gained 264, levels_gained 1, PR recorded
-DELETE /api/auth/account      -> {"deleted":true}
-```
+1. **App record + TestFlight pipeline unblocked.** Xcode already had the Apple
+   Account signed in, so Organizer's upload flow created the record after the
+   name was changed to "Endgame Fitness RPG".
+2. **iOS 26.5 platform installed** (`xcodebuild -downloadPlatform iOS`, no
+   admin). Xcode 26.6 refuses every iOS destination — device *and* simulator —
+   without it. Disk was at 8 GB free, so the iOS 26.2 runtime was deleted first.
+3. **HealthKit** (`HealthKitManager.swift`, iOS only, macOS no-op stub): steps /
+   active energy / HR / body-mass read auth, strength workouts written on
+   session finish, Health card on the dashboard, Settings toggle,
+   `steps_today` + `active_kcal_today` in the sync payload, daily quest
+   "Step Count" (8,000). App ID has the HEALTHKIT capability; profiles
+   regenerated ("… AppStore 2026-08-29").
+4. **Guild Raids** (`Docs/GUILD_RAIDS.md`): weekly boss from an 8-boss catalog
+   (`_lib/raids.js`), hp scales with member count, damage = session volume in
+   lb + 250 per verified PR, defeat → XP to every contributor, `raid_slayer`
+   achievement, `raid_defeated` feed items. `GET /api/fitness/raid`, raid
+   section in the sync response, `RaidViews.swift` card in the guild pane.
+5. **Session game layer** (`Docs/SESSION_GAME_LAYER.md`): rest timer with local
+   notification + haptics, per-set "+XP" pop-ups (estimate mirrors the server
+   formula; server stays authoritative), combo/PR callouts, session summary +
+   share card. Fixed two latent bugs: "Add Set" never logged (bad guard) and
+   `duration` was never sent to the server.
+6. **iOS adaptive layouts** (`Platform.swift`: `Font.screenTitle`,
+   `desktopMinFrame`, `scrollableOnPhone`, `AdaptiveHStack`, …) applied to
+   onboarding, dashboard, workouts, progress, history, tools, settings, sheets,
+   wizard, talents, account. macOS appearance unchanged by construction.
+7. **Backend drift fixed for good.** The website deploys from the home-directory
+   worktree; it lagged origin and website PR #6 lacked `_lib/game.js`,
+   `talents.js`, `challenges.js`, so `/api/fitness/quests` was 404 live.
+   Website PR #7 syncs everything; `~` is fast-forwarded. Deploy from the
+   session scratchpad — `wrangler pages deploy` fails under `/Users/daniel`
+   with a mangled `.wrangler/tmp` path.
+8. **Debug affordance:** `-ef.autologin <email> <password>` (DEBUG builds)
+   signs in without a keyboard so the simulator can be driven headlessly
+   (`xcrun simctl launch booted org.batesai.endgamefitness -ef.autologin …`).
+9. Test-account credentials moved out of the docs into gitignored
+   `.local/test-accounts.md`; `scripts/verify/ax_signin.py` reads
+   `EF_TEST_PASSWORD`.
 
-Test accounts on the live DB: `ef-smoke-test@batesai.org` / `smoketest-pass-123`
-(level 3), `ef-friend-test@batesai.org` / `friendtest-pass-123` (level 3, has a
-pending request to Smoke). Delete them once real users exist.
+## Build 3 post-mortem (both platforms rejected by ASC processing)
 
-## Signed artifacts built 2026-08-28 (local Xcode 26.6)
-
-- `~/Downloads/endgame-fitness-ship/export-ios/Endgame Fitness.ipa` (2.1 MB, 1.0.0/1)
-- `~/Downloads/endgame-fitness-ship/export-macos/Endgame Fitness.pkg` (4.3 MB, 1.0.0/1)
-- Signing: dedicated `endgame-ci` keychain with API-minted certs (see
-  `scripts/ship.sh` header). The login keychain's older "dist" key prompts for a
-  password and is deliberately not used.
-- `/Applications/Endgame Fitness.app` = the same archive re-signed ad-hoc (App
-  Store-profile builds cannot launch outside the store); previous copy archived
-  to iCloud `EndgameFitness/_archive/apps/2026-08-28-pre-xcode-build/`.
-
-## Blocked on Daniel
-
-0. **Xcode first-launch components** — Xcode is open with a "Download & Install"
-   admin-password prompt (iOS 26.5 platform support, 10.6 GB, ~24 GB free).
-   Enter the password once. This also unlocks the iOS Simulator so the iOS UI
-   can finally be run and screenshotted (`xcrun simctl`).
-1. **App Store Connect app record for `org.batesai.endgamefitness`** — still the
-   only thing between the signed builds and TestFlight. Two ways:
-   - Xcode: Settings → Accounts → **+** → App Store Connect API (issuer
-     `67d2d531-0ef2-43f5-8319-7505313c9fd1`, key `32R84GFV2F`, file
-     `~/Library/Application Support/BatesAI/keys/AuthKey_32R84GFV2F.p8`), then
-     Window → Organizer → the 2026-08-28 archive → Distribute App → App Store
-     Connect → Upload. When no record exists Xcode asks for **name + SKU** and
-     creates it (Apple forum thread 800558 confirms this flow).
-   - Or the website form described below. The ASC REST API cannot
-   create it, `xcodebuild -exportArchive destination=upload` does not create it,
-   the Chrome extension is not connected on this Mac, and no browser has an ASC
-   session. Create it: appstoreconnect.apple.com → My Apps → **+** → New App →
-   platforms **iOS + macOS**, name **Endgame Fitness**, primary language
-   English (U.S.), bundle id **org.batesai.endgamefitness**, SKU
-   **endgame-fitness**. Then run `scripts/ship.sh both` (or the daily
-   `testflight.yml` once billing is fixed) — nothing else is needed.
-2. GitHub Actions billing (Settings → Billing & plans): every job still dies in
-   3s. Not needed any more for shipping (local Xcode), but CI on push is dead
-   until it is fixed.
-3. Optional after the first build lands: TestFlight internal group; App Store
-   listing needs a privacy policy URL (https://batesai.org/privacy-policy exists)
-   and a support URL (https://batesai.org/contact).
+- **No asset catalog in either bundle.** `project.yml` used a `resources:` key
+  that xcodegen does not have; the `.xcassets` was silently dropped, so there
+  was no `Assets.car` and no icon (iOS 90022/90023/90713, macOS 90236). Fixed
+  by listing `Resources/Assets.xcassets` under `sources:`.
+- **macOS: App Sandbox missing** (90296). Entitlements now: `app-sandbox`,
+  `network.client`, `files.user-selected.read-write`, `applesignin`.
+- **pkg UTI**: Build Upload API wants `com.apple.pkg`, not
+  `com.apple.installer-package-archive` (409). Fixed in `upload_asc.py`.
 
 ## Not verified — do not claim
 
-- Native **Sign in with Apple** has never been exercised (needs a signed bundle
-  on a device/TestFlight; the capability is on the App ID and the entitlement is
-  in both targets). Google sign-in has no client secret configured.
-- iOS UI: see the "iOS" section below for what was and was not run today.
-- Avatar editor round-trip and `avatar_config` reader.
-- Health/HealthKit integration is described in Info.plist strings but not wired.
+- Native Sign in with Apple, HealthKit permission sheet + workout write, rest
+  timer notification delivery, haptics, ShareLink, raid card rendering — all
+  typecheck-only; none exercised on a device. The raid *server* path is
+  verified live.
+- Raid reward title/cosmetic is returned by the API but not applied to the
+  avatar yet.
+- Google sign-in has no client secret configured.
+
+## Next steps (in order)
+
+1. Accept the TestFlight invite (email to danielalanbates@live.com); install build 6 on iPhone + Mac; exercise Sign in with Apple and the HealthKit permission sheet on device.
+2. Simulator pass over every iOS screen with `-ef.autologin`, fix what the
+   layout helpers missed (set rows, charts, sheets).
+3. Apply raid reward title/cosmetic to the profile/avatar; show raid results in
+   the feed UI.
+4. Delete the smoke accounts + "Smoke Raiders" guild once real users exist.
+5. Store listing: privacy policy https://batesai.org/privacy-policy, support
+   https://batesai.org/contact, screenshots from `Docs/screenshots/`.
 
 ## How to build and verify on this Mac
 
 ```bash
-# fast macOS binary (no bundle, no signing)
-cd App/Sources/EndgameFitness
-xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -o /tmp/EF *.swift
-security delete-generic-password -s org.batesai.endgamefitness -a session-token  # see below
-nohup /tmp/EF &
-
-# real archives / TestFlight
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-SKIP_UPLOAD=1 scripts/ship.sh ios      # archive + export only
-scripts/ship.sh both 1.0.0 42          # + upload (needs the app record)
+# typecheck both platforms (fast)
+cd App/Sources/EndgameFitness
+xcrun swiftc -typecheck -parse-as-library -target arm64-apple-macos14.0 *.swift
+xcrun -sdk iphonesimulator swiftc -typecheck -parse-as-library -target arm64-apple-ios17.0-simulator *.swift
+# iOS in the simulator, headless
+cd App && xcodegen generate --spec project.yml --quiet
+xcodebuild -project EndgameFitness.xcodeproj -target EndgameFitness-iOS -sdk iphonesimulator -arch arm64 \
+  -configuration Debug SYMROOT="$HOME/Downloads/endgame-fitness-ship/sim-build" CODE_SIGNING_ALLOWED=NO build
+xcrun simctl boot "iPhone 17 Pro"; xcrun simctl install booted "$HOME/Downloads/endgame-fitness-ship/sim-build/Debug-iphonesimulator/Endgame Fitness.app"
+xcrun simctl launch booted org.batesai.endgamefitness -ef.autologin <email> <password>
+xcrun simctl io booted screenshot shot.png
+# ship
+security unlock-keychain -p "$(cat ~/Library/Application\ Support/BatesAI/keys/endgame-signing/keychain-password.txt)" ~/Library/Keychains/endgame-ci.keychain-db
+scripts/ship.sh both 1.0.0 <build>
 ```
-
-Driving the UI without stealing focus: `scripts/verify/ax.py` (AX tree walk),
-`screencapture -x -l <windowid>` (works while occluded), `CGEventPostToPid`
-for typing. See `scripts/verify/drive.py`.
-
-**Keychain trap:** a rebuilt unsigned binary reading the token the previous
-build stored pops a SecurityAgent password dialog on screen; the dialog outlives
-the app and ignores synthetic clicks. Delete the item before relaunching; if the
-dialog is already up, `kill -9 $(pgrep -x SecurityAgent)`.
-
-## Where things run
-
-- API: Cloudflare Pages project `website` (batesai.org), D1 `batesai-db`
-  (`9e43d1f6-b25f-4cab-87da-9669dc4148d2`). Deploy = `~/.git/dist` (the live
-  site's built output — the GitHub website repo's `dist/` lacks /qola, /play)
-  + `functions/` from the website repo, `wrangler pages deploy dist
-  --project-name=website --branch=main` from a non-iCloud directory.
-  `App/Backend/deploy.sh` automates the functions part.
-- Secrets on Pages: OPENROUTER_API_KEY (AI coach), APPLE/GOOGLE client secrets,
-  Stripe. No JWT_SECRET exists and none is needed.
-
-## Ideas queued (not started)
-
-- Weekly leagues (Bronze/Silver/Gold divisions by weekly XP from
-  `xp_transactions`), promotion/relegation on Monday.
-- Guild chat / shout-outs; push notifications for duel invites and friend
-  requests (needs APNs — the ASC key can mint the token).
-- Apple Watch companion for set logging; HealthKit write-back.
-- Cosmetic titles unlocked by achievements (schema has `title`).

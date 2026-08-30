@@ -23,8 +23,10 @@ import UIKit
 /// builds against this alias instead of hard-coding AppKit.
 #if os(macOS)
 typealias PlatformColor = NSColor
+typealias PlatformImage = NSImage
 #else
 typealias PlatformColor = UIColor
+typealias PlatformImage = UIImage
 #endif
 
 /// The scalar `SCNVector3` is built from: `CGFloat` on macOS, `Float` on iOS.
@@ -104,6 +106,30 @@ enum Platform {
     static func tick() {
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    /// Impact haptic used by the session game layer. No-op on the Mac.
+    enum ImpactStrength { case light, medium, heavy }
+    static func impact(_ strength: ImpactStrength) {
+        #if os(iOS)
+        let style: UIImpactFeedbackGenerator.FeedbackStyle
+        switch strength {
+        case .light: style = .light
+        case .medium: style = .medium
+        case .heavy: style = .heavy
+        }
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+        #endif
+    }
+
+    /// Put an image on the general pasteboard (share-card "copy" on the Mac).
+    static func copyImageToPasteboard(_ image: PlatformImage) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+        #else
+        UIPasteboard.general.image = image
         #endif
     }
 
@@ -218,4 +244,89 @@ enum WorkoutTransfer {
         return nil
         #endif
     }
+}
+
+// MARK: - Adaptive layout
+
+/// The UI was laid out for a 900x700 macOS window. These helpers keep that
+/// look on the Mac and relax it on a 390pt-wide iPhone without forking views.
+extension Font {
+    /// Page heading: `.largeTitle` on the Mac, `.title2` on iPhone.
+    static var screenTitle: Font { Platform.isDesktop ? .largeTitle : .title2 }
+}
+
+extension View {
+    /// Minimum window frame on the Mac. iOS fills whatever the screen gives.
+    @ViewBuilder
+    func desktopMinFrame(minWidth: CGFloat, minHeight: CGFloat) -> some View {
+        if Platform.isDesktop {
+            frame(minWidth: minWidth, minHeight: minHeight)
+        } else {
+            frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// Fixed sheet size on the Mac; iOS sheets already fill the screen.
+    @ViewBuilder
+    func desktopSheetFrame(width: CGFloat, height: CGFloat) -> some View {
+        if Platform.isDesktop {
+            frame(width: width, height: height)
+        } else {
+            frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// Fixed width on the Mac; on iPhone the view can shrink to fit but never
+    /// grows past the same width.
+    @ViewBuilder
+    func desktopWidth(_ width: CGFloat) -> some View {
+        if Platform.isDesktop {
+            frame(width: width)
+        } else {
+            frame(maxWidth: width)
+        }
+    }
+
+    /// Generous Mac padding, capped on iPhone so cards keep their content width.
+    func adaptivePadding(_ desktop: CGFloat, phone: CGFloat = 16) -> some View {
+        padding(Platform.isDesktop ? desktop : phone)
+    }
+
+    /// Wraps tall content in a vertical ScrollView on iPhone only.
+    @ViewBuilder
+    func scrollableOnPhone() -> some View {
+        if Platform.isDesktop {
+            self
+        } else {
+            ScrollView(.vertical, showsIndicators: false) { self }
+        }
+    }
+
+    /// Long headings: allow wrapping and shrink a little before clipping.
+    func adaptiveHeading() -> some View {
+        self
+            .multilineTextAlignment(.center)
+            .lineLimit(nil)
+            .minimumScaleFactor(0.75)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+/// Side-by-side on the Mac, stacked on iPhone.
+struct AdaptiveHStack<Content: View>: View {
+    var alignment: VerticalAlignment = .top
+    var spacing: CGFloat = 16
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let layout = Platform.isDesktop
+            ? AnyLayout(HStackLayout(alignment: alignment, spacing: spacing))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: spacing))
+        layout { content }
+    }
+}
+
+/// Fixed column count on the Mac, fewer on iPhone.
+func adaptiveColumns(desktop: Int, phone: Int, spacing: CGFloat? = nil) -> [GridItem] {
+    Array(repeating: GridItem(.flexible(), spacing: spacing), count: Platform.isDesktop ? desktop : phone)
 }

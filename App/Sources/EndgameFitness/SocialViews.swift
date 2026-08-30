@@ -73,7 +73,7 @@ struct SignInView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 380)
             }
-            .padding(32)
+            .adaptivePadding(32, phone: 20)
             .frame(maxWidth: .infinity)
         }
         .background(
@@ -566,6 +566,9 @@ struct CommunityView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.platformControlBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    // Weekly co-op boss: every member's synced volume is damage.
+                    RaidCard()
 
                     ForEach(game.guildMembers) { member in
                         HStack {

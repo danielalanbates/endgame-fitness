@@ -84,7 +84,7 @@ resolve_app_id()
 data = open(ARTIFACT, "rb").read()
 print(f"artifact: {ARTIFACT} ({len(data)} bytes, md5 {hashlib.md5(data).hexdigest()})")
 
-uti = "com.apple.ipa" if PLATFORM == "IOS" else "com.apple.installer-package-archive"
+uti = "com.apple.ipa" if PLATFORM == "IOS" else "com.apple.pkg"
 
 up = call("POST", f"{API}/buildUploads", {
     "data": {

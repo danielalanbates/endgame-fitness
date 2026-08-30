@@ -23,6 +23,9 @@
 //   prs       — +1 per personal record set
 //   reactions — +1 per reaction the user gives to a friend's activity
 //   friends   — +1 per accepted friendship
+//   steps     — today's step count from Apple Health (`steps_today` on the
+//               sync payload). ABSOLUTE, not additive: progress is the highest
+//               reading seen for the period, so re-syncs cannot double-count.
 export const DAILY_QUESTS = Object.freeze([
   { key: 'log_workout',   title: 'Show Up',        desc: 'Log a workout today',                    metric: 'workouts',  target: 1,    xp: 40,  icon: 'figure.strengthtraining.traditional' },
   { key: 'volume_5k',     title: 'Move Iron',      desc: 'Move 5,000 lb of total volume',          metric: 'volume',    target: 5000, xp: 60,  icon: 'scalemass.fill' },
@@ -30,6 +33,7 @@ export const DAILY_QUESTS = Object.freeze([
   { key: 'minutes_30',    title: 'Half Hour Hero', desc: 'Train for 30 minutes',                   metric: 'minutes',   target: 30,   xp: 45,  icon: 'timer' },
   { key: 'react_friend',  title: 'Hype Squad',     desc: "React to a friend's activity",           metric: 'reactions', target: 1,    xp: 20,  icon: 'hands.clap.fill' },
   { key: 'volume_10k',    title: 'Heavy Day',      desc: 'Move 10,000 lb of total volume',         metric: 'volume',    target: 10000, xp: 90, icon: 'flame.fill' },
+  { key: 'steps_8k',      title: 'Step Count',     desc: 'Walk 8,000 steps (Apple Health)',        metric: 'steps',     target: 8000, xp: 50,  icon: 'figure.walk', absolute: true },
 ]);
 
 export const WEEKLY_QUESTS = Object.freeze([
@@ -58,6 +62,7 @@ export const ACHIEVEMENTS = Object.freeze([
   { id: 'level_50',      title: 'Legend',         desc: 'Reach level 50',                   rarity: 'legendary', xp: 1000, icon: 'sparkles',            rule: (s) => s.level >= 50 },
   { id: 'first_friend',  title: 'Party of Two',   desc: 'Add your first friend',            rarity: 'common',    xp: 50,   icon: 'person.2.fill',       rule: (s) => s.friend_count >= 1 },
   { id: 'guild_join',    title: 'Banner Raised',  desc: 'Join or found a guild',            rarity: 'common',    xp: 75,   icon: 'shield.lefthalf.filled', rule: (s) => !!s.in_guild },
+  { id: 'raid_slayer',   title: 'Raid Slayer',    desc: 'Help your guild defeat a weekly raid boss', rarity: 'rare', xp: 150, icon: 'bolt.shield.fill', rule: (s) => s.raids_won >= 1 },
 ]);
 
 /* ------------------------------------------------------------------ */
@@ -167,7 +172,16 @@ export function advance(quest, event) {
   if (!def) return Number(quest.progress) || 0;
   const delta = Number(event[def.metric]) || 0;
   if (delta <= 0) return Number(quest.progress) || 0;
-  return Math.min(Number(quest.target), (Number(quest.progress) || 0) + delta);
+  const progress = Number(quest.progress) || 0;
+  // Absolute metrics (steps) report a running total, so take the max instead of summing.
+  const next = def.absolute ? Math.max(progress, delta) : progress + delta;
+  return Math.min(Number(quest.target), next);
+}
+
+/** Convert the Health fields on a sync payload into a quest event (or null). */
+export function eventForHealth({ steps_today = 0 } = {}) {
+  const steps = Math.max(0, Math.floor(Number(steps_today) || 0));
+  return steps > 0 ? { steps } : null;
 }
 
 /** Convert a synced session into a quest event. */
@@ -193,7 +207,7 @@ export function newlyUnlocked(stats, unlocked) {
   const have = new Set(unlocked || []);
   const s = {
     total_workouts: 0, longest_streak: 0, total_volume: 0, level: 1,
-    friend_count: 0, in_guild: false, ...stats,
+    friend_count: 0, in_guild: false, raids_won: 0, ...stats,
   };
   return ACHIEVEMENTS.filter((a) => !have.has(a.id) && a.rule(s));
 }

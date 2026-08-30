@@ -33,7 +33,8 @@ targets:
     platform: macOS
     sources:
       - path: Sources/EndgameFitness
-    resources:
+      # xcodegen has no `resources:` key — asset catalogs listed under sources
+      # land in the Copy Bundle Resources phase automatically.
       - path: Resources/Assets.xcassets
     settings:
       base:
@@ -50,15 +51,24 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Support/EndgameFitness-macOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: YES
+    # xcodegen REWRITES the entitlements file from `properties` on every generate
+    # (an entry with only `path` produces an empty plist) — keep the real
+    # entitlements here, never edit the .entitlements files by hand.
     entitlements:
       path: Support/EndgameFitness-macOS.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.developer.applesignin: [Default]
 
   EndgameFitness-iOS:
     type: application
     platform: iOS
     sources:
       - path: Sources/EndgameFitness
-    resources:
+      # xcodegen has no `resources:` key — asset catalogs listed under sources
+      # land in the Copy Bundle Resources phase automatically.
       - path: Resources/Assets.xcassets
     settings:
       base:
@@ -74,6 +84,16 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
     entitlements:
       path: Support/EndgameFitness-iOS.entitlements
+      properties:
+        com.apple.developer.applesignin: [Default]
+        com.apple.developer.healthkit: true
+        # NOT healthkit.access — that is Verifiable Health Records and needs Apple approval.
+    # HealthKit capability (iOS only — the framework does not exist on macOS).
+    # SystemCapabilities is what Xcode writes when the capability is ticked.
+    attributes:
+      SystemCapabilities:
+        com.apple.HealthKit:
+          enabled: 1
 
 schemes:
   EndgameFitness-macOS:

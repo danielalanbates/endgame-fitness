@@ -5,6 +5,49 @@ This document outlines the architecture for integrating WorkoutTracker with heal
 
 ---
 
+## 0. What is actually wired (2026-08-29)
+
+Everything below this section is the original design survey. This section is
+the ground truth for the code in the repo.
+
+### Wired now
+
+| Piece | Where | Notes |
+|---|---|---|
+| HealthKit manager | `App/Sources/EndgameFitness/HealthKitManager.swift` | `#if os(iOS) && canImport(HealthKit)`; macOS gets a same-surface no-op stub so both targets compile from one codebase. `HealthKitManager.shared`, `@MainActor`, `ObservableObject`. |
+| Authorization | `requestAuthorization()` | Read: steps, activeEnergyBurned, heartRate, bodyMass. Write: HKWorkout. "Connected" is remembered in UserDefaults (`healthKitConnected`) because HealthKit never reveals read-permission status. |
+| Today's steps + active kcal | `refreshToday()` | Two `HKStatisticsQuery` cumulative sums from `startOfDay`. |
+| Auto-refresh | `startObservingSteps()` | `HKObserverQuery` on stepCount + hourly background delivery; re-reads today's totals on every callback. |
+| Save finished session as HKWorkout | `saveStrengthWorkout(start:durationSecs:name:activeKcal:)`, called from `WorkoutManager.completeWorkout()` in `WorkoutTrackerMac_Enhanced.swift` | `HKWorkoutBuilder`, `.traditionalStrengthTraining`, indoor; adds an active-energy sample only if a kcal value is passed (the tracker does not estimate kcal today, so none is written). Skipped when duration is 0, when not connected, or when the toggle is off. |
+| Dashboard "Health" card (iOS only) | `HealthCard` in `WorkoutTrackerMac_Enhanced.swift`, inserted after `TodaysQuestsCard` in `DashboardView` | Shows steps, active kcal, an 8,000-step progress bar; shows a **Connect Apple Health** button until authorised. |
+| Settings toggle | `SettingsView` → section "Apple Health" (iOS only) | "Sync workouts to Apple Health" (`healthSyncWorkoutsToAppleHealth`, default on). Shows the connect button when not yet connected. |
+| Sync payload | `GameProfileService.sync()` in `GameProfile.swift` | Calls `refreshToday()` then adds `steps_today` (Int) and `active_kcal_today` (Double) to the `fitness/sync` body. Only present once connected. |
+| Backend quest | `App/Backend/functions/_lib/game.js` + `functions/api/fitness/[[path]].js` | New daily quest `steps_8k` "Step Count" (8,000 steps, 50 XP, metric `steps`, `absolute: true`). `advance()` takes max(progress, reading) for absolute metrics so a re-sync cannot double-count. `handleSync` calls `advanceQuests(eventForHealth(body))` on every sync, with or without sessions. Covered by `tests/game-rules.test.mjs`. |
+| Entitlements / capability | `App/Support/EndgameFitness-iOS.entitlements` (`com.apple.developer.healthkit` = true, `.access` = []) and `App/project.yml` iOS target `attributes.SystemCapabilities.com.apple.HealthKit` | iOS target only. macOS untouched. |
+| Usage strings | `App/Support/Info-iOS.plist` | `NSHealthShareUsageDescription` / `NSHealthUpdateUsageDescription` were already present. |
+
+### Not wired / not verified
+
+- **Never run on a device or simulator.** Both targets typecheck
+  (`swiftc -typecheck`, macOS 14 + iOS 17 simulator); the permission sheet,
+  the queries and the workout write have not been exercised.
+- **Provisioning.** The App ID `org.batesai.endgamefitness` must have the
+  HealthKit capability enabled and the `Endgame Fitness IOS_APP_STORE` profile
+  regenerated, or the signed build will be rejected for the new entitlement.
+  Signing/ship scripts were deliberately not touched.
+- **Heart rate and body mass** are requested but not read anywhere yet.
+- **Active kcal on saved workouts** is not written (no estimate exists in the
+  tracker). `active_kcal_today` is sent to the server but no quest uses it.
+- **Background delivery** is enabled but there is no
+  `UIBackgroundModes`/background-fetch handling; refresh happens while the app
+  is foregrounded (observer callback, dashboard `.task`, and before each sync).
+- **Trust model.** The server trusts `steps_today` the same way it trusts
+  session volume: a patched client can lie. Steps are capped at the quest
+  target and worth 50 XP, so the blast radius is small.
+- Nothing for Android / Garmin / Fitbit exists; sections 2-5 remain proposals.
+
+---
+
 ## 1. Apple HealthKit Integration (iOS/iPadOS/watchOS)
 
 ### Platform Support
@@ -13,7 +56,7 @@ This document outlines the architecture for integrating WorkoutTracker with heal
 - **watchOS**: ✅ Fully supported
 
 ### Important Limitation
-⚠️ **The current macOS app CANNOT use HealthKit directly**. HealthKit is only available on iOS, iPadOS, and watchOS.
+⚠️ **The macOS app CANNOT use HealthKit directly**. HealthKit is only available on iOS, iPadOS, and watchOS. In this codebase the iOS target has it (section 0); macOS compiles the no-op stub.
 
 ### Architecture Options for Apple Ecosystem
 

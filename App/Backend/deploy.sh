@@ -72,6 +72,11 @@ fi
 
 echo "==> Applying database schema (idempotent)"
 run npx wrangler d1 execute batesai-db --remote --file="$BACKEND_DIR/schema.sql"
+for migration in "$BACKEND_DIR"/migrations/*.sql; do
+  [ -e "$migration" ] || continue
+  echo "==> Applying migration $(basename "$migration") (idempotent)"
+  run npx wrangler d1 execute batesai-db --remote --file="$migration"
+done
 
 if $SCHEMA_ONLY; then
   echo "==> Schema applied. Skipping deploy (--schema)."

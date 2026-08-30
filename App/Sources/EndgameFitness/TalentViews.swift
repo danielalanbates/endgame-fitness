@@ -61,7 +61,7 @@ struct TalentTreeView: View {
                     .padding(8)
             }
         }
-        .frame(minWidth: 420, minHeight: 520)
+        .desktopMinFrame(minWidth: 420, minHeight: 520)
         .task { await game.loadTalents() }
         .confirmationDialog(
             "Reset all talents?", isPresented: $showRespecConfirm, titleVisibility: .visible

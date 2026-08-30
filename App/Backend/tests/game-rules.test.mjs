@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import {
   boardFor, pickDeterministic, dayKey, weekKey, dayEnd, weekEnd, advance,
-  eventForWorkout, newlyUnlocked, achievementCatalog, DAILY_QUESTS, WEEKLY_QUESTS,
+  eventForWorkout, eventForHealth, newlyUnlocked, achievementCatalog, DAILY_QUESTS, WEEKLY_QUESTS,
   DAILY_COUNT, WEEKLY_COUNT, questId,
 } from '../functions/_lib/game.js';
 
@@ -75,6 +75,16 @@ test('advance applies the right metric and caps at target', () => {
   assert.equal(advance({ quest_key: 'log_workout', target: 1, progress: 0 }, ev), 1);
   assert.equal(advance({ quest_key: 'volume_5k', target: 5000, progress: 0 }, ev), 5000); // capped
   assert.equal(advance({ quest_key: 'reps_100', target: 100, progress: 30 }, ev), 100);
+
+  // Steps are absolute: a re-sync with the same reading must not double-count.
+  const steps = eventForHealth({ steps_today: 3000 });
+  assert.deepEqual(steps, { steps: 3000 });
+  assert.equal(advance({ quest_key: 'steps_8k', target: 8000, progress: 0 }, steps), 3000);
+  assert.equal(advance({ quest_key: 'steps_8k', target: 8000, progress: 3000 }, steps), 3000);
+  assert.equal(advance({ quest_key: 'steps_8k', target: 8000, progress: 3000 }, { steps: 9500 }), 8000);
+  assert.equal(advance({ quest_key: 'steps_8k', target: 8000, progress: 5000 }, ev), 5000); // workout has no steps
+  assert.equal(eventForHealth({}), null);
+  assert.equal(eventForHealth({ steps_today: -5 }), null);
   assert.equal(advance({ quest_key: 'minutes_30', target: 30, progress: 0 }, ev), 25);
   assert.equal(advance({ quest_key: 'react_friend', target: 1, progress: 0 }, ev), 0); // untouched
   assert.equal(advance({ quest_key: 'react_friend', target: 1, progress: 0 }, { reactions: 1 }), 1);
@@ -100,7 +110,7 @@ test('achievement rules', () => {
 
 test('catalog is JSON-safe and complete', () => {
   const cat = achievementCatalog();
-  assert.equal(cat.length, 12);
+  assert.equal(cat.length, 13);
   for (const a of cat) {
     assert.ok(a.id && a.title && a.rarity && a.xp > 0 && a.icon, JSON.stringify(a));
     assert.equal(typeof a.rule, 'undefined');
