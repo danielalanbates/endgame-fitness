@@ -68,6 +68,24 @@ if ! $SCHEMA_ONLY; then
   run cp "$BACKEND_DIR/functions/api/auth/[[path]].js"    "$SITE_DIR/functions/api/auth/[[path]].js"
   run cp "$BACKEND_DIR/functions/api/fitness/[[path]].js" "$SITE_DIR/functions/api/fitness/[[path]].js"
   run cp "$BACKEND_DIR"/functions/_lib/*.js "$SITE_DIR/functions/_lib/"
+
+  echo "==> Syncing Endgame Fitness PWA into $SITE_DIR/dist/fitness"
+  PWA_DIST="$BACKEND_DIR/../../Web/fitness-pwa/dist"
+  if [[ ! -f "$PWA_DIST/index.html" ]]; then
+    cat >&2 <<'EOF'
+ERROR: the PWA build is missing. Build it first:
+
+    cd Web/fitness-pwa && npm install && npm run build
+
+Then re-run this script.
+EOF
+    exit 1
+  fi
+  run mkdir -p "$SITE_DIR/dist/fitness"
+  # Clear stale files so removed assets don't linger on the live path.
+  run rm -rf "$SITE_DIR/dist/fitness"
+  run mkdir -p "$SITE_DIR/dist/fitness"
+  run cp -r "$PWA_DIST/." "$SITE_DIR/dist/fitness/"
 fi
 
 echo "==> Applying database schema (idempotent)"
