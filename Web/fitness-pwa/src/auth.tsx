@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ApiUser, apiLogin, apiLogout, apiRegister, apiVerify, getToken, setToken } from './api';
+import { ApiError, ApiUser, apiLogin, apiLogout, apiRegister, apiVerify, setToken } from './api';
 
 interface AuthState {
   user: ApiUser | null;
@@ -21,18 +21,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!getToken()) {
-        setReady(true);
-        return;
-      }
+      // Always ask the backend: it accepts the stored Bearer <redacted> AND the
+      // website's batesai_session cookie (same-origin, sent automatically), so
+      // an existing batesai.org login restores here even with no local token.
       try {
         const res = await apiVerify();
         if (!cancelled && res.valid && res.user) setUser(res.user);
         else if (!cancelled) setToken(null);
-      } catch {
-        // Network down: keep the token so the app opens; calls will fail
-        // loudly later and the user can retry. Don't sign out on a blip.
-        if (!cancelled) setError('Could not reach batesai.org. Check your connection and pull to retry.');
+      } catch (e) {
+        if (!cancelled) {
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+            // Not signed in (or the token expired) — normal logged-out state.
+            setToken(null);
+          } else {
+            // Network down: keep any stored token so the app opens; calls will
+            // fail loudly later and the user can retry. Don't sign out on a blip.
+            setError('Could not reach batesai.org. Check your connection and pull to retry.');
+          }
+        }
       } finally {
         if (!cancelled) setReady(true);
       }

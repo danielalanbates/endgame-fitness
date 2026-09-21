@@ -1,6 +1,7 @@
 /* Endgame Fitness service worker — app-shell caching, network-first for API.
-   Scope is /fitness/ so the rest of batesai.org is untouched. Version the
-   cache name on every deploy that changes hashed assets. */
+   Scope is /fitness/ so the rest of batesai.org is untouched. The cache name
+   is stamped with the build time by vite.config.ts, so every deploy installs
+   a fresh worker and no one is stranded on a stale shell. */
 const CACHE = 'endgame-fitness-v1';
 const SHELL = ['/fitness/', '/fitness/index.html', '/fitness/manifest.webmanifest'];
 

@@ -1,2 +1,11 @@
 node_modules/
 .DS_Store
+
+# tsc build artifacts — the .tsx/.ts sources are the source of truth.
+# (Checked-in .js files used to shadow the .tsx sources in vite's resolver,
+# so builds silently ignored source edits. Never commit these.)
+src/**/*.js
+src/**/*.d.ts
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

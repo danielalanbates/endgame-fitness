@@ -357,6 +357,6 @@ input, select, textarea { font: inherit; color: var(--text); }
 .seg button {
   flex: 1; border: none; background: none; color: var(--muted);
   min-height: 40px; border-radius: 9px; font-weight: 700; font-size: 13px;
-  white-space: nowrap;
+  white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 .seg button.active { background: var(--card-2); color: var(--text); }

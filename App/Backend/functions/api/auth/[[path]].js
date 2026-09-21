@@ -322,12 +322,23 @@ export async function sessionUser(request, env) {
   if (!token) token = readCookie(request, 'batesai_session') || '';
   if (!token) token = new URL(request.url).searchParams.get('token') || '';
   if (!token) return null;
-  const row = await env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.avatar_url, u.membership_tier, s.expires_at
-       FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.expires_at > ?`
-  ).bind(await sha256Hex(token), Math.floor(Date.now() / 1000)).first();
-  return row || null;
+  const hash = await sha256Hex(token);
+  const t = Math.floor(Date.now() / 1000);
+  try {
+    return await env.DB.prepare(
+      `SELECT u.id, u.email, u.name, u.avatar_url, u.membership_tier, s.expires_at
+         FROM sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = ? AND s.expires_at > ?`
+    ).bind(hash, t).first() || null;
+  } catch (e) {
+    // Databases created before the membership_tier column existed fail the
+    // query above ("no such column"); fall back to the columns we know exist.
+    return await env.DB.prepare(
+      `SELECT u.id, u.email, u.name, u.avatar_url, s.expires_at
+         FROM sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = ? AND s.expires_at > ?`
+    ).bind(hash, t).first() || null;
+  }
 }
 
 function readCookie(request, name) {

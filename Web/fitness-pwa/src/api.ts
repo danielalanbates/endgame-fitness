@@ -154,11 +154,9 @@ export interface Friend {
   user_id: string;
   display_name: string;
   level: number;
-  current_streak: number;
   xp: number;
+  current_streak: number;
   avatar_url: string | null;
-  status: string;
-  other_id: string;
 }
 
 export interface Guild {
@@ -217,7 +215,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(path, { ...options, headers: { ...headers, ...(options.headers as Record<string, string>) } });
+  // Same-origin: always send the batesai_session cookie when present so an
+  // existing website login restores the session even without a stored token.
+  const res = await fetch(path, {
+    ...options,
+    credentials: 'same-origin',
+    headers: { ...headers, ...(options.headers as Record<string, string>) },
+  });
   let body: unknown = null;
   try {
     body = await res.json();
@@ -272,18 +276,62 @@ export const apiLeaderboard = (scope = 'global', metric = 'xp') =>
     `/api/fitness/leaderboard?scope=${scope}&metric=${metric}`,
   );
 
-export const apiGetFriends = () => get<{ friends: Friend[]; pending_in: Friend[]; pending_out: Friend[] }>('/api/fitness/friends');
+export const apiGetFriends = () =>
+  get<{ friends: Friend[]; incoming_requests: Friend[]; outgoing_requests: Friend[] }>('/api/fitness/friends');
 
 export const apiFriendRequest = (email?: string, friendCode?: string) =>
-  post<{ success: boolean }>('/api/fitness/friends/request', email ? { email } : { friend_code: friendCode });
+  // Backend reads `code` (friend code) or `email` — not `friend_code`.
+  post<{ success: boolean; status: string }>('/api/fitness/friends/request', email ? { email } : { code: friendCode });
 
 export const apiFriendRespond = (userId: string, accept: boolean) =>
   post<{ success: boolean }>('/api/fitness/friends/respond', { user_id: userId, accept });
 
-export const apiGetGuild = () => get<{ guild: Guild | null }>('/api/fitness/guild');
+interface GuildRow {
+  id: string;
+  name: string;
+  motto: string | null;
+  owner_id: string;
+  emblem: string | null;
+  member_cap: number;
+  created_at: number;
+}
 
-export const apiCreateGuild = (name: string, motto: string) =>
-  post<{ guild: Guild }>('/api/fitness/guild', { name, motto });
+interface GuildResponse {
+  guild: GuildRow | null;
+  members: { user_id: string; display_name: string; level: number; role: string }[];
+  your_role?: string;
+}
+
+// The backend returns { guild, members, your_role } with the guild as a raw
+// DB row (or null when not a member). Reshape it into the Guild view model
+// the UI consumes so Social.tsx doesn't have to know the wire shape.
+function toGuild(res: GuildResponse): Guild | null {
+  if (!res.guild) return null;
+  const g = res.guild;
+  return {
+    id: g.id,
+    name: g.name,
+    motto: g.motto,
+    owner_id: g.owner_id,
+    member_count: res.members.length,
+    members: res.members,
+    is_member: true,
+    is_owner: res.your_role === 'owner',
+  };
+}
+
+export const apiGetGuild = async (): Promise<{ guild: Guild | null }> => {
+  const res = await get<GuildResponse>('/api/fitness/guild');
+  return { guild: toGuild(res) };
+};
+
+export const apiCreateGuild = async (name: string, motto: string): Promise<{ guild: Guild }> => {
+  // Create returns { success, guild_id }; re-read to get the shaped guild.
+  await post<{ success: boolean; guild_id: string }>('/api/fitness/guild', { name, motto });
+  const { guild } = await apiGetGuild();
+  if (!guild) throw new ApiError(500, 'Guild was created but could not be loaded');
+  return { guild };
+};
 
 export const apiJoinGuild = (guildId: string) => post<{ success: boolean }>('/api/fitness/guild/join', { guild_id: guildId });
 

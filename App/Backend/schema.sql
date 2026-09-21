@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash  TEXT,
   name           TEXT,
   avatar_url     TEXT,
+  membership_tier TEXT,
   oauth_provider TEXT,
   oauth_id      TEXT,
   created_at     INTEGER NOT NULL,

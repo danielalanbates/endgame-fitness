@@ -46,6 +46,36 @@ export default function Workout({ onToast, onSynced }: { onToast: (msg: string) 
   const [pending, setPending] = useState<OutgoingSession[]>(loadQueue);
   const timerRef = useRef<number | null>(null);
 
+  const flushQueue = async (extra: OutgoingSession[]): Promise<SyncResult | null> => {
+    const batch = [...loadQueue(), ...extra];
+    if (batch.length === 0) return null;
+    const since = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
+    const res = await apiSync(batch, since);
+    const accepted = new Set(res.accepted);
+    const remaining = batch.filter((s) => !accepted.has(s.id));
+    saveQueue(remaining);
+    setPending(remaining);
+    localStorage.setItem(LAST_SYNC_KEY, String(res.server_time));
+    return res;
+  };
+
+  // Drain any queue left from a previous offline session, and whenever the
+  // device comes back online — the user shouldn't have to remember to tap.
+  const flushRef = useRef(flushQueue);
+  flushRef.current = flushQueue;
+  useEffect(() => {
+    flushRef.current([]).catch(() => {
+      /* still offline; the queue stays on-device */
+    });
+    const onOnline = () => {
+      flushRef.current([]).catch(() => {
+        /* dropped again; queue stays on-device */
+      });
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
   useEffect(() => {
     if (active) {
       timerRef.current = window.setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
@@ -98,19 +128,6 @@ export default function Workout({ onToast, onSynced }: { onToast: (msg: string) 
   };
 
   const removeExercise = (i: number) => setExercises((xs) => xs.filter((_, j) => j !== i));
-
-  const flushQueue = async (extra: OutgoingSession[]): Promise<SyncResult | null> => {
-    const batch = [...loadQueue(), ...extra];
-    if (batch.length === 0) return null;
-    const since = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
-    const res = await apiSync(batch, since);
-    const accepted = new Set(res.accepted);
-    const remaining = batch.filter((s) => !accepted.has(s.id));
-    saveQueue(remaining);
-    setPending(remaining);
-    localStorage.setItem(LAST_SYNC_KEY, String(res.server_time));
-    return res;
-  };
 
   const finish = async () => {
     if (totals.reps === 0) {

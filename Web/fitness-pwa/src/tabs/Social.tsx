@@ -33,7 +33,7 @@ export default function Social({ onToast }: { onToast: (msg: string) => void }) 
       if (sub === 'friends') {
         const f = await apiGetFriends();
         setFriends(f.friends);
-        setPendingIn(f.pending_in || []);
+        setPendingIn(f.incoming_requests || []);
       }
       if (sub === 'guild') {
         const [g, r] = await Promise.all([apiGetGuild(), apiGetRaid()]);
@@ -87,7 +87,7 @@ export default function Social({ onToast }: { onToast: (msg: string) => void }) 
 
   const respond = async (f: Friend, accept: boolean) => {
     try {
-      await apiFriendRespond(f.other_id || f.user_id, accept);
+      await apiFriendRespond(f.user_id, accept);
       onToast(accept ? 'Friend added' : 'Request declined');
       load();
     } catch (e) {
@@ -206,7 +206,7 @@ export default function Social({ onToast }: { onToast: (msg: string) => void }) 
                   <h3>Requests</h3>
                   <div className="stack">
                     {pendingIn.map((f) => (
-                      <div key={f.other_id || f.user_id} className="spread">
+                      <div key={f.user_id} className="spread">
                         <div className="row">
                           <Avatar name={f.display_name} url={f.avatar_url} size={36} />
                           <div>
@@ -230,7 +230,7 @@ export default function Social({ onToast }: { onToast: (msg: string) => void }) 
                 </div>
                 {friends.length === 0 && <Empty>Share your friend code from the Home tab.</Empty>}
                 {friends.map((f) => (
-                  <div key={f.other_id || f.user_id} className="feed-item">
+                  <div key={f.user_id} className="feed-item">
                     <div className="row">
                       <Avatar name={f.display_name} url={f.avatar_url} size={36} />
                       <div style={{ flex: 1 }}>
