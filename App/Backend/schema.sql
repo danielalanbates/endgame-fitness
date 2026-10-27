@@ -3,9 +3,20 @@
 -- Apply with:
 --   npx wrangler d1 execute batesai-db --remote --file=App/Backend/schema.sql
 --
--- Every statement is IF NOT EXISTS so this is safe to re-run. The `users` and
--- `sessions` tables are shared with the rest of batesai.org membership; the
--- fitness_* and social tables are owned by this app.
+-- This is the full current schema. It applies cleanly to:
+--   * an empty database (every column lives in its CREATE TABLE), and
+--   * an existing database at any earlier version (every statement is
+--     IF NOT EXISTS, and no index here names a column that older databases
+--     lack).
+-- Columns added to tables that already exist in production are brought in by
+-- migrations/2026-10-27-fitness-v2.sql, which also creates the indexes on
+-- those columns (marked "-- index: migration" below). Deploy applies this
+-- file first, then every migration in order.
+--
+-- The `users` and `sessions` tables are shared with the rest of batesai.org
+-- membership; the fitness_* and social tables are owned by this app. Every
+-- reference to users(id) cascades (or nulls), so deleting an account in the
+-- auth worker never trips a foreign key.
 
 -- ---------------------------------------------------------------- accounts
 
@@ -37,6 +48,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions (token_hash);
 
+-- Fixed-window rate limit counters shared by /api/auth and /api/fitness
+-- (functions/_lib/ratelimit.js; also migrations/2026-10-27-rate-limits.sql).
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket       TEXT    NOT NULL,
+  window_start INTEGER NOT NULL,
+  count        INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bucket, window_start)
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits (window_start);
+
 -- ---------------------------------------------------------------- profile
 
 CREATE TABLE IF NOT EXISTS fitness_profiles (
@@ -47,11 +68,14 @@ CREATE TABLE IF NOT EXISTS fitness_profiles (
   xp             INTEGER NOT NULL DEFAULT 0,
   talent_points  INTEGER NOT NULL DEFAULT 0,
   prestige       INTEGER NOT NULL DEFAULT 0,
-  -- streaks
+  -- streaks (dates are the player's local day, see tz_offset_min)
   current_streak INTEGER NOT NULL DEFAULT 0,
   longest_streak INTEGER NOT NULL DEFAULT 0,
   last_workout_date TEXT,
-  -- lifetime totals (denormalised for cheap leaderboard reads)
+  streak_freezes INTEGER NOT NULL DEFAULT 0,     -- banked, 0–3
+  tz_offset_min  INTEGER NOT NULL DEFAULT 0,     -- minutes east of UTC, −840…840
+  -- lifetime totals (denormalised for cheap leaderboard reads; flagged and
+  -- deleted sessions are excluded)
   total_workouts INTEGER NOT NULL DEFAULT 0,
   total_volume   REAL    NOT NULL DEFAULT 0,
   total_reps     INTEGER NOT NULL DEFAULT 0,
@@ -62,17 +86,25 @@ CREATE TABLE IF NOT EXISTS fitness_profiles (
   body_weight      REAL,
   height_inches    REAL,
   birth_year       INTEGER,
-  units            TEXT NOT NULL DEFAULT 'imperial',
+  units            TEXT NOT NULL DEFAULT 'imperial',   -- lb | kg (v1: imperial | metric)
   -- character / cosmetics
   avatar_config  TEXT,               -- JSON blob owned by AvatarSystem.swift
-  title          TEXT,               -- equipped title, e.g. "Iron Disciple"
+  title          TEXT,               -- equipped title; must be in fitness_unlocks / derived
+  cosmetic       TEXT,               -- equipped cosmetic id, e.g. "aura_gold"
+  bio            TEXT,               -- ≤ 160 chars
+  hero_class     TEXT,               -- cached from the last read/sync (_lib/heroclass.js)
+  class_affinity TEXT,               -- JSON {strength, endurance, mobility, athletic}
+  friend_code    TEXT,               -- 6 chars, unique (index: migration)
   -- housekeeping
-  is_public      INTEGER NOT NULL DEFAULT 1,
+  is_public      INTEGER NOT NULL DEFAULT 0,   -- new players are private until they opt in
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_profiles_xp ON fitness_profiles (xp DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_streak ON fitness_profiles (current_streak DESC);
+CREATE INDEX IF NOT EXISTS idx_profiles_volume ON fitness_profiles (total_volume DESC);
+CREATE INDEX IF NOT EXISTS idx_profiles_workouts ON fitness_profiles (total_workouts DESC);
+-- index: migration — idx_fitness_profiles_friend_code (UNIQUE, friend_code)
 
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id               TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -82,11 +114,25 @@ CREATE TABLE IF NOT EXISTS user_settings (
   notifications_enabled INTEGER NOT NULL DEFAULT 1
 );
 
+-- Titles and cosmetics a player owns (API v2 §7). Rank and achievement titles
+-- are also derived on read; raid and season rewards live only here.
+CREATE TABLE IF NOT EXISTS fitness_unlocks (
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,          -- title | cosmetic
+  value       TEXT NOT NULL,
+  source      TEXT NOT NULL,          -- rank | achievement:<id> | raid:<boss> | season:<id>
+  unlocked_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, kind, value)
+);
+
 -- ---------------------------------------------------------------- training
 
--- One row per completed session. `payload` holds the full exercise/set tree as
--- JSON so the client model can evolve without a migration for every field; the
--- promoted columns exist only for querying and leaderboards.
+-- One row per session. `payload` holds the full exercise/set tree as JSON so
+-- other devices can rebuild history; the promoted columns exist for queries
+-- and leaderboards and are recomputed by the server from the payload.
+-- A deleted session stays as a tombstone (deleted = 1) so other devices learn
+-- about it on their next pull. A flagged session failed a plausibility cap: it
+-- is kept for history but earns nothing and counts toward no total.
 CREATE TABLE IF NOT EXISTS workout_sessions (
   id            TEXT PRIMARY KEY,
   user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -99,7 +145,10 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   xp_earned     INTEGER NOT NULL DEFAULT 0,
   payload       TEXT    NOT NULL,
   client_rev    INTEGER NOT NULL DEFAULT 1,
-  updated_at    INTEGER NOT NULL
+  updated_at    INTEGER NOT NULL,
+  deleted       INTEGER NOT NULL DEFAULT 0,
+  flagged       INTEGER NOT NULL DEFAULT 0,
+  flag_reason   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user_time
   ON workout_sessions (user_id, performed_at DESC);
@@ -116,7 +165,9 @@ CREATE TABLE IF NOT EXISTS workout_programs (
 );
 CREATE INDEX IF NOT EXISTS idx_programs_user ON workout_programs (user_id);
 
--- Personal records, one row per (user, exercise, rep-count).
+-- Personal records, one row per (user, exercise key, rep-count). The key is
+-- the library exercise_id when the client sent one, else the lower-cased
+-- trimmed name; exercise_name keeps the display name.
 CREATE TABLE IF NOT EXISTS personal_records (
   user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   exercise      TEXT NOT NULL,
@@ -124,6 +175,7 @@ CREATE TABLE IF NOT EXISTS personal_records (
   weight        REAL NOT NULL,
   estimated_1rm REAL NOT NULL,
   achieved_at   INTEGER NOT NULL,
+  exercise_name TEXT,
   PRIMARY KEY (user_id, exercise, reps)
 );
 
@@ -168,6 +220,25 @@ CREATE TABLE IF NOT EXISTS xp_transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_xp_user ON xp_transactions (user_id, created_at DESC);
 
+-- Seasons (API v2 §6, functions/_lib/seasons.js). Seasons themselves are
+-- derived from the date; only per-player progress and claims are stored.
+CREATE TABLE IF NOT EXISTS season_progress (
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  season_id  TEXT NOT NULL,           -- s1, s2, …
+  xp         INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, season_id)
+);
+CREATE INDEX IF NOT EXISTS idx_season_progress_board ON season_progress (season_id, xp DESC);
+
+CREATE TABLE IF NOT EXISTS season_claims (
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  season_id  TEXT NOT NULL,
+  tier       INTEGER NOT NULL,
+  claimed_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, season_id, tier)
+);
+
 -- ---------------------------------------------------------------- social
 
 -- A friendship is stored as a single row with an ordered pair so that
@@ -176,7 +247,7 @@ CREATE TABLE IF NOT EXISTS friendships (
   user_low   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   user_high  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   requested_by TEXT NOT NULL,
-  status     TEXT NOT NULL DEFAULT 'pending',  -- pending | accepted | blocked
+  status     TEXT NOT NULL DEFAULT 'pending',  -- pending | accepted
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_low, user_high),
@@ -185,14 +256,26 @@ CREATE TABLE IF NOT EXISTS friendships (
 CREATE INDEX IF NOT EXISTS idx_friend_low ON friendships (user_low, status);
 CREATE INDEX IF NOT EXISTS idx_friend_high ON friendships (user_high, status);
 
+-- Blocks are one-directional rows but hide both players from each other
+-- everywhere (feed, comments, leaderboards, search, player cards, requests).
+CREATE TABLE IF NOT EXISTS user_blocks (
+  blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (blocker_id, blocked_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks (blocked_id);
+
 CREATE TABLE IF NOT EXISTS guilds (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
   motto       TEXT,
   owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   emblem      TEXT,
-  member_cap  INTEGER NOT NULL DEFAULT 25,
-  created_at  INTEGER NOT NULL
+  member_cap  INTEGER NOT NULL DEFAULT 50,
+  created_at  INTEGER NOT NULL,
+  invite_code TEXT,                   -- 8 chars A–Z2–9 (index: migration)
+  is_open     INTEGER NOT NULL DEFAULT 1   -- 1 = anyone may join from discovery
 );
 
 CREATE TABLE IF NOT EXISTS guild_members (
@@ -203,12 +286,14 @@ CREATE TABLE IF NOT EXISTS guild_members (
   PRIMARY KEY (guild_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_guild_member_user ON guild_members (user_id);
+-- index: migration — idx_guild_members_one_guild (UNIQUE user_id; the
+-- migration first removes duplicate memberships older races could create)
 
--- Activity feed: what friends see. Deliberately denormalised and append-only.
+-- Activity feed: what friends and guildmates see. Append-only.
 CREATE TABLE IF NOT EXISTS activity_feed (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  kind       TEXT NOT NULL,   -- workout | level_up | pr | achievement | quest
+  kind       TEXT NOT NULL,   -- workout | level_up | pr | achievement | quest | challenge | raid_defeated | season
   summary    TEXT NOT NULL,
   payload    TEXT,
   created_at INTEGER NOT NULL
@@ -222,6 +307,31 @@ CREATE TABLE IF NOT EXISTS activity_reactions (
   created_at  INTEGER NOT NULL,
   PRIMARY KEY (activity_id, user_id, emoji)
 );
+
+CREATE TABLE IF NOT EXISTS activity_comments (
+  id          TEXT PRIMARY KEY,
+  activity_id TEXT NOT NULL REFERENCES activity_feed(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text        TEXT NOT NULL,          -- 1–280 chars, filtered
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_activity ON activity_comments (activity_id, created_at);
+
+-- User reports for review by help@batesai.org. The reporter is nulled (not
+-- deleted) if their account goes, so the report survives.
+CREATE TABLE IF NOT EXISTS ugc_reports (
+  id          TEXT PRIMARY KEY,
+  reporter_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  target_type TEXT NOT NULL,          -- user | feed_item | comment | guild
+  target_id   TEXT NOT NULL,
+  reason      TEXT NOT NULL,
+  snapshot    TEXT,                   -- the reported text at report time, if any
+  status      TEXT NOT NULL DEFAULT 'open',   -- open | reviewed | actioned
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON ugc_reports (status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_once
+  ON ugc_reports (reporter_id, target_type, target_id);
 
 -- ---------------------------------------------------------------- challenges
 
@@ -255,13 +365,6 @@ CREATE TABLE IF NOT EXISTS challenge_participants (
   PRIMARY KEY (challenge_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_challenge_participants_user ON challenge_participants (user_id);
-
--- ---------------------------------------------------------------- friend codes (2026-08-28)
--- Applied to the live database by hand with ALTER TABLE (D1 has no IF NOT EXISTS
--- for columns); kept here so a fresh database gets it too.
--- ALTER TABLE fitness_profiles ADD COLUMN friend_code TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_fitness_profiles_friend_code
-  ON fitness_profiles (friend_code) WHERE friend_code IS NOT NULL;
 
 -- ---------------------------------------------------------------- guild raids
 -- Same DDL as migrations/2026-08-29-guild-raids.sql (which also seeds the
