@@ -281,12 +281,14 @@ struct ExerciseLogCard: View {
 
     var body: some View {
         let last = ProgressionEngine.lastPerformance(of: exercise, in: history, excluding: excludingSession)
-        let suggestion = ProgressionEngine.suggestion(for: exercise, history: history, excluding: excludingSession, unit: unit)
+        let suggestion = live ? ProgressionEngine.suggestion(for: exercise, history: history, excluding: excludingSession, unit: unit) : nil
 
         VStack(alignment: .leading, spacing: 8) {
             header
-            ProgressionHintView(exercise: exercise, suggestion: suggestion, hasHistory: last != nil,
-                                unit: unit, onEditRange: tracking == .timed ? nil : { showRange = true })
+            if live {
+                ProgressionHintView(exercise: exercise, suggestion: suggestion, hasHistory: last != nil,
+                                    unit: unit, onEditRange: tracking == .timed ? nil : { showRange = true })
+            }
             SetColumnHeader(tracking: tracking, unit: unit)
             ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
                 SetRowView(

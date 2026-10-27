@@ -12,7 +12,11 @@
 //    • a tombstone deletes the local copy unless the local copy is newer, and
 //      is remembered so the workout never comes back
 //    • a higher clientRev replaces the local copy; the same or a lower one is
-//      ignored, so replays are harmless
+//      ignored, so replays are harmless. A local session with no revision
+//      (saved by a build before revisions existed) counts as revision 1: it
+//      is the copy that was uploaded, and it may hold sets older builds never
+//      sent (bodyweight sets with no load), so its own upload must not
+//      overwrite it
 //    • every pulled set is a completed set
 //
 
@@ -43,7 +47,7 @@ enum HistoryMerge {
             let localIndex = indexByID[key].flatMap { removed.contains($0) ? nil : $0 }
 
             if remote.deleted == true {
-                if let i = localIndex, list[i].clientRev <= rev {
+                if let i = localIndex, max(list[i].clientRev, 1) <= rev {
                     removed.insert(i)
                     changed = true
                 }
@@ -53,7 +57,7 @@ enum HistoryMerge {
             if let deletedRev = dead[key], deletedRev >= rev { continue }
 
             if let i = localIndex {
-                guard rev > list[i].clientRev else { continue }
+                guard rev > max(list[i].clientRev, 1) else { continue }
                 list[i] = session(from: remote, localID: list[i].id)
                 changed = true
             } else {

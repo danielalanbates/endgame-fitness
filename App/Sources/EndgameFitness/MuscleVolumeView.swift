@@ -22,17 +22,15 @@ struct MuscleWeekCard: View {
     var body: some View {
         let weeks = TrainingStats.muscleWeek(from: sessions)
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Last 7 Days by Muscle")
-                    .font(.headline)
-                Spacer()
-                Picker("Measure", selection: $showVolume) {
-                    Text("Sets").tag(false)
-                    Text("Volume").tag(true)
-                }
-                .compactSegmentedPicker()
-                .frame(maxWidth: 170)
+            Text("Last 7 Days by Muscle")
+                .font(.headline)
+            Picker("Measure", selection: $showVolume) {
+                Text("Sets").tag(false)
+                Text("Volume").tag(true)
             }
+            .labelsHidden()
+            .compactSegmentedPicker()
+            .frame(maxWidth: 220)
             if weeks.isEmpty {
                 Text("Complete a set this week to see which muscles you trained.")
                     .font(.callout)

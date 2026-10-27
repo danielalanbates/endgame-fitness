@@ -4156,6 +4156,8 @@ struct StatCard: View {
                 .foregroundColor(color)
             Text(value)
                 .font(.title2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .bold()
             Text(title)
                 .font(.caption)
@@ -4558,8 +4560,6 @@ struct OnboardingView: View {
     }
 
     func completeOnboarding() {
-        print("🎯 completeOnboarding() called")
-
         // Save user profile to WorkoutManager
         guard let age = Int(userAge),
               let weight = Double(userWeight),
@@ -4567,15 +4567,11 @@ struct OnboardingView: View {
               let bench = Int(benchPress5RM),
               let squat = Int(squat5RM),
               let deadlift = Int(deadlift5RM) else {
-            print("❌ Failed to parse onboarding values")
-            print("Age: \(userAge), Weight: \(userWeight), Height: \(userHeight)")
-            print("Bench: \(benchPress5RM), Squat: \(squat5RM), Deadlift: \(deadlift5RM)")
             errorMessage = "Please enter valid numbers for all fields"
             showError = true
             return
         }
 
-        print("✅ Creating user profile...")
         let profile = UserProfile(
             name: userName,
             age: age,
@@ -4597,12 +4593,10 @@ struct OnboardingView: View {
         // collects the full training preferences before generating.
         workoutManager.saveData()
 
-        print("✅ Completing onboarding, setting hasCompletedOnboarding = true")
         hasCompletedOnboarding = true
 
         // Force UserDefaults to sync
         UserDefaults.standard.synchronize()
-        print("✅ hasCompletedOnboarding is now: \(hasCompletedOnboarding)")
     }
 }
 
@@ -4647,15 +4641,15 @@ struct WelcomeStep: View {
             VStack(alignment: .leading, spacing: 20) {
                 FeatureRow(
                     icon: "brain.head.profile",
-                    title: "AI Coaching",
-                    description: "Personalized workout recommendations based on your progress",
+                    title: "Smart Progression",
+                    description: "Next-session targets from your own sets, plus an AI program reviewer",
                     color: .brandPurple
                 )
 
                 FeatureRow(
                     icon: "chart.line.uptrend.xyaxis",
-                    title: "Mesocycle Training",
-                    description: "12-week periodized programs for optimal gains",
+                    title: "Programs and Phases",
+                    description: "16 ready-made programs, a program builder and mesocycle phases",
                     color: .brandBlue
                 )
 
@@ -4668,8 +4662,8 @@ struct WelcomeStep: View {
 
                 FeatureRow(
                     icon: "calendar.badge.clock",
-                    title: "Smart Tracking",
-                    description: "Progress visualization with calendar heatmaps",
+                    title: "Progress Tracking",
+                    description: "Personal records, weekly sets per muscle and a 12-month calendar",
                     color: .brandOrange
                 )
             }
