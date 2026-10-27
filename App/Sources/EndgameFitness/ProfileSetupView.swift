@@ -39,6 +39,9 @@ struct ProfileSetupView: View {
                 if let error {
                     Text(error).font(.callout).foregroundStyle(.red)
                 }
+                Text("Community rules: keep names, bios, comments and guilds friendly. There's no tolerance for harassment, hate or explicit content; reported content is reviewed and abusive accounts are removed. Report or block anyone from their profile or the … menu.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 buttons
             }
             .frame(maxWidth: 480)

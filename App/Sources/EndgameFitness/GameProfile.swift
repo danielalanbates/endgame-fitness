@@ -1552,12 +1552,23 @@ final class GameProfileService: ObservableObject {
                 row["payload"] = raw.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) }
             }
             if let id = row["id"] as? NSNumber { row["id"] = id.stringValue }
-            guard let rowData = try? JSONSerialization.data(withJSONObject: row),
-                  let workout = try? JSONDecoder().decode(RemoteWorkout.self, from: rowData)
-            else { continue }
-            page.sessions.append(workout)
+            if let workout = decodeRemote(row) {
+                page.sessions.append(workout)
+            } else {
+                // A payload this build can't read still carries the totals and
+                // tombstone flag the history needs; keep the row without it.
+                row["payload"] = nil
+                if let workout = decodeRemote(row) { page.sessions.append(workout) }
+            }
         }
         return page
+    }
+
+    private static func decodeRemote(_ row: [String: Any]) -> RemoteWorkout? {
+        guard JSONSerialization.isValidJSONObject(row),
+              let data = try? JSONSerialization.data(withJSONObject: row)
+        else { return nil }
+        return try? JSONDecoder().decode(RemoteWorkout.self, from: data)
     }
 
     private static var tzOffsetMinutes: Int { TimeZone.current.secondsFromGMT() / 60 }
