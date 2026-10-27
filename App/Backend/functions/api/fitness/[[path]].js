@@ -741,10 +741,11 @@ async function loadSyncContext(env, userId, sessions, t) {
   const existing = new Map((existingRows.results || []).map((r) => [r.id, r]));
 
   const { ranks } = await talentRanks(env, userId);
-  const friends = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM friendships WHERE status = 'accepted' AND (user_low = ? OR user_high = ?)`
-  ).bind(userId, userId).first();
-  const guildRow = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?').bind(userId).first();
+  const social = await env.DB.prepare(
+    `SELECT (SELECT COUNT(*) FROM friendships
+              WHERE status = 'accepted' AND (user_low = ? OR user_high = ?)) AS friends,
+            EXISTS (SELECT 1 FROM guild_members WHERE user_id = ?) AS in_guild`
+  ).bind(userId, userId, userId).first();
 
   // Personal records so far, keyed the same way new ones are written.
   const prRows = await env.DB.prepare(
@@ -766,8 +767,8 @@ async function loadSyncContext(env, userId, sessions, t) {
   return {
     existing,
     ranks,
-    friendCount: friends?.n || 0,
-    inGuild: !!guildRow,
+    friendCount: social?.friends || 0,
+    inGuild: !!social?.in_guild,
     shieldDays: streakShieldDays(ranks),
     known,
     quests,
@@ -1145,7 +1146,7 @@ async function handleComments(request, env, userId, activityId) {
       `SELECT c.id, c.user_id, c.text, c.created_at, p.display_name, p.level, p.cosmetic
          FROM activity_comments c JOIN fitness_profiles p ON p.user_id = c.user_id
         WHERE c.activity_id = ? AND ${notBlocked('c.user_id')}
-        ORDER BY c.created_at ASC, c.id ASC
+        ORDER BY c.created_at ASC, c.rowid ASC
         LIMIT 200`
     ).bind(activityId, userId, userId).all();
     return json({ comments: (rows.results || []).map((r) => shapeComment(r, userId, activity.user_id)) });
@@ -2457,45 +2458,39 @@ async function claimQuest(request, env, userId, questId) {
   });
 }
 
-/** Snapshot the numbers the achievement rules look at. */
+/** Snapshot the numbers the achievement rules look at, and what is unlocked already (one query). */
 async function achievementStats(env, userId) {
   const p = await env.DB.prepare(
-    'SELECT level, total_workouts, total_volume, longest_streak FROM fitness_profiles WHERE user_id = ?'
+    `SELECT p.level, p.total_workouts, p.total_volume, p.longest_streak,
+            (SELECT COUNT(*) FROM friendships
+              WHERE status = 'accepted' AND (user_low = p.user_id OR user_high = p.user_id)) AS friend_count,
+            EXISTS (SELECT 1 FROM guild_members WHERE user_id = p.user_id) AS in_guild,
+            (SELECT COUNT(*) FROM guild_raid_contributions c JOIN guild_raids g ON g.id = c.raid_id
+              WHERE c.user_id = p.user_id AND c.damage > 0 AND g.defeated_at IS NOT NULL) AS raids_won,
+            (SELECT group_concat(achievement_id) FROM achievements WHERE user_id = p.user_id) AS have
+       FROM fitness_profiles p WHERE p.user_id = ?`
   ).bind(userId).first();
   if (!p) return null;
-  const friends = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM friendships WHERE status = 'accepted' AND (user_low = ? OR user_high = ?)`
-  ).bind(userId, userId).first();
-  const guild = await env.DB.prepare('SELECT guild_id FROM guild_members WHERE user_id = ?')
-    .bind(userId).first();
-  let raidsWon = 0;
-  try {
-    const r = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM guild_raid_contributions c
-         JOIN guild_raids g ON g.id = c.raid_id
-        WHERE c.user_id = ? AND c.damage > 0 AND g.defeated_at IS NOT NULL`
-    ).bind(userId).first();
-    raidsWon = r?.n || 0;
-  } catch { /* raid tables not migrated yet: no raids won */ }
   return {
-    level: p.level,
-    total_workouts: p.total_workouts,
-    total_volume: p.total_volume,
-    longest_streak: p.longest_streak,
-    friend_count: friends?.n || 0,
-    in_guild: !!guild,
-    raids_won: raidsWon,
+    stats: {
+      level: p.level,
+      total_workouts: p.total_workouts,
+      total_volume: p.total_volume,
+      longest_streak: p.longest_streak,
+      friend_count: p.friend_count || 0,
+      in_guild: !!p.in_guild,
+      raids_won: p.raids_won || 0,
+    },
+    have: p.have ? String(p.have).split(',') : [],
   };
 }
 
 /** Unlock anything newly earned. Returns the ids unlocked on this call. */
 async function checkAchievements(env, userId) {
   try {
-    const stats = await achievementStats(env, userId);
-    if (!stats) return [];
-    const have = await env.DB.prepare('SELECT achievement_id FROM achievements WHERE user_id = ?')
-      .bind(userId).all();
-    const fresh = newlyUnlocked(stats, (have.results || []).map((r) => r.achievement_id));
+    const snapshot = await achievementStats(env, userId);
+    if (!snapshot) return [];
+    const fresh = newlyUnlocked(snapshot.stats, snapshot.have);
     const ids = [];
     for (const a of fresh) {
       const ins = await env.DB.prepare(

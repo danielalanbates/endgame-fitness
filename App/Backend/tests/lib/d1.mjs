@@ -43,6 +43,7 @@ class Statement {
 
   #stmt() {
     this.db.queries += 1;
+    this.db.calls += 1;
     return this.db.raw.prepare(this.sql);
   }
 
@@ -83,7 +84,8 @@ class Statement {
 export class D1Database {
   constructor(path = ':memory:') {
     this.raw = new DatabaseSync(path); // foreign keys are enforced by default, as in D1
-    this.queries = 0;
+    this.queries = 0; // statements executed (a batch counts each of its statements)
+    this.calls = 0;   // round trips to D1 (a batch counts once)
   }
 
   prepare(sql) {
@@ -91,6 +93,7 @@ export class D1Database {
   }
 
   async batch(statements) {
+    this.calls += 1;
     this.raw.exec('BEGIN');
     try {
       const results = statements.map((s) => s.execSync());

@@ -54,9 +54,10 @@ const SUFFIXES = ['s', 'es', 'ed', 'er', 'ers', 'ing', 'in', 'z', 'y', 'ty'];
 
 const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't', '@': 'a', $: 's' };
 
-/** Lower-case, strip accents, undo common leetspeak. */
+/** Split CamelCase words, lower-case, strip accents, undo common leetspeak. */
 export function normalizeForFilter(text) {
   return String(text || '')
+    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
     .toLowerCase()

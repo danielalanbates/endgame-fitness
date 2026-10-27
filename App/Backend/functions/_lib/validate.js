@@ -33,6 +33,7 @@ export function cleanMultiline(value) {
     .replace(/\r\n?/g, '\n')
     .replace(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\u2060-\u206F\uFEFF]/g, ' ')
     .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }

@@ -3,10 +3,6 @@
  * Run: node App/Backend/tests/talents.test.mjs
  */
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
 import {
   TALENT_TREE, validateSpend, xpMultiplier, applyTalentEffects,
   streakShieldDays, bonusTalentPoints, pointsSpent, ranksFromRows, POINTS_PER_TIER,
@@ -96,31 +92,28 @@ test('bonus talent points at milestones', () => {
   assert.equal(bonusTalentPoints({ mentor: 1, titan: 1 }, 1, 20), 6);
 });
 
-// ---- streakAfter inside the worker (loaded like auth-verification.test) -------
-const here = dirname(fileURLToPath(import.meta.url));
-const workerPath = join(here, '..', 'functions', 'api', 'fitness', '[[path]].js');
-const source = readFileSync(workerPath, 'utf8')
-  .replace(/^function streakAfter/m, 'export function streakAfter')
-  .replace("from '../../_lib/session.js'", `from '${join(here, '..', 'functions', '_lib', 'session.js')}'`)
-  .replace("from '../../_lib/talents.js'", `from '${join(here, '..', 'functions', '_lib', 'talents.js')}'`)
-  .replace("from '../../_lib/challenges.js'", `from '${join(here, '..', 'functions', '_lib', 'challenges.js')}'`)
-  .replace("from '../../_lib/game.js'", `from '${join(here, '..', 'functions', '_lib', 'game.js')}'`)
-  .replace("from '../../_lib/raids.js'", `from '${join(here, '..', 'functions', '_lib', 'raids.js')}'`);
-const scratch = mkdtempSync(join(tmpdir(), 'talents-test-'));
-writeFileSync(join(scratch, 'fitness.mjs'), source);
-const { streakAfter } = await import(`file://${join(scratch, 'fitness.mjs')}`);
+// ---- Streak Shield, applied by the streak rules in _lib/streaks.js ----------
+// (The worker's old streakAfter helper moved there as applySessionDay, which
+// adds local days and streak freezes on top of the same shield rule.)
+const { applySessionDay } = await import('../functions/_lib/streaks.js');
+const streakAfter = (last, day, shield = 0) =>
+  applySessionDay({ lastDate: last, current: last ? 3 : 0, longest: 3, freezes: 0 }, day, shield).transition;
 
-test('streakAfter: unshielded', () => {
-  assert.equal(streakAfter(null, '2026-01-02'), 'continue');
+test('streak: unshielded', () => {
+  assert.equal(streakAfter(null, '2026-01-02'), 'start');
   assert.equal(streakAfter('2026-01-01', '2026-01-02'), 'continue');
   assert.equal(streakAfter('2026-01-01', '2026-01-01'), 'same-day');
   assert.equal(streakAfter('2026-01-01', '2026-01-03'), 'reset');
 });
-test('streakAfter: shield forgives exactly N missed days', () => {
+test('streak: shield forgives exactly N missed days', () => {
   assert.equal(streakAfter('2026-01-01', '2026-01-03', 1), 'continue');
   assert.equal(streakAfter('2026-01-01', '2026-01-04', 1), 'reset');
   assert.equal(streakAfter('2026-01-01', '2026-01-04', 2), 'continue');
   assert.equal(streakAfter('2026-01-01', '2026-01-05', 2), 'reset');
+});
+test('streak: the shield is applied before banked freezes and costs none of them', () => {
+  const s = applySessionDay({ lastDate: '2026-01-01', current: 3, longest: 3, freezes: 2 }, '2026-01-04', 1);
+  assert.deepEqual([s.transition, s.freezes, s.freezesUsed], ['continue', 1, 1]);
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', with failures' : ''}`);
