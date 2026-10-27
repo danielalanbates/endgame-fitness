@@ -41,6 +41,11 @@ export interface FitnessProfile {
   title: string | null;
   is_public: boolean;
   friend_code: string | null;
+  // API v2 (Docs/API_V2.md §2.1). Optional: an older server omits them, and
+  // the UI only shows or edits what the server actually sent.
+  bio?: string | null;
+  hero_class?: string;
+  earned_titles?: string[];
 }
 
 export interface TalentNode {
@@ -119,6 +124,8 @@ export interface SyncResult {
   sessions: unknown[];
   has_more: boolean;
   server_time: number;
+  /** API v2: pass back as `since` while has_more. Absent on older servers. */
+  cursor?: number;
   profile: FitnessProfile;
 }
 
@@ -253,6 +260,15 @@ export const apiVerify = () => get<{ valid: boolean; user?: ApiUser }>('/api/aut
 
 export const apiLogout = () => post<{ message: string }>('/api/auth/logout');
 
+/**
+ * Browser sign-in with Google or Apple through batesai.org membership. A full
+ * page navigation: the provider sends the member back via /membership, which
+ * sets the batesai_session cookie and lands on /fitness/?signed_in=1 (or
+ * ?signin_error=<reason>).
+ */
+export const oauthStartUrl = (provider: 'google' | 'apple') =>
+  `/api/auth/oauth/${provider}?return_to=/fitness/`;
+
 // ---- Fitness ----
 
 export const apiGetProfile = () =>
@@ -263,8 +279,29 @@ export const apiGetProfile = () =>
 export const apiUpdateProfile = (patch: Partial<FitnessProfile>) =>
   put<{ profile: FitnessProfile }>('/api/fitness/profile', patch);
 
+/** Minutes east of UTC, the server's streak day boundary (API v2 §2.5). */
+const tzOffsetMin = () => -new Date().getTimezoneOffset();
+
 export const apiSync = (sessions: OutgoingSession[], since: number) =>
-  post<SyncResult>('/api/fitness/sync', { sessions, since });
+  post<SyncResult>('/api/fitness/sync', { sessions, since, tz_offset_min: tzOffsetMin() });
+
+/**
+ * Every synced session, oldest change first, following the v2 cursor
+ * (since = cursor while has_more). A server without `cursor` answers in one
+ * page, as before. Later rows for the same id replace earlier ones, and
+ * deleted tombstones drop out.
+ */
+export async function apiPullHistory<T extends { id: string; deleted?: boolean | number }>(maxPages = 50): Promise<T[]> {
+  const byId = new Map<string, T>();
+  let since = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const res = await apiSync([], since);
+    for (const row of res.sessions as T[]) byId.set(row.id, row);
+    if (!res.has_more || typeof res.cursor !== 'number' || res.cursor <= since) break;
+    since = res.cursor;
+  }
+  return [...byId.values()].filter((row) => !row.deleted);
+}
 
 export const apiGetFeed = () => get<{ items: FeedItem[] }>('/api/fitness/feed');
 

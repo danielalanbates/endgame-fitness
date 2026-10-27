@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiSync, OutgoingSession, SyncResult, WorkoutExercise, WorkoutSet } from '../api';
+import { useAuth } from '../auth';
 
 interface DraftSet extends WorkoutSet {
   done: boolean;
@@ -9,19 +10,32 @@ interface DraftExercise {
   sets: DraftSet[];
 }
 
-const QUEUE_KEY = 'ef_pending_sessions';
-const LAST_SYNC_KEY = 'ef_last_sync';
+// Queued workouts and the sync watermark are kept per member, so on a shared
+// browser one person's offline workouts never upload into someone else's
+// account. Builds before this used one global key; the first member to open
+// the Train tab afterwards adopts it (on a personal phone, its owner).
+const LEGACY_QUEUE_KEY = 'ef_pending_sessions';
+const LEGACY_LAST_SYNC_KEY = 'ef_last_sync';
+const queueKey = (userId: string) => `${LEGACY_QUEUE_KEY}:${userId}`;
+const lastSyncKey = (userId: string) => `${LEGACY_LAST_SYNC_KEY}:${userId}`;
 
-function loadQueue(): OutgoingSession[] {
+function loadQueue(userId: string): OutgoingSession[] {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    const legacy = localStorage.getItem(LEGACY_QUEUE_KEY);
+    if (legacy !== null) {
+      const mine: OutgoingSession[] = JSON.parse(localStorage.getItem(queueKey(userId)) || '[]');
+      localStorage.setItem(queueKey(userId), JSON.stringify([...mine, ...JSON.parse(legacy)]));
+      localStorage.removeItem(LEGACY_QUEUE_KEY);
+      localStorage.removeItem(LEGACY_LAST_SYNC_KEY);
+    }
+    return JSON.parse(localStorage.getItem(queueKey(userId)) || '[]');
   } catch {
     return [];
   }
 }
-function saveQueue(q: OutgoingSession[]) {
+function saveQueue(userId: string, q: OutgoingSession[]) {
   try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+    localStorage.setItem(queueKey(userId), JSON.stringify(q));
   } catch {
     /* ignore */
   }
@@ -36,6 +50,8 @@ function uuid(): string {
 }
 
 export default function Workout({ onToast, onSynced }: { onToast: (msg: string) => void; onSynced: () => void }) {
+  const { user } = useAuth();
+  const userId = user?.id || 'anonymous';
   const [exercises, setExercises] = useState<DraftExercise[]>([]);
   const [sessionName, setSessionName] = useState('');
   const [active, setActive] = useState(false);
@@ -43,19 +59,21 @@ export default function Workout({ onToast, onSynced }: { onToast: (msg: string) 
   const [elapsed, setElapsed] = useState(0);
   const [newExName, setNewExName] = useState('');
   const [finishing, setFinishing] = useState(false);
-  const [pending, setPending] = useState<OutgoingSession[]>(loadQueue);
+  const [pending, setPending] = useState<OutgoingSession[]>(() => loadQueue(userId));
   const timerRef = useRef<number | null>(null);
 
   const flushQueue = async (extra: OutgoingSession[]): Promise<SyncResult | null> => {
-    const batch = [...loadQueue(), ...extra];
+    const batch = [...loadQueue(userId), ...extra];
     if (batch.length === 0) return null;
-    const since = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
+    // This tab only pushes; the Progress tab pulls history. server_time as the
+    // watermark keeps these responses from re-sending rows nobody reads here.
+    const since = Number(localStorage.getItem(lastSyncKey(userId)) || 0);
     const res = await apiSync(batch, since);
     const accepted = new Set(res.accepted);
     const remaining = batch.filter((s) => !accepted.has(s.id));
-    saveQueue(remaining);
+    saveQueue(userId, remaining);
     setPending(remaining);
-    localStorage.setItem(LAST_SYNC_KEY, String(res.server_time));
+    localStorage.setItem(lastSyncKey(userId), String(res.server_time));
     return res;
   };
 
@@ -171,8 +189,8 @@ export default function Workout({ onToast, onSynced }: { onToast: (msg: string) 
       }
     } catch (e) {
       // Offline or server hiccup: keep it queued, never lose the workout.
-      const q = [...loadQueue(), session];
-      saveQueue(q);
+      const q = [...loadQueue(userId), session];
+      saveQueue(userId, q);
       setPending(q);
       setExercises([]);
       setSessionName('');

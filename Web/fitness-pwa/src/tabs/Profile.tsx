@@ -2,11 +2,40 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../auth';
 import {
   apiClaimQuest, apiGetAchievements, apiGetProfile, apiGetQuests, apiGetTalents, apiSpendTalent,
-  apiUpdateProfile, Achievement, FitnessProfile, Quest, TalentState,
+  apiUpdateProfile, Achievement, ApiError, FitnessProfile, Quest, TalentState,
 } from '../api';
 import { Empty, Loading, LevelBadge, XpBar } from '../components/ui';
 
 type Sub = 'player' | 'talents' | 'quests' | 'achievements' | 'settings';
+
+// Hero classes the server computes from the last 28 days of training
+// (Docs/API_V2.md §2.4).
+const HERO_CLASSES: Record<string, { label: string; icon: string; blurb: string }> = {
+  recruit: { label: 'Recruit', icon: '🔰', blurb: 'Sync 3 workouts to reveal your class.' },
+  juggernaut: { label: 'Juggernaut', icon: '🏋️', blurb: 'Mostly heavy strength work.' },
+  ranger: { label: 'Ranger', icon: '🏃', blurb: 'Mostly endurance work.' },
+  monk: { label: 'Monk', icon: '🧘', blurb: 'A lot of mobility work.' },
+  striker: { label: 'Striker', icon: '⚡', blurb: 'A lot of explosive, athletic work.' },
+  paladin: { label: 'Paladin', icon: '🛡️', blurb: 'A balanced mix of training.' },
+};
+
+function heroClass(id: string) {
+  return HERO_CLASSES[id] || { label: id.charAt(0).toUpperCase() + id.slice(1), icon: '⭐', blurb: '' };
+}
+
+// Server validation codes (API v2 §2.2) -> something a person can act on.
+const SAVE_ERRORS: Record<string, string> = {
+  display_name_invalid: "Display names are 2–24 characters: letters, numbers, spaces and _ - . ' only.",
+  bio_invalid: 'Bios are up to 160 characters and must keep it clean.',
+  title_not_earned: 'You have not earned that title yet.',
+};
+
+/** v2 servers send `units` as lb/kg; older ones as imperial/metric. Offer whichever this server speaks. */
+function unitOptions(current: string) {
+  return current === 'lb' || current === 'kg'
+    ? [{ value: 'lb', label: 'Pounds (lb)' }, { value: 'kg', label: 'Kilograms (kg)' }]
+    : [{ value: 'imperial', label: 'Imperial (lb)' }, { value: 'metric', label: 'Metric (kg)' }];
+}
 
 export default function Profile({ onToast }: { onToast: (msg: string) => void }) {
   const { user, logout } = useAuth();
@@ -16,7 +45,7 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
   const [quests, setQuests] = useState<{ daily: Quest[]; weekly: Quest[] } | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [edit, setEdit] = useState({ display_name: '', training_goal: '', units: 'imperial' });
+  const [edit, setEdit] = useState({ display_name: '', training_goal: '', units: 'imperial', bio: '', title: '' });
 
   const load = async () => {
     setLoading(true);
@@ -27,6 +56,8 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
         display_name: p.profile.display_name,
         training_goal: p.profile.training_goal || '',
         units: p.profile.units || 'imperial',
+        bio: p.profile.bio || '',
+        title: p.profile.title || '',
       });
       if (sub === 'talents') setTalents(await apiGetTalents());
       if (sub === 'quests') setQuests(await apiGetQuests());
@@ -65,17 +96,28 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
     }
   };
 
+  // Only offer fields this server actually returned, so "Profile saved" is
+  // never shown for something an older server silently ignored.
+  const canEditBio = !!profile && 'bio' in profile;
+  const earnedTitles = profile?.earned_titles || [];
+
   const saveSettings = async () => {
+    const patch: Partial<FitnessProfile> = {
+      display_name: edit.display_name.trim() || undefined,
+      training_goal: edit.training_goal.trim() || undefined,
+      units: edit.units,
+    };
+    if (canEditBio) patch.bio = edit.bio.trim() || null;
+    // Send the title only when it changed: a legacy free-text title that is not
+    // in earned_titles stays put until the player picks another.
+    if (earnedTitles.length > 0 && edit.title !== (profile?.title || '')) patch.title = edit.title || null;
     try {
-      const res = await apiUpdateProfile({
-        display_name: edit.display_name.trim() || undefined,
-        training_goal: edit.training_goal.trim() || undefined,
-        units: edit.units,
-      } as Partial<FitnessProfile>);
+      const res = await apiUpdateProfile(patch);
       setProfile(res.profile);
       onToast('Profile saved');
     } catch (e) {
-      onToast(e instanceof Error ? e.message : 'Save failed');
+      if (e instanceof ApiError && SAVE_ERRORS[e.message]) onToast(SAVE_ERRORS[e.message]);
+      else onToast(e instanceof Error ? e.message : 'Save failed');
     }
   };
 
@@ -97,11 +139,14 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
             <div className="card">
               <div className="row">
                 <LevelBadge level={profile.level} />
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="big" style={{ fontSize: 22 }}>{profile.display_name}</div>
+                  {profile.title && <div className="player-title">{profile.title}</div>}
                   <div className="muted" style={{ fontSize: 13 }}>{user?.email}</div>
                 </div>
               </div>
+              {profile.hero_class && <HeroClassChip id={profile.hero_class} />}
+              {profile.bio && <p className="player-bio">{profile.bio}</p>}
               <div style={{ marginTop: 12 }}>
                 <XpBar current={profile.xp} min={profile.xp_for_current_level} max={profile.xp_for_next_level} />
               </div>
@@ -222,8 +267,34 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
               <div className="stack">
                 <div className="field">
                   <label>Display name</label>
-                  <input value={edit.display_name} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} maxLength={40} />
+                  <input value={edit.display_name} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} maxLength={24} />
                 </div>
+                {canEditBio && (
+                  <div className="field">
+                    <label>Bio ({edit.bio.length}/160)</label>
+                    <textarea
+                      value={edit.bio}
+                      onChange={(e) => setEdit({ ...edit, bio: e.target.value })}
+                      maxLength={160}
+                      rows={3}
+                      placeholder="What are you training for?"
+                    />
+                  </div>
+                )}
+                {earnedTitles.length > 0 && (
+                  <div className="field">
+                    <label>Title</label>
+                    <select value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })}>
+                      <option value="">No title</option>
+                      {profile?.title && !earnedTitles.includes(profile.title) && (
+                        <option value={profile.title} disabled>{profile.title}</option>
+                      )}
+                      {earnedTitles.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="field">
                   <label>Training goal</label>
                   <input value={edit.training_goal} onChange={(e) => setEdit({ ...edit, training_goal: e.target.value })} placeholder="Build strength" maxLength={80} />
@@ -231,8 +302,9 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
                 <div className="field">
                   <label>Units</label>
                   <select value={edit.units} onChange={(e) => setEdit({ ...edit, units: e.target.value })}>
-                    <option value="imperial">Imperial (lb)</option>
-                    <option value="metric">Metric (kg)</option>
+                    {unitOptions(profile?.units || edit.units).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
                   </select>
                 </div>
                 <button className="btn btn-primary" onClick={saveSettings}>Save</button>
@@ -242,5 +314,17 @@ export default function Profile({ onToast }: { onToast: (msg: string) => void })
         </>
       )}
     </>
+  );
+}
+
+function HeroClassChip({ id }: { id: string }) {
+  const c = heroClass(id);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <span className="class-chip" title={c.blurb || undefined}>
+        <span aria-hidden="true">{c.icon}</span> {c.label}
+      </span>
+      {c.blurb && <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>{c.blurb}</span>}
+    </div>
   );
 }

@@ -12,20 +12,31 @@
  *   POST  oauth/apple      browser callback: authorization_code | id_token
  *   POST  native/apple     native macOS/iOS Sign in with Apple (identity token)
  *   POST  native/google    native Google Sign-In (id_token)
+ *   POST  handoff          native app redeems a one-time code from a browser sign-in
+ *   DELETE account         in-app account deletion
  *
- * GET oauth/google also takes an optional ?return_to=<same-site path>; see
- * functions/_lib/return-to.js. Without it nothing about the flow changes.
+ * GET oauth/google and GET oauth/apple also take:
+ *   ?return_to=<same-site path>  land there after the /membership callback; see
+ *                                functions/_lib/return-to.js
+ *   ?redirect_scheme=<scheme>    native app sign-in (Docs/API_V2.md §1.1). Only the
+ *                                schemes in APP_SCHEMES are honoured; the callback
+ *                                then hands the app a one-time code, never a token.
+ * Without either, nothing about the web flow changes.
  *
  * SECURITY NOTE: every path that accepts a provider id_token verifies the token's
  * RS256 signature against the provider's published JWKS, plus issuer, audience and
  * expiry. A previous revision of this file base64-decoded the token payload without
  * checking the signature, which let anyone mint an arbitrary identity token and log
  * in as any user. Do not reintroduce an unverified decode.
+ *
+ * Tables: users, sessions (schema.sql); user_identities, auth_handoff_codes
+ * (migrations/2026-10-27-auth-v2.sql); rate_limits (migrations/2026-10-27-rate-limits.sql).
  */
 
 import {
   RETURN_TO_COOKIE, CLEAR_RETURN_TO_COOKIE, safeReturnPath, returnToCookie,
 } from '../../_lib/return-to.js';
+import { rateLimit, clientIP, tooManyRequests, pruneRateLimits } from '../../_lib/ratelimit.js';
 
 const APPLE_ISSUER = 'https://appleid.apple.com';
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
@@ -33,6 +44,29 @@ const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // matches the website's batesai_session cookie
+
+// Native apps allowed to receive a sign-in handoff code. functions/membership.js
+// keeps the same list; change both together.
+const APP_SCHEMES = ['endgamefitness'];
+const APP_SCHEME_COOKIE = 'oauth_app_scheme';
+const APP_SCHEME_MAX_AGE = 300;
+const HANDOFF_TTL_SECONDS = 120;
+
+// PBKDF2-SHA256. Cloudflare Workers refuses more than 100,000 iterations, so
+// that is both the default and the ceiling. PBKDF2_ITERATIONS (env) can lower
+// the cost of NEW hashes if CPU limits ever bite; stored hashes keep their own.
+const PBKDF2_MAX_ITERATIONS = 100000;
+const PBKDF2_MIN_ITERATIONS = 10000;
+const MAX_PASSWORD_LENGTH = 256;   // new passwords
+const MAX_LOGIN_PASSWORD = 1024;   // older accounts registered before the cap
+
+// Fixed-window limits (Docs/API_V2.md §1.2).
+const LIMITS = {
+  loginEmail: { limit: 10, window: 15 * 60 },
+  loginIp: { limit: 30, window: 15 * 60 },
+  registerIp: { limit: 5, window: 60 * 60 },
+  handoffIp: { limit: 20, window: 15 * 60 },
+};
 
 export async function onRequest(context) {
   const { request, env, params } = context;
@@ -64,6 +98,8 @@ export async function onRequest(context) {
         return withCors(await handleNative(request, env, path), env, origin);
       case 'account':
         return withCors(await handleAccount(request, env, path), env, origin);
+      case 'handoff':
+        return withCors(await handleHandoff(request, env), env, origin);
       default:
         return withCors(json({ error: 'Unknown endpoint' }, 404), env, origin);
     }
@@ -131,20 +167,33 @@ async function handleNative(request, env, path) {
     return json({ error: 'Unknown provider' }, 404);
   }
 
-  const user = await upsertOAuthUser(env, {
+  const { user, conflict } = await upsertOAuthUser(env, {
     provider: providerName,
     sub: claims.sub,
-    // Apple only returns an email on the very first authorization, and it may be
-    // a private relay address. Fall back to a stable per-sub placeholder so the
-    // NOT NULL constraint holds and repeat logins still resolve to one account.
-    email: claims.email || `${claims.sub}@${providerName}.local`,
+    // Apple may omit the email or hand out a private relay address;
+    // upsertOAuthUser substitutes a per-sub placeholder when it is missing.
+    email: claims.email,
     name: claims.__name,
     avatarUrl: claims.picture || null,
-    emailVerified: claims.email_verified === true || claims.email_verified === 'true',
+    emailVerified: isEmailVerified(claims),
   });
+  if (conflict) return accountExistsResponse();
 
   const token = await issueSession(env, user);
   return json({ success: true, token, user: publicUser(user) }, 200);
+}
+
+/** Apple sends email_verified as the string "true"; Google as a boolean. */
+function isEmailVerified(claims) {
+  return claims.email_verified === true || claims.email_verified === 'true';
+}
+
+function accountExistsResponse() {
+  return json({
+    error: 'An account with this email already exists. Sign in with your password, '
+      + 'or use a sign-in provider that has confirmed this email address.',
+    code: 'account_exists',
+  }, 409);
 }
 
 function appleAudiences(env) {
@@ -246,31 +295,56 @@ async function verifyProviderToken(token, { jwksUrl, issuers, audiences }) {
 /* Shared user + session helpers                                       */
 /* ------------------------------------------------------------------ */
 
-async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl }) {
+/**
+ * Resolve a verified provider identity to a membership row, creating or linking
+ * as needed. Returns { user } or { conflict: true }.
+ *
+ * Order:
+ *   1. (provider, sub) in user_identities, then the legacy users.oauth_* slot.
+ *      Sub is the only stable identifier Apple gives us; emails rotate.
+ *   2. Same email on an existing row: link ONLY when the provider says the email
+ *      is verified. An unverified provider email never auto-links ({conflict}).
+ *   3. Otherwise create a new member.
+ *
+ * Account pre-hijack (API_V2 §1.2): anyone can POST /register with someone
+ * else's address. When the real owner later arrives with a provider-verified
+ * email, the row is linked to them and, if no provider had ever verified it,
+ * the password that stranger set is cleared and every existing session is
+ * deleted. The address owner wins.
+ */
+async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl, emailVerified }) {
   const now = Math.floor(Date.now() / 1000);
-  const normalizedEmail = String(email).toLowerCase();
+  const realEmail = typeof email === 'string' && email.includes('@') && !isPlaceholderEmail(email)
+    ? email.trim().toLowerCase()
+    : null;
+  // Fall back to a stable per-sub placeholder so the NOT NULL email holds and
+  // repeat logins still resolve to one account. Placeholders never link.
+  const normalizedEmail = realEmail || `${sub}@${provider}.local`;
+  const verified = Boolean(realEmail && emailVerified);
 
-  // Match on (provider, sub) first — it is the only stable identifier Apple gives
-  // us. Email can change or be a rotating private-relay address.
-  let user = await env.DB.prepare(
-    'SELECT * FROM users WHERE oauth_provider = ? AND oauth_id = ?'
-  ).bind(provider, sub).first();
+  let user = await findUserByIdentity(env, provider, sub);
 
   if (!user) {
-    user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(normalizedEmail).first();
-    if (user) {
-      // Existing password account signing in with the same email via OAuth: link them.
-      await env.DB.prepare(
-        'UPDATE users SET oauth_provider = ?, oauth_id = ?, updated_at = ? WHERE id = ?'
-      ).bind(provider, sub, now, user.id).run();
-      user.oauth_provider = provider;
-      user.oauth_id = sub;
+    const existing = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(normalizedEmail).first();
+    if (existing) {
+      if (!verified) return { conflict: true };
+      await clearUnverifiedPassword(env, existing, now);
+      // Keep the legacy single-slot columns populated for older readers, but
+      // never overwrite an existing link (that used to flip-flop Apple/Google).
+      if (!existing.oauth_provider) {
+        await env.DB.prepare(
+          'UPDATE users SET oauth_provider = ?, oauth_id = ?, updated_at = ? WHERE id = ? AND oauth_provider IS NULL'
+        ).bind(provider, sub, now, existing.id).run();
+        existing.oauth_provider = provider;
+        existing.oauth_id = sub;
+      }
+      user = existing;
     }
   }
 
   if (!user) {
     const userId = crypto.randomUUID();
-    const displayName = name || normalizedEmail.split('@')[0];
+    const displayName = cleanName(name) || normalizedEmail.split('@')[0];
     await env.DB.prepare(
       `INSERT INTO users (id, email, password_hash, name, avatar_url, oauth_provider, oauth_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -288,26 +362,120 @@ async function upsertOAuthUser(env, { provider, sub, email, name, avatarUrl }) {
     };
   } else {
     // Backfill a name/avatar if we have one now and didn't before.
-    if ((name && !user.name) || (avatarUrl && !user.avatar_url)) {
+    const freshName = cleanName(name);
+    if ((freshName && !user.name) || (avatarUrl && !user.avatar_url)) {
       await env.DB.prepare('UPDATE users SET name = ?, avatar_url = ?, updated_at = ? WHERE id = ?')
-        .bind(name || user.name, avatarUrl || user.avatar_url, now, user.id)
+        .bind(user.name || freshName, user.avatar_url || avatarUrl, now, user.id)
         .run();
-      user.name = name || user.name;
-      user.avatar_url = avatarUrl || user.avatar_url;
+      user.name = user.name || freshName;
+      user.avatar_url = user.avatar_url || avatarUrl;
     }
     await ensureFitnessProfile(env, user.id, user.name);
   }
 
-  return user;
+  await recordIdentity(env, { provider, sub, userId: user.id, email: realEmail, verified, now });
+  return { user };
+}
+
+/** (provider, sub) -> users row, via user_identities first, then the legacy slot. */
+async function findUserByIdentity(env, provider, sub) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT u.* FROM user_identities i JOIN users u ON u.id = i.user_id
+        WHERE i.provider = ? AND i.provider_sub = ?`
+    ).bind(provider, sub).first();
+    if (row) return row;
+  } catch (e) {
+    // Migration not applied yet: the legacy columns below still resolve every
+    // account that existed before it.
+    console.error('user_identities lookup skipped:', e && e.message);
+  }
+  return (await env.DB.prepare('SELECT * FROM users WHERE oauth_provider = ? AND oauth_id = ?')
+    .bind(provider, sub).first()) || null;
+}
+
+/** True once any provider has vouched for this row's email. */
+async function hasVerifiedIdentity(env, user) {
+  // A legacy link predates the verified flag; migrations/2026-10-27-auth-v2.sql
+  // backfills those as verified, and this keeps the rule consistent without it.
+  if (user.oauth_provider) return true;
+  try {
+    const row = await env.DB.prepare(
+      'SELECT 1 AS ok FROM user_identities WHERE user_id = ? AND verified = 1 LIMIT 1'
+    ).bind(user.id).first();
+    return Boolean(row);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The pre-hijack rule. Only called once the provider has verified the email.
+ * Uses '' rather than NULL for "no password": that is what OAuth-created rows
+ * already hold, and older copies of the users table declare the column NOT NULL.
+ */
+async function clearUnverifiedPassword(env, user, now) {
+  if (!user.password_hash) return;
+  if (await hasVerifiedIdentity(env, user)) return;
+  await env.DB.batch([
+    env.DB.prepare("UPDATE users SET password_hash = '', updated_at = ? WHERE id = ?").bind(now, user.id),
+    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
+  ]);
+  user.password_hash = '';
+}
+
+/** Remember which provider identities belong to a member. Best effort. */
+async function recordIdentity(env, { provider, sub, userId, email, verified, now }) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO user_identities (provider, provider_sub, user_id, email, verified, created_at, last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(provider, provider_sub) DO UPDATE SET
+         email = COALESCE(excluded.email, user_identities.email),
+         verified = MAX(user_identities.verified, excluded.verified),
+         last_used_at = excluded.last_used_at`
+    ).bind(provider, sub, userId, email, verified ? 1 : 0, now, now).run();
+  } catch (e) {
+    console.error('recordIdentity skipped:', e && e.message);
+  }
+}
+
+/** Placeholder addresses this file mints for providers that withhold an email. */
+function isPlaceholderEmail(email) {
+  return /@(apple|google)\.local$/i.test(String(email).trim());
+}
+
+function cleanName(name) {
+  if (typeof name !== 'string') return null;
+  const trimmed = name.replace(/\s+/g, ' ').trim().slice(0, 80);
+  return trimmed || null;
+}
+
+/**
+ * Fitness display names show up on friends lists and leaderboards, so the
+ * starting value is held to the same shape PUT /fitness/profile enforces
+ * (2-24 chars of letters, digits, space and _-.'). Anything else falls back to
+ * "Athlete" and the player picks a name in the app.
+ */
+function starterDisplayName(name) {
+  const cleaned = String(name || '')
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{N} _.'-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 24)
+    .trim();
+  return cleaned.length >= 2 ? cleaned : 'Athlete';
 }
 
 async function ensureFitnessProfile(env, userId, displayName) {
   try {
+    // New profiles start private (API_V2 §2.3); onboarding asks.
     await env.DB.prepare(
-      `INSERT INTO fitness_profiles (user_id, display_name, created_at, updated_at)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO fitness_profiles (user_id, display_name, is_public, created_at, updated_at)
+       VALUES (?, ?, 0, ?, ?)
        ON CONFLICT(user_id) DO NOTHING`
-    ).bind(userId, displayName || 'Athlete', Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).run();
+    ).bind(userId, starterDisplayName(displayName), Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).run();
   } catch (e) {
     // Table may not exist yet on a partially-migrated database. Sign-in must not
     // fail because the fitness schema is behind.
@@ -433,30 +601,74 @@ async function handleAccount(request, env, path) {
     }
 
     // Tables that predate ON DELETE CASCADE on this database are cleared
-    // explicitly; the rest cascade from the users row. Every table named here
-    // must exist, or the whole batch fails and nothing is deleted — so a new
-    // entry's migration (e.g. migrations/0001_sm_progress.sql, 0002_…) ships first.
+    // explicitly; the rest cascade from the users row. A table named here that
+    // does not exist on this database (a website-only table on a fitness-only
+    // copy, or a migration not yet applied) is skipped rather than failing the
+    // whole batch: it cannot hold rows for this user.
     const explicit = [
       'sessions', 'fitness_profiles', 'workout_sessions', 'xp_transactions', 'activity_feed',
       'activity_reactions', 'talents', 'achievements', 'quests', 'personal_records',
       'guild_members', 'challenge_participants', 'subscriptions', 'user_settings',
       'workout_programs', 'programs', 'meso_cycles', 'progress_metrics', 'talent_unlocks',
       'dm_sync', 'sm_progress', 'sm_profile', 'sm_plan',
+      'auth_handoff_codes', 'user_identities',
     ];
-    const statements = explicit.map((table) =>
+    const present = await existingTables(env, [...explicit, 'friendships', 'challenges', 'rate_limits']);
+    const statements = explicit.filter((table) => present.has(table)).map((table) =>
       env.DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(user.id)
     );
-    statements.push(
-      env.DB.prepare('DELETE FROM friendships WHERE user_low = ? OR user_high = ?').bind(user.id, user.id),
-      env.DB.prepare('DELETE FROM challenges WHERE creator_id = ? OR opponent_id = ?').bind(user.id, user.id),
-      env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id)
-    );
+    if (present.has('friendships')) {
+      statements.push(env.DB.prepare('DELETE FROM friendships WHERE user_low = ? OR user_high = ?').bind(user.id, user.id));
+    }
+    if (present.has('challenges')) {
+      statements.push(env.DB.prepare('DELETE FROM challenges WHERE creator_id = ? OR opponent_id = ?').bind(user.id, user.id));
+    }
+    if (present.has('rate_limits') && user.email) {
+      // The only rate-limit rows tied to a person are keyed by a hash of their
+      // email (see handleLogin); IP buckets are not personal to one account.
+      statements.push(env.DB.prepare('DELETE FROM rate_limits WHERE bucket = ?')
+        .bind(await emailBucket(user.email)));
+    }
+    statements.push(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id));
     // batch() runs as one transaction; a failure in any statement rolls back
     // and the account stays intact rather than half-deleted.
     await env.DB.batch(statements);
     return json({ deleted: true }, 200);
   }
   return json({ error: 'Method not allowed' }, 405);
+}
+
+/** Which of `names` exist as tables here. On any error, assume all of them. */
+async function existingTables(env, names) {
+  try {
+    const placeholders = names.map(() => '?').join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`
+    ).bind(...names).all();
+    return new Set((results || []).map((r) => r.name));
+  } catch (e) {
+    console.error('existingTables fell back to the full list:', e && e.message);
+    return new Set(names);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Rate limits (functions/_lib/ratelimit.js)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Count a hit; returns a 429 Response when over the limit, else null. Emails
+ * are hashed before they become bucket names so the counter table never holds
+ * an address in the clear.
+ */
+async function overLimit(env, bucket, { limit, window }) {
+  if (Math.random() < 0.01) await pruneRateLimits(env);
+  const result = await rateLimit(env, bucket, limit, window);
+  return result.ok ? null : tooManyRequests(result.retryAfter);
+}
+
+async function emailBucket(email) {
+  return `login:email:${await sha256Hex(String(email).trim().toLowerCase())}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -467,14 +679,36 @@ async function handleLogin(request, env) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const { email, password } = await request.json().catch(() => ({}));
-  if (!email || !password) return json({ error: 'Email and password are required' }, 400);
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return json({ error: 'Email and password are required' }, 400);
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const limited = (await overLimit(env, `login:ip:${clientIP(request)}`, LIMITS.loginIp))
+    || (await overLimit(env, await emailBucket(normalizedEmail), LIMITS.loginEmail));
+  if (limited) return limited;
+
+  if (password.length > MAX_LOGIN_PASSWORD) return json({ error: 'Invalid email or password' }, 401);
 
   const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?')
-    .bind(String(email).toLowerCase())
+    .bind(normalizedEmail)
     .first();
 
-  if (!user || !user.password_hash || !(await verifyPassword(password, user.password_hash))) {
-    return json({ error: 'Invalid email or password' }, 401);
+  const check = user && user.password_hash
+    ? await verifyPassword(password, user.password_hash, env)
+    : { ok: false, needsRehash: false };
+  if (!check.ok) return json({ error: 'Invalid email or password' }, 401);
+
+  if (check.needsRehash) {
+    // Transparent upgrade from the legacy SHA-256 formats (or a lower PBKDF2
+    // cost). A failure here must not fail a correct login.
+    try {
+      await env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
+        .bind(await hashPassword(password, env), Math.floor(Date.now() / 1000), user.id)
+        .run();
+    } catch (e) {
+      console.error('Password rehash skipped:', e && e.message);
+    }
   }
 
   await ensureFitnessProfile(env, user.id, user.name);
@@ -485,18 +719,33 @@ async function handleLogin(request, env) {
 async function handleRegister(request, env) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  const { email, password, name } = await request.json().catch(() => ({}));
-  if (!email || !password) return json({ error: 'Email and password are required' }, 400);
-  if (String(password).length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
+  const limited = await overLimit(env, `register:ip:${clientIP(request)}`, LIMITS.registerIp);
+  if (limited) return limited;
 
-  const normalizedEmail = String(email).toLowerCase();
+  const { email, password, name } = await request.json().catch(() => ({}));
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return json({ error: 'Email and password are required' }, 400);
+  }
+  if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return json({ error: `Password must be at most ${MAX_PASSWORD_LENGTH} characters` }, 400);
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  // The placeholder domains are reserved for provider accounts with no email;
+  // letting someone register one would let them squat a future Apple sign-in.
+  if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+      || /\.local$/.test(normalizedEmail)) {
+    return json({ error: 'Please enter a valid email address' }, 400);
+  }
+
   const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(normalizedEmail).first();
   if (existing) return json({ error: 'An account with that email already exists' }, 409);
 
   const now = Math.floor(Date.now() / 1000);
   const userId = crypto.randomUUID();
-  const displayName = name || normalizedEmail.split('@')[0];
-  const passwordHash = await hashPassword(password, generateSalt());
+  const displayName = cleanName(name) || normalizedEmail.split('@')[0];
+  const passwordHash = await hashPassword(password, env);
 
   await env.DB.prepare(
     `INSERT INTO users (id, email, password_hash, name, created_at, updated_at)
@@ -518,15 +767,117 @@ async function handleVerify(request, env) {
 
 async function handleLogout(request, env) {
   const authHeader = request.headers.get('Authorization') || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : readCookie(request, 'batesai_session');
-  if (token) {
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const cookie = readCookie(request, 'batesai_session') || '';
+  // A same-origin web client (the PWA) can hold both a stored Bearer token and
+  // the website cookie. Ending only one would leave it signed in by the other.
+  for (const token of new Set([bearer, cookie].filter(Boolean))) {
     try {
       await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256Hex(token)).run();
     } catch (e) {
       console.error('Logout cleanup failed:', e && e.message);
     }
   }
-  return json({ message: 'Logged out successfully' }, 200);
+  const res = json({ message: 'Logged out successfully' }, 200);
+  if (cookie) {
+    res.headers.append('Set-Cookie', 'batesai_session=; Path=/; Max-Age=0; SameSite=Lax; Secure; HttpOnly');
+  }
+  return res;
+}
+
+/* ------------------------------------------------------------------ */
+/* Native handoff: browser sign-in -> one-time code -> app session     */
+/* ------------------------------------------------------------------ */
+
+/** The scheme if it is on the allow-list, else null. Never echo anything else. */
+function allowedAppScheme(value) {
+  return typeof value === 'string' && APP_SCHEMES.includes(value) ? value : null;
+}
+
+/**
+ * Mint a one-time code for the native app (API_V2 §1.1). 32 random bytes,
+ * base64url; only its SHA-256 is stored. The session token itself never goes
+ * into a URL: the app trades this code for one via POST /handoff.
+ */
+async function mintHandoffCode(env, userId, scheme) {
+  const code = base64UrlFromBytes(crypto.getRandomValues(new Uint8Array(32)));
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    `INSERT INTO auth_handoff_codes (code_hash, user_id, scheme, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(await sha256Hex(code), userId, scheme, now, now + HANDOFF_TTL_SECONDS).run();
+  try {
+    // Housekeeping: codes are worthless a few minutes after minting.
+    await env.DB.prepare('DELETE FROM auth_handoff_codes WHERE expires_at < ?').bind(now - 86400).run();
+  } catch { /* best effort */ }
+  return code;
+}
+
+/**
+ * POST /api/auth/handoff {code} -> {success, token, user}, the same shape as
+ * /login. Single use: the claim is one conditional UPDATE, so two concurrent
+ * redemptions cannot both win.
+ */
+async function handleHandoff(request, env) {
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  const limited = await overLimit(env, `handoff:ip:${clientIP(request)}`, LIMITS.handoffIp);
+  if (limited) return limited;
+
+  const body = await request.json().catch(() => ({}));
+  const code = typeof body.code === 'string' ? body.code.trim() : '';
+  if (!/^[A-Za-z0-9_-]{43}$/.test(code)) return json({ error: 'invalid_code' }, 400);
+
+  const hash = await sha256Hex(code);
+  const now = Math.floor(Date.now() / 1000);
+  const claimed = await env.DB.prepare(
+    `UPDATE auth_handoff_codes SET used_at = ?
+      WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?
+      RETURNING user_id`
+  ).bind(now, hash, now).first();
+
+  if (!claimed) {
+    const row = await env.DB.prepare('SELECT used_at FROM auth_handoff_codes WHERE code_hash = ?')
+      .bind(hash).first();
+    if (!row) return json({ error: 'invalid_code' }, 400);
+    return json({ error: row.used_at ? 'code_used' : 'code_expired' }, 400);
+  }
+
+  const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(claimed.user_id).first();
+  if (!user) return json({ error: 'invalid_code' }, 400);
+
+  await ensureFitnessProfile(env, user.id, user.name);
+  const token = await issueSession(env, user);
+  return json({ success: true, message: 'Login successful', token, user: publicUser(user) }, 200);
+}
+
+/**
+ * Start-of-flow cookies shared by both providers: the app scheme and the
+ * return path. `sameSite` is 'Lax' for Google (it returns with a top-level
+ * GET) and 'None' for Apple (it returns with a cross-site form POST, which a
+ * Lax cookie would not ride along on). A plain sign-in clears leftovers from an
+ * abandoned attempt so they cannot redirect this one.
+ */
+function appendFlowCookies(headers, request, url, sameSite) {
+  const scheme = allowedAppScheme(url.searchParams.get('redirect_scheme'));
+  if (scheme) {
+    headers.append('Set-Cookie',
+      `${APP_SCHEME_COOKIE}=${scheme}; Path=/; Max-Age=${APP_SCHEME_MAX_AGE}; SameSite=${sameSite}; Secure; HttpOnly`);
+  } else if (readCookie(request, APP_SCHEME_COOKIE) !== null) {
+    headers.append('Set-Cookie', `${APP_SCHEME_COOKIE}=; Path=/; Max-Age=0; SameSite=${sameSite}; Secure; HttpOnly`);
+  }
+
+  // Optional landing page for after the /membership callback (e.g.
+  // /subjectmastery/, /fitness/). An invalid value is ignored, never echoed.
+  // The app handoff takes precedence, so a return path is not kept alongside it.
+  const returnTo = scheme ? null : safeReturnPath(url.searchParams.get('return_to'));
+  if (returnTo) {
+    headers.append('Set-Cookie', sameSite === 'Lax'
+      ? returnToCookie(returnTo)
+      : returnToCookie(returnTo).replace('SameSite=Lax', `SameSite=${sameSite}`));
+  } else if (readCookie(request, RETURN_TO_COOKIE) !== null) {
+    headers.append('Set-Cookie', CLEAR_RETURN_TO_COOKIE);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -549,12 +900,7 @@ async function handleOAuth(request, env, url, path) {
         `&access_type=offline&prompt=select_account`;
       const headers = new Headers({ Location: authUrl });
       headers.append('Set-Cookie', `google_oauth_state=${state}; Path=/; Max-Age=300; SameSite=Lax; Secure; HttpOnly`);
-      // Optional landing page for after the /membership callback (e.g.
-      // /subjectmastery/). An invalid value is ignored, never echoed. A plain
-      // sign-in clears any leftover one, so it cannot hijack this trip.
-      const returnTo = safeReturnPath(url.searchParams.get('return_to'));
-      if (returnTo) headers.append('Set-Cookie', returnToCookie(returnTo));
-      else if (readCookie(request, RETURN_TO_COOKIE) !== null) headers.append('Set-Cookie', CLEAR_RETURN_TO_COOKIE);
+      appendFlowCookies(headers, request, url, 'Lax');
       return new Response(null, { status: 302, headers });
     }
 
@@ -609,20 +955,16 @@ async function handleOAuth(request, env, url, path) {
       });
       if (!claims) return json({ error: 'Invalid Google id token' }, 401);
 
-      const user = await upsertOAuthUser(env, {
+      const { user, conflict } = await upsertOAuthUser(env, {
         provider: 'google',
         sub: claims.sub,
-        email: claims.email || `${claims.sub}@google.local`,
+        email: claims.email,
         name: claims.name,
         avatarUrl: claims.picture || null,
+        emailVerified: isEmailVerified(claims),
       });
-      const token = await issueSession(env, user);
-      // Also set the website's session cookie: the membership page exchanges
-      // Google's ?code via fetch and then relies on /api/auth/me seeing it.
-      const res = json({ success: true, token, user: publicUser(user) }, 200);
-      res.headers.append('Set-Cookie',
-        `batesai_session=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax; Secure; HttpOnly`);
-      return res;
+      if (conflict) return accountExistsResponse();
+      return browserSignInResponse(env, user, body.app_scheme);
     }
   }
 
@@ -641,16 +983,13 @@ async function handleOAuth(request, env, url, path) {
         // deliberately do not hold.
         `&scope=${encodeURIComponent('email name')}&state=${state}` +
         `&response_mode=form_post`;
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: authUrl,
-          // SameSite=None, unlike every other cookie here: Apple returns via a
-          // cross-site POST, and a Lax cookie is not sent on one. Without this
-          // the state check on the way back can never succeed.
-          'Set-Cookie': `apple_oauth_state=${state}; Path=/; Max-Age=300; SameSite=None; Secure; HttpOnly`,
-        },
-      });
+      const headers = new Headers({ Location: authUrl });
+      // SameSite=None, unlike the Google cookies: Apple returns via a
+      // cross-site POST, and a Lax cookie is not sent on one. Without this
+      // the state check on the way back can never succeed.
+      headers.append('Set-Cookie', `apple_oauth_state=${state}; Path=/; Max-Age=300; SameSite=None; Secure; HttpOnly`);
+      appendFlowCookies(headers, request, url, 'None');
+      return new Response(null, { status: 302, headers });
     }
 
     if (request.method === 'POST') {
@@ -689,24 +1028,40 @@ async function handleOAuth(request, env, url, path) {
       });
       if (!claims) return json({ error: 'Invalid Apple id token' }, 401);
 
-      const user = await upsertOAuthUser(env, {
+      const { user, conflict } = await upsertOAuthUser(env, {
         provider: 'apple',
         sub: claims.sub,
-        email: claims.email || `${claims.sub}@apple.local`,
+        email: claims.email,
         name: formatAppleName(body.user),
         avatarUrl: null,
+        emailVerified: isEmailVerified(claims),
       });
-      const token = await issueSession(env, user);
-      // Same as Google: the /membership callback lifts this cookie onto its own
-      // redirect, and the app's sign-in webview scrapes it from the cookie jar.
-      const res = json({ success: true, token, user: publicUser(user) }, 200);
-      res.headers.append('Set-Cookie',
-        `batesai_session=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax; Secure; HttpOnly`);
-      return res;
+      if (conflict) return accountExistsResponse();
+      return browserSignInResponse(env, user, body.app_scheme);
     }
   }
 
   return json({ error: 'Unknown OAuth provider' }, 404);
+}
+
+/**
+ * Finish a browser sign-in. Normally: a session plus the website's
+ * batesai_session cookie (the /membership callback lifts the cookie onto its
+ * own redirect). When functions/membership.js passes an allow-listed
+ * `app_scheme`, the sign-in is for a native app instead: no session or cookie
+ * is created here, only a one-time handoff code the app redeems itself.
+ */
+async function browserSignInResponse(env, user, appSchemeValue) {
+  const scheme = allowedAppScheme(appSchemeValue);
+  if (scheme) {
+    const code = await mintHandoffCode(env, user.id, scheme);
+    return json({ success: true, handoff_code: code, scheme }, 200);
+  }
+  const token = await issueSession(env, user);
+  const res = json({ success: true, token, user: publicUser(user) }, 200);
+  res.headers.append('Set-Cookie',
+    `batesai_session=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax; Secure; HttpOnly`);
+  return res;
 }
 
 /* ------------------------------------------------------------------ */
@@ -745,25 +1100,82 @@ function toHex(bytes) {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function generateSalt() {
-  return toHex(crypto.getRandomValues(new Uint8Array(16)));
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
 }
 
-async function hashPassword(password, salt) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password + salt));
-  return `$sha256$${salt}$${toHex(new Uint8Array(digest))}`;
+function base64ToBytes(str) {
+  return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
 }
 
-async function verifyPassword(password, storedHash) {
+/** Compare without an early exit, so timing does not reveal the matching prefix. */
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+function pbkdf2Iterations(env) {
+  const configured = Number(env && env.PBKDF2_ITERATIONS);
+  if (!Number.isInteger(configured)) return PBKDF2_MAX_ITERATIONS;
+  return Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, configured));
+}
+
+async function pbkdf2(password, salt, iterations) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256
+  );
+  return new Uint8Array(bits);
+}
+
+/** pbkdf2$<iterations>$<salt base64>$<hash base64>, 16-byte salt, 32-byte hash. */
+async function hashPassword(password, env) {
+  const iterations = pbkdf2Iterations(env);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await pbkdf2(password, salt, iterations);
+  return `pbkdf2$${iterations}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+}
+
+/**
+ * Returns { ok, needsRehash }. Understands, newest first:
+ *   pbkdf2$<iter>$<salt b64>$<hash b64>   current
+ *   $sha256$<salt hex>$<hex>              SHA-256(password + salt), before 2026-10-27
+ *   <64 hex chars>                        unsalted SHA-256, the oldest accounts
+ * Anything but a current-cost PBKDF2 hash is upgraded on the next good login.
+ */
+async function verifyPassword(password, storedHash, env) {
   try {
-    const parts = storedHash.split('$');
-    if (parts.length === 4 && parts[1] === 'sha256') {
-      return (await hashPassword(password, parts[2])) === storedHash;
+    const enc = new TextEncoder();
+    const parts = String(storedHash).split('$');
+    if (parts.length === 4 && parts[0] === 'pbkdf2') {
+      const iterations = Number(parts[1]);
+      if (!Number.isInteger(iterations) || iterations < 1 || iterations > PBKDF2_MAX_ITERATIONS) {
+        return { ok: false, needsRehash: false };
+      }
+      const expected = base64ToBytes(parts[3]);
+      const actual = await pbkdf2(password, base64ToBytes(parts[2]), iterations);
+      const ok = timingSafeEqual(actual, expected);
+      return { ok, needsRehash: ok && iterations < pbkdf2Iterations(env) };
     }
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
-    return toHex(new Uint8Array(digest)) === storedHash;
+    if (parts.length === 4 && parts[0] === '' && parts[1] === 'sha256') {
+      const digest = await crypto.subtle.digest('SHA-256', enc.encode(password + parts[2]));
+      const ok = timingSafeEqual(enc.encode(toHex(new Uint8Array(digest))), enc.encode(parts[3]));
+      return { ok, needsRehash: ok };
+    }
+    if (/^[0-9a-f]{64}$/i.test(storedHash)) {
+      const digest = await crypto.subtle.digest('SHA-256', enc.encode(password));
+      const ok = timingSafeEqual(enc.encode(toHex(new Uint8Array(digest))), enc.encode(storedHash.toLowerCase()));
+      return { ok, needsRehash: ok };
+    }
+    return { ok: false, needsRehash: false };
   } catch {
-    return false;
+    return { ok: false, needsRehash: false };
   }
 }
 
