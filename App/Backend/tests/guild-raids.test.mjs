@@ -107,12 +107,13 @@ test('this week (2026-08-29) resolves to a catalog boss', () => {
 });
 
 console.log('hp scaling');
-test('hp scales linearly with members and is clamped 1..25', () => {
+test('hp scales linearly with members and is clamped 1..50 (the guild cap)', () => {
   const boss = BOSS_CATALOG[0];
   assert.equal(hpForGuild(boss, 1), boss.base_hp);
   assert.equal(hpForGuild(boss, 4), boss.base_hp * 4);
   assert.equal(hpForGuild(boss, 0), boss.base_hp);
-  assert.equal(hpForGuild(boss, 999), boss.base_hp * 25);
+  assert.equal(hpForGuild(boss, 999), boss.base_hp * 50);
+  assert.equal(hpForGuild(boss, 30), boss.base_hp * 30);
 });
 
 console.log('achievement catalog');
