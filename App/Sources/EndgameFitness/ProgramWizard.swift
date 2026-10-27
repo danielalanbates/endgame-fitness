@@ -26,6 +26,9 @@ enum ProgressionStyle: String, CaseIterable, Identifiable {
     case linear = "Linear"
     case double = "Double Progression"
     var id: String { rawValue }
+
+    /// "Double Progression" clips in a three-segment control at 390pt.
+    var shortLabel: String { self == .double ? "Double" : rawValue }
 }
 
 struct ProgramConfig {
@@ -266,9 +269,10 @@ struct ProgramWizardView: View {
 
             card("Session Length", icon: "clock") {
                 Picker("Session length", selection: $config.sessionLength) {
-                    ForEach([30, 45, 60, 75, 90], id: \.self) { Text("\($0) min").tag($0) }
+                    // Five segments at 390pt: "30 min" clips, "30m" does not.
+                    ForEach([30, 45, 60, 75, 90], id: \.self) { Text("\($0)m").tag($0) }
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
             }
         }
@@ -295,9 +299,9 @@ struct ProgramWizardView: View {
         VStack(spacing: 16) {
             card("Mesocycle Length", icon: "calendar.badge.clock") {
                 Picker("Weeks", selection: $config.mesocycleWeeks) {
-                    ForEach([4, 6, 8, 12], id: \.self) { Text("\($0) weeks").tag($0) }
+                    ForEach([4, 6, 8, 12], id: \.self) { Text("\($0) wk").tag($0) }
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
                 Toggle("End the cycle with a deload week", isOn: $config.includeDeload)
                     .tint(.brandPurple)
@@ -305,9 +309,9 @@ struct ProgramWizardView: View {
 
             card("Progression Style", icon: "chart.line.uptrend.xyaxis") {
                 Picker("Progression", selection: $config.progression) {
-                    ForEach(ProgressionStyle.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(ProgressionStyle.allCases) { Text($0.shortLabel).tag($0) }
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
                 Text("Auto picks linear for newer lifters and double progression once loads stall.")
                     .font(.caption)
@@ -333,12 +337,13 @@ struct ProgramWizardView: View {
 
             card("Experience Check-in", icon: "figure.strengthtraining.traditional") {
                 Picker("Experience", selection: $config.experienceLevel) {
-                    Text("Beginner").tag(ExperienceLevel.beginner)
-                    Text("Intermediate").tag(ExperienceLevel.intermediate)
-                    Text("Advanced").tag(ExperienceLevel.advanced)
+                    // Short labels: "Intermediate" truncates in a 4-segment control on 390pt screens.
+                    Text("New").tag(ExperienceLevel.beginner)
+                    Text("Mid").tag(ExperienceLevel.intermediate)
+                    Text("Adv").tag(ExperienceLevel.advanced)
                     Text("Expert").tag(ExperienceLevel.expert)
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
             }
         }
@@ -354,7 +359,7 @@ struct ProgramWizardView: View {
                     Text("Minimal").tag(EquipmentLevel.minimal)
                     Text("Bodyweight").tag(EquipmentLevel.bodyweight)
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
             }
 

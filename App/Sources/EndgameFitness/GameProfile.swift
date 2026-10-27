@@ -44,6 +44,7 @@ struct FitnessProfile: Codable, Equatable {
     var birthYear: Int?
     var units: String
     var title: String?
+    var cosmetic: String?
     var isPublic: Bool
     var friendCode: String?
 
@@ -51,7 +52,7 @@ struct FitnessProfile: Codable, Equatable {
         case userID = "user_id"
         case displayName = "display_name"
         case avatarURL = "avatar_url"
-        case level, xp, prestige, units, title
+        case level, xp, prestige, units, title, cosmetic
         case xpForNextLevel = "xp_for_next_level"
         case xpForCurrentLevel = "xp_for_current_level"
         case talentPoints = "talent_points"
@@ -590,6 +591,8 @@ struct RaidHit: Codable, Equatable {
     var defeated: Bool
     var justDefeated: Bool
     var rewardXP: Int
+    var rewardTitle: String?
+    var rewardCosmetic: String?
 
     enum CodingKeys: String, CodingKey {
         case damage, hp, defeated
@@ -598,6 +601,8 @@ struct RaidHit: Codable, Equatable {
         case damageDone = "damage_done"
         case justDefeated = "just_defeated"
         case rewardXP = "reward_xp"
+        case rewardTitle = "reward_title"
+        case rewardCosmetic = "reward_cosmetic"
     }
 }
 
@@ -771,14 +776,26 @@ final class GameProfileService: ObservableObject {
             lastSyncedAt = response.serverTime
 
             profile = response.profile
+            applyStoredCosmetic()
             if response.levelsGained > 0 { pendingLevelUps = response.levelsGained }
             if response.xpGained > 0 { lastXPGain = response.xpGained }
             if let unlocked = response.achievementsUnlocked, !unlocked.isEmpty {
                 pendingAchievements = unlocked
             }
             if let hit = response.raid, hit.damage > 0 {
-                lastRaidHit = hit
                 await loadRaid()   // the boss moved; let the HP bar animate down
+                // Apply raid reward title and cosmetic to profile when boss is just defeated.
+                // Older sync payloads omit the reward fields, so fall back to the boss we
+                // just loaded, and surface the filled-in hit to the toast.
+                if hit.justDefeated {
+                    var hit = hit
+                    hit.rewardTitle = hit.rewardTitle ?? raid?.boss.rewardTitle
+                    hit.rewardCosmetic = hit.rewardCosmetic ?? raid?.boss.rewardCosmetic
+                    lastRaidHit = hit
+                    await applyRaidRewards(cosmetic: hit.rewardCosmetic, title: hit.rewardTitle)
+                } else {
+                    lastRaidHit = hit
+                }
             }
             // A workout moves quest progress; refresh the board if anything went up.
             if !outbound.isEmpty { await loadQuests() }
@@ -888,11 +905,42 @@ final class GameProfileService: ObservableObject {
         }
     }
 
+    /// The server has no cosmetic column yet, so the equipped aura lives in
+    /// defaults and is re-applied after every profile fetch.
+    /// Equips a raid boss's reward cosmetic/title on the local profile.
+    ///
+    /// The API returns `reward_cosmetic` / `reward_title` on both the sync hit
+    /// and the raid state, but nothing else consumed them, so the avatar aura
+    /// and the profile title never changed after a kill. Called from both the
+    /// sync path (the killing blow) and `loadRaid()` (the boss was already down
+    /// when the app came back, or a guildmate landed the last hit).
+    func applyRaidRewards(cosmetic: String?, title: String?) async {
+        if let cosmetic, !cosmetic.isEmpty, profile?.cosmetic != cosmetic {
+            profile?.cosmetic = cosmetic
+            // No cosmetic column server-side yet; keep it locally so it
+            // survives the next profile fetch.
+            defaults.set(cosmetic, forKey: "equippedCosmetic")
+        }
+        if let title, !title.isEmpty, profile?.title != title {
+            profile?.title = title
+            // `title` is a server-updatable field; persist it.
+            await updateProfile(["title": title])
+        }
+    }
+
+    private func applyStoredCosmetic() {
+        guard profile != nil, (profile?.cosmetic ?? "").isEmpty else { return }
+        if let stored = defaults.string(forKey: "equippedCosmetic"), !stored.isEmpty {
+            profile?.cosmetic = stored
+        }
+    }
+
     func loadProfile() async {
         guard auth.isSignedIn else { return }
         do {
             let response: ProfileResponse = try await auth.request("fitness/profile", method: "GET")
             profile = response.profile
+            applyStoredCosmetic()
         } catch {
             lastError = error.localizedDescription
         }
@@ -905,6 +953,7 @@ final class GameProfileService: ObservableObject {
                 "fitness/profile", method: "PUT", body: fields
             )
             profile = response.profile
+            applyStoredCosmetic()
         } catch {
             lastError = error.localizedDescription
         }
@@ -1022,6 +1071,13 @@ final class GameProfileService: ObservableObject {
         do {
             let response: RaidResponse = try await auth.request("fitness/raid", method: "GET")
             raid = response.raid
+            // The boss can already be dead by the time we load — app relaunch, or
+            // a guildmate landed the killing blow. Anyone who contributed damage
+            // still earns the cosmetic and title.
+            if let state = response.raid, state.defeated, state.myHits > 0 {
+                await applyRaidRewards(cosmetic: state.boss.rewardCosmetic,
+                                       title: state.boss.rewardTitle)
+            }
         } catch {
             lastError = error.localizedDescription
         }

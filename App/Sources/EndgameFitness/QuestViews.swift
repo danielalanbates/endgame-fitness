@@ -361,7 +361,7 @@ struct QuestsAndAchievementsPane: View {
             Picker("", selection: $page) {
                 ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
             }
-            .pickerStyle(.segmented)
+            .compactSegmentedPicker()
             .labelsHidden()
             .padding([.horizontal, .top], 16)
 
