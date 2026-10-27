@@ -13,12 +13,19 @@
  *   POST  native/apple     native macOS/iOS Sign in with Apple (identity token)
  *   POST  native/google    native Google Sign-In (id_token)
  *
+ * GET oauth/google also takes an optional ?return_to=<same-site path>; see
+ * functions/_lib/return-to.js. Without it nothing about the flow changes.
+ *
  * SECURITY NOTE: every path that accepts a provider id_token verifies the token's
  * RS256 signature against the provider's published JWKS, plus issuer, audience and
  * expiry. A previous revision of this file base64-decoded the token payload without
  * checking the signature, which let anyone mint an arbitrary identity token and log
  * in as any user. Do not reintroduce an unverified decode.
  */
+
+import {
+  RETURN_TO_COOKIE, CLEAR_RETURN_TO_COOKIE, safeReturnPath, returnToCookie,
+} from '../../_lib/return-to.js';
 
 const APPLE_ISSUER = 'https://appleid.apple.com';
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
@@ -47,6 +54,8 @@ export async function onRequest(context) {
         return withCors(await handleRegister(request, env), env, origin);
       case 'verify':
         return withCors(await handleVerify(request, env), env, origin);
+      case 'me':
+        return withCors(await handleMe(request, env), env, origin);
       case 'logout':
         return withCors(await handleLogout(request, env), env, origin);
       case 'oauth':
@@ -95,8 +104,11 @@ async function handleNative(request, env, path) {
     });
     if (!claims) return json({ error: 'Invalid Apple identity token' }, 401);
 
-    // Apple echoes back the nonce we sent. If the client supplied one, it must match.
-    if (nonce && claims.nonce && claims.nonce !== nonce) {
+    // Apple echoes back the nonce we sent. If the client supplied one, it must
+    // match either verbatim (client sent the hashed nonce, correct behaviour) or
+    // after hashing (app build <=6 sent the RAW nonce while setting the SHA-256
+    // on the Apple request, which made every real-device sign-in 401 here).
+    if (nonce && claims.nonce && claims.nonce !== nonce && claims.nonce !== (await sha256Hex(nonce))) {
       return json({ error: 'Nonce mismatch' }, 401);
     }
 
@@ -140,7 +152,10 @@ function appleAudiences(env) {
   const configured = [env.OAUTH_APPLE_CLIENT_ID, env.APPLE_CLIENT_ID, env.APPLE_NATIVE_CLIENT_IDS];
   const list = configured.filter(Boolean).flatMap((v) => String(v).split(','));
   if (!list.length) list.push('org.batesai.membership');
-  list.push('org.batesai.endgamefitness');
+  // The Endgame Fitness iOS bundle id. The older guess is kept as well: the
+  // auth code live on production since 2026-09-26 accepts it, and dropping it
+  // here could only ever turn a working sign-in into a 401.
+  list.push('com.batesllc.EndgameFitnessMobile', 'org.batesai.endgamefitness');
   return [...new Set(list.map((s) => s.trim()).filter(Boolean))];
 }
 
@@ -315,6 +330,26 @@ async function issueSession(env, user) {
   return token;
 }
 
+/**
+ * GET /api/auth/me — the membership page's session probe. Shape matches the
+ * page script: { signedIn, user: { name, email, tier, memberSince } }.
+ */
+async function handleMe(request, env) {
+  const user = await sessionUser(request, env);
+  if (!user) return json({ signedIn: false }, 200);
+  const created = await env.DB.prepare('SELECT created_at FROM users WHERE id = ?')
+    .bind(user.id).first();
+  return json({
+    signedIn: true,
+    user: {
+      name: user.name,
+      email: user.email,
+      tier: user.membership_tier || 'free',
+      memberSince: created?.created_at || null,
+    },
+  }, 200);
+}
+
 /** Bearer token (or website cookie) -> user row, or null. */
 export async function sessionUser(request, env) {
   const authHeader = request.headers.get('Authorization') || '';
@@ -398,12 +433,15 @@ async function handleAccount(request, env, path) {
     }
 
     // Tables that predate ON DELETE CASCADE on this database are cleared
-    // explicitly; the rest cascade from the users row.
+    // explicitly; the rest cascade from the users row. Every table named here
+    // must exist, or the whole batch fails and nothing is deleted — so a new
+    // entry's migration (e.g. migrations/0001_sm_progress.sql, 0002_…) ships first.
     const explicit = [
       'sessions', 'fitness_profiles', 'workout_sessions', 'xp_transactions', 'activity_feed',
       'activity_reactions', 'talents', 'achievements', 'quests', 'personal_records',
       'guild_members', 'challenge_participants', 'subscriptions', 'user_settings',
       'workout_programs', 'programs', 'meso_cycles', 'progress_metrics', 'talent_unlocks',
+      'dm_sync', 'sm_progress', 'sm_profile', 'sm_plan',
     ];
     const statements = explicit.map((table) =>
       env.DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(user.id)
@@ -509,13 +547,15 @@ async function handleOAuth(request, env, url, path) {
         `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code` +
         `&scope=${encodeURIComponent('email profile openid')}&state=${state}` +
         `&access_type=offline&prompt=select_account`;
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: authUrl,
-          'Set-Cookie': `google_oauth_state=${state}; Path=/; Max-Age=300; SameSite=Lax; Secure; HttpOnly`,
-        },
-      });
+      const headers = new Headers({ Location: authUrl });
+      headers.append('Set-Cookie', `google_oauth_state=${state}; Path=/; Max-Age=300; SameSite=Lax; Secure; HttpOnly`);
+      // Optional landing page for after the /membership callback (e.g.
+      // /subjectmastery/). An invalid value is ignored, never echoed. A plain
+      // sign-in clears any leftover one, so it cannot hijack this trip.
+      const returnTo = safeReturnPath(url.searchParams.get('return_to'));
+      if (returnTo) headers.append('Set-Cookie', returnToCookie(returnTo));
+      else if (readCookie(request, RETURN_TO_COOKIE) !== null) headers.append('Set-Cookie', CLEAR_RETURN_TO_COOKIE);
+      return new Response(null, { status: 302, headers });
     }
 
     if (request.method === 'POST') {
@@ -539,8 +579,23 @@ async function handleOAuth(request, env, url, path) {
           }),
         });
         if (!tokenRes.ok) {
-          console.error('Google token exchange failed:', await tokenRes.text());
-          return json({ error: 'Failed to exchange authorization code' }, 400);
+          // Surface Google's own error code. These are diagnostic OAuth codes
+          // (invalid_client, invalid_grant, redirect_uri_mismatch), not
+          // secrets, and without them a failed sign-in is unfixable from the
+          // client side — the page could only ever say "it didn't work".
+          const raw = await tokenRes.text();
+          console.error('Google token exchange failed:', raw);
+          let detail = null;
+          let code = null;
+          try {
+            const parsed = JSON.parse(raw);
+            detail = parsed.error_description || parsed.error || null;
+            code = parsed.error || null;
+          } catch { /* non-JSON body: fall through with no detail */ }
+          // `code` is the machine-readable form (invalid_grant, …). The
+          // /membership callback keys its user-facing message off it, so it
+          // must survive separately from the prose description.
+          return json({ error: 'Failed to exchange authorization code', detail, code }, 400);
         }
         idToken = (await tokenRes.json()).id_token;
       }
@@ -562,7 +617,12 @@ async function handleOAuth(request, env, url, path) {
         avatarUrl: claims.picture || null,
       });
       const token = await issueSession(env, user);
-      return json({ success: true, token, user: publicUser(user) }, 200);
+      // Also set the website's session cookie: the membership page exchanges
+      // Google's ?code via fetch and then relies on /api/auth/me seeing it.
+      const res = json({ success: true, token, user: publicUser(user) }, 200);
+      res.headers.append('Set-Cookie',
+        `batesai_session=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax; Secure; HttpOnly`);
+      return res;
     }
   }
 
@@ -573,13 +633,22 @@ async function handleOAuth(request, env, url, path) {
       const redirectUri = `${url.origin}/membership`;
       const authUrl =
         `https://appleid.apple.com/auth/authorize?client_id=${encodeURIComponent(clientId)}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code` +
-        `&scope=${encodeURIComponent('email name')}&state=${state}&response_mode=form_post`;
+        `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=${encodeURIComponent('code id_token')}` +
+        // "code id_token" so Apple signs an identity token into the callback
+        // itself. Verifying that against Apple's public keys needs no client
+        // secret, which means the .p8 private key never has to live in Pages —
+        // see wrangler.toml. Asking for "code" alone would force a secret we
+        // deliberately do not hold.
+        `&scope=${encodeURIComponent('email name')}&state=${state}` +
+        `&response_mode=form_post`;
       return new Response(null, {
         status: 302,
         headers: {
           Location: authUrl,
-          'Set-Cookie': `apple_oauth_state=${state}; Path=/; Max-Age=300; SameSite=Lax; Secure; HttpOnly`,
+          // SameSite=None, unlike every other cookie here: Apple returns via a
+          // cross-site POST, and a Lax cookie is not sent on one. Without this
+          // the state check on the way back can never succeed.
+          'Set-Cookie': `apple_oauth_state=${state}; Path=/; Max-Age=300; SameSite=None; Secure; HttpOnly`,
         },
       });
     }
@@ -628,7 +697,12 @@ async function handleOAuth(request, env, url, path) {
         avatarUrl: null,
       });
       const token = await issueSession(env, user);
-      return json({ success: true, token, user: publicUser(user) }, 200);
+      // Same as Google: the /membership callback lifts this cookie onto its own
+      // redirect, and the app's sign-in webview scrapes it from the cookie jar.
+      const res = json({ success: true, token, user: publicUser(user) }, 200);
+      res.headers.append('Set-Cookie',
+        `batesai_session=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax; Secure; HttpOnly`);
+      return res;
     }
   }
 

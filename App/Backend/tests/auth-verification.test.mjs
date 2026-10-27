@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, mkdirSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,8 +27,12 @@ const source = readFileSync(workerPath, 'utf8')
   .replace(/^async function verifyProviderToken/m, 'export async function verifyProviderToken')
   .replace(/^function appleAudiences/m, 'export function appleAudiences');
 
+// Mirror functions/api/auth/ under the scratch dir so the worker's relative
+// imports (../../_lib/*.js) still resolve.
 const scratch = mkdtempSync(join(tmpdir(), 'auth-test-'));
-const modulePath = join(scratch, 'auth.mjs');
+mkdirSync(join(scratch, 'api', 'auth'), { recursive: true });
+cpSync(join(here, '..', 'functions', '_lib'), join(scratch, '_lib'), { recursive: true });
+const modulePath = join(scratch, 'api', 'auth', 'auth.mjs');
 writeFileSync(modulePath, source);
 
 const { verifyProviderToken } = await import(`file://${modulePath}`);
