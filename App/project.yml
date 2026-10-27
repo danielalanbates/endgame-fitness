@@ -36,6 +36,9 @@ targets:
       # xcodegen has no `resources:` key — asset catalogs listed under sources
       # land in the Copy Bundle Resources phase automatically.
       - path: Resources/Assets.xcassets
+      # 876 exercises from free-exercise-db (The Unlicense / public domain).
+      - path: Resources/exercise_library.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Endgame Fitness
@@ -70,6 +73,9 @@ targets:
       # xcodegen has no `resources:` key — asset catalogs listed under sources
       # land in the Copy Bundle Resources phase automatically.
       - path: Resources/Assets.xcassets
+      # 876 exercises from free-exercise-db (The Unlicense / public domain).
+      - path: Resources/exercise_library.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Endgame Fitness

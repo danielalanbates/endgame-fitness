@@ -110,41 +110,6 @@ struct FitnessProfile: Codable, Equatable {
     }
 }
 
-/// One exercise's completed sets, uploaded so the server can detect personal
-/// records (best weight per rep count) — the client never decides a PR itself.
-struct SyncExercise: Codable, Equatable {
-    struct Set: Codable, Equatable {
-        var reps: Int
-        var weight: Double
-    }
-    var name: String
-    var sets: [Set]
-}
-
-struct SyncSession: Codable, Identifiable, Equatable {
-    var id: String
-    var performedAt: Int
-    var name: String?
-    var programID: String?
-    var durationSecs: Int
-    var totalVolume: Double
-    var totalReps: Int
-    var xpEarned: Int?
-    var clientRev: Int
-    var exercises: [SyncExercise]? = nil
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, exercises
-        case performedAt = "performed_at"
-        case programID = "program_id"
-        case durationSecs = "duration_secs"
-        case totalVolume = "total_volume"
-        case totalReps = "total_reps"
-        case xpEarned = "xp_earned"
-        case clientRev = "client_rev"
-    }
-}
-
 struct LeaderboardEntry: Codable, Identifiable, Equatable {
     var rank: Int
     var userID: String
@@ -740,29 +705,7 @@ final class GameProfileService: ObservableObject {
         do {
             var body: [String: Any] = [
                 "since": lastSyncedAt,
-                "sessions": outbound.map { session -> [String: Any] in
-                    var dict: [String: Any] = [
-                        "id": session.id,
-                        "performed_at": session.performedAt,
-                        "duration_secs": session.durationSecs,
-                        "total_volume": session.totalVolume,
-                        "total_reps": session.totalReps,
-                        "client_rev": session.clientRev,
-                    ]
-                    if let name = session.name { dict["name"] = name }
-                    if let programID = session.programID { dict["program_id"] = programID }
-                    if let exercises = session.exercises, !exercises.isEmpty {
-                        dict["payload"] = [
-                            "exercises": exercises.map { exercise -> [String: Any] in
-                                [
-                                    "name": exercise.name,
-                                    "sets": exercise.sets.map { ["reps": $0.reps, "weight": $0.weight] },
-                                ]
-                            },
-                        ]
-                    }
-                    return dict
-                },
+                "sessions": outbound.map { $0.wirePayload() },
             ]
             for (key, value) in HealthKitManager.shared.syncFields { body[key] = value }
 
