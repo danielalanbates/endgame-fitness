@@ -36,6 +36,7 @@ extension WorkoutManager {
     var currentProgramLabel: String { currentProgramName ?? "your current program" }
 
     func saveScheduleState() {
+        normalizeSchedule()
         let d = UserDefaults.standard
         if let data = try? JSONEncoder().encode(weeklySchedule) { d.set(data, forKey: "weeklySchedule.v1") }
         if let data = try? JSONEncoder().encode(mesoPhases) { d.set(data, forKey: "mesoPhases.v1") }
@@ -61,6 +62,19 @@ extension WorkoutManager {
         if userProfile == nil, let data = d.data(forKey: "userProfile.v1"),
            let profile = try? JSONDecoder().decode(UserProfile.self, from: data) {
             userProfile = profile
+        }
+        normalizeSchedule()
+    }
+
+    /// Program generators still write names like "Bench Press 4x8". Split the
+    /// scheme into structured targets so a started workout gets 4 planned
+    /// sets of 8 instead of a name with numbers in it.
+    func normalizeSchedule() {
+        guard weeklySchedule.contains(where: { $0.plan?.map(\.name) != $0.exercises }) else { return }
+        weeklySchedule = weeklySchedule.map { day in
+            var day = day
+            day.normalizePlan()
+            return day
         }
     }
 
@@ -171,13 +185,44 @@ private func day(_ dow: String, _ type: String, _ ex: [String], _ min: Int = 60)
     ScheduledWorkout(dayOfWeek: dow, workoutType: type, exercises: ex, estimatedDuration: min)
 }
 
+extension CatalogProgram {
+    /// Gives every exercise the program's default prescription, so starting a
+    /// day plans real sets and reps. Timed moves (planks, walks, mobility) get
+    /// a timed target instead; carries and sleds get a set count only.
+    func prescribing(_ scheme: String) -> CatalogProgram {
+        let planned = days.map { day -> ScheduledWorkout in
+            var day = day
+            day.plan = day.exercises.map { Self.plan(for: $0, scheme: scheme) }
+            return day
+        }
+        return CatalogProgram(name: name, description: description, daysPerWeek: daysPerWeek,
+                              difficulty: difficulty, goal: goal, icon: icon, days: planned)
+    }
+
+    static func plan(for name: String, scheme: String) -> PlannedExercise {
+        let parsed = ProgramTargetParser.parse(name)
+        if parsed.hasTarget { return parsed }
+        let lower = name.lowercased()
+        if ExerciseLibrary.shared.tracking(forID: nil, name: name) == .timed {
+            let long = ["walk", "cardio", "flow", "zone", "run", "bike", "mobility"].contains { lower.contains($0) }
+            return PlannedExercise(name: name, sets: long ? 1 : 3, seconds: long ? 600 : 30)
+        }
+        if ["carry", "farmer", "sled"].contains(where: { lower.contains($0) }) {
+            return PlannedExercise(name: name, sets: 3)
+        }
+        var plan = ProgramTargetParser.parse("\(name) \(scheme)")
+        plan.name = name
+        return plan
+    }
+}
+
 enum ProgramCatalog {
     static let all: [CatalogProgram] = [
         CatalogProgram(name: "Push-Pull-Legs", description: "Classic 3-day split focusing on push, pull, and leg movements", daysPerWeek: 3, difficulty: "Intermediate", goal: "Muscle Building", icon: "💪", days: [
             day("Monday", "Push Day", ["Bench Press", "Overhead Press", "Incline Dumbbell Press", "Tricep Dips"]),
             day("Wednesday", "Pull Day", ["Deadlift", "Pull-ups", "Barbell Rows", "Face Pulls"]),
             day("Friday", "Leg Day", ["Squats", "Romanian Deadlifts", "Leg Press", "Calf Raises"]),
-        ]),
+        ]).prescribing("3x8-12"),
         CatalogProgram(name: "PPL x6", description: "6-day push/pull/legs for maximum weekly volume", daysPerWeek: 6, difficulty: "Advanced", goal: "Muscle Building", icon: "🔱", days: [
             day("Monday", "Push A", ["Bench Press", "Overhead Press", "Cable Flyes", "Tricep Pushdowns"]),
             day("Tuesday", "Pull A", ["Deadlift", "Pull-ups", "Seated Rows", "Barbell Curls"]),
@@ -185,83 +230,83 @@ enum ProgramCatalog {
             day("Thursday", "Push B", ["Incline Bench Press", "Dumbbell Shoulder Press", "Lateral Raises", "Overhead Tricep Extension"]),
             day("Friday", "Pull B", ["Barbell Rows", "Lat Pulldowns", "Face Pulls", "Hammer Curls"]),
             day("Saturday", "Legs B", ["Front Squats", "Romanian Deadlifts", "Walking Lunges", "Seated Calf Raises"]),
-        ]),
+        ]).prescribing("3x8-12"),
         CatalogProgram(name: "Upper-Lower Split", description: "4-day program alternating between upper and lower body", daysPerWeek: 4, difficulty: "Intermediate", goal: "Strength & Size", icon: "⚡", days: [
             day("Monday", "Upper Body", ["Bench Press", "Barbell Rows", "Overhead Press", "Pull-ups"]),
             day("Tuesday", "Lower Body", ["Squats", "Romanian Deadlifts", "Leg Press", "Leg Curls"]),
             day("Thursday", "Upper Body", ["Incline Dumbbell Press", "Seated Rows", "Lateral Raises", "Barbell Curls"]),
             day("Friday", "Lower Body", ["Deadlift", "Front Squats", "Walking Lunges", "Calf Raises"]),
-        ]),
+        ]).prescribing("3x6-10"),
         CatalogProgram(name: "Full Body 3x", description: "Train your entire body 3 times per week", daysPerWeek: 3, difficulty: "Beginner", goal: "General Fitness", icon: "🏋️", days: [
             day("Monday", "Full Body A", ["Squats", "Bench Press", "Barbell Rows", "Plank"]),
             day("Wednesday", "Full Body B", ["Deadlift", "Overhead Press", "Pull-ups", "Lunges"]),
             day("Friday", "Full Body C", ["Leg Press", "Incline Dumbbell Press", "Seated Rows", "Farmer's Carry"]),
-        ]),
+        ]).prescribing("3x8-12"),
         CatalogProgram(name: "Starting Strength", description: "The classic barbell novice program: squat every session", daysPerWeek: 3, difficulty: "Beginner", goal: "Strength", icon: "🐣", days: [
             day("Monday", "Workout A", ["Squats", "Bench Press", "Deadlift"], 45),
             day("Wednesday", "Workout B", ["Squats", "Overhead Press", "Power Cleans"], 45),
             day("Friday", "Workout A", ["Squats", "Bench Press", "Deadlift"], 45),
-        ]),
+        ]).prescribing("3x5"),
         CatalogProgram(name: "5x5 Strength", description: "Five sets of five on the big compound lifts", daysPerWeek: 3, difficulty: "Intermediate", goal: "Strength", icon: "🖐️", days: [
             day("Monday", "Heavy Day", ["Squats", "Bench Press", "Barbell Rows"], 60),
             day("Wednesday", "Volume Day", ["Squats", "Overhead Press", "Deadlift"], 60),
             day("Friday", "Intensity Day", ["Squats", "Bench Press", "Barbell Rows"], 60),
-        ]),
+        ]).prescribing("5x5"),
         CatalogProgram(name: "Powerlifting Peaking", description: "Squat, bench, deadlift focus with heavy triples and doubles", daysPerWeek: 4, difficulty: "Advanced", goal: "Strength", icon: "🐘", days: [
             day("Monday", "Squat Day", ["Squats", "Pause Squats", "Leg Press", "Ab Wheel"], 75),
             day("Tuesday", "Bench Day", ["Bench Press", "Close-Grip Bench Press", "Dumbbell Rows", "Tricep Pushdowns"], 75),
             day("Thursday", "Deadlift Day", ["Deadlift", "Deficit Deadlifts", "Barbell Rows", "Back Extensions"], 75),
             day("Saturday", "Accessory Day", ["Incline Bench Press", "Pull-ups", "Lateral Raises", "Barbell Curls"], 60),
-        ]),
+        ]).prescribing("4x3"),
         CatalogProgram(name: "Bodybuilding Bro Split", description: "One muscle group per day, maximum pump", daysPerWeek: 5, difficulty: "Intermediate", goal: "Muscle Building", icon: "🏆", days: [
             day("Monday", "Chest Day", ["Bench Press", "Incline Dumbbell Press", "Cable Flyes", "Push-ups"]),
             day("Tuesday", "Back Day", ["Deadlift", "Lat Pulldowns", "Seated Rows", "Face Pulls"]),
             day("Wednesday", "Shoulder Day", ["Overhead Press", "Lateral Raises", "Rear Delt Flyes", "Shrugs"]),
             day("Thursday", "Leg Day", ["Squats", "Leg Press", "Leg Curls", "Calf Raises"]),
             day("Friday", "Arm Day", ["Barbell Curls", "Tricep Dips", "Hammer Curls", "Overhead Tricep Extension"]),
-        ]),
+        ]).prescribing("4x8-12"),
         CatalogProgram(name: "Circuit Training", description: "High-intensity circuits for fat loss and conditioning", daysPerWeek: 3, difficulty: "Beginner", goal: "Fat Loss", icon: "🔥", days: [
             day("Monday", "Full Body Circuit", ["Squats", "Push-ups", "Lunges", "Rows"], 45),
             day("Wednesday", "HIIT Cardio", ["Burpees", "Mountain Climbers", "Jump Squats", "Plank"], 30),
             day("Friday", "Full Body Circuit", ["Deadlifts", "Bench Press", "Pull-ups", "Leg Press"], 45),
-        ]),
+        ]).prescribing("3x12-15"),
         CatalogProgram(name: "Fat Loss Shred", description: "Lifting plus metabolic finishers, 4 days", daysPerWeek: 4, difficulty: "Intermediate", goal: "Fat Loss", icon: "🥵", days: [
             day("Monday", "Upper + Finisher", ["Bench Press", "Barbell Rows", "Overhead Press", "Battle Ropes"], 50),
             day("Tuesday", "Lower + Finisher", ["Squats", "Romanian Deadlifts", "Walking Lunges", "Sled Push"], 50),
             day("Thursday", "Upper + Finisher", ["Incline Dumbbell Press", "Pull-ups", "Lateral Raises", "Burpees"], 50),
             day("Friday", "Lower + Finisher", ["Deadlift", "Leg Press", "Jump Squats", "Mountain Climbers"], 50),
-        ]),
+        ]).prescribing("3x10-15"),
         CatalogProgram(name: "Athlete Performance", description: "Power, speed, and strength for sport", daysPerWeek: 4, difficulty: "Advanced", goal: "Athleticism", icon: "🥇", days: [
             day("Monday", "Power Lower", ["Power Cleans", "Box Jumps", "Squats", "Nordic Curls"], 60),
             day("Tuesday", "Power Upper", ["Push Press", "Medicine Ball Throws", "Weighted Pull-ups", "Plank"], 60),
             day("Thursday", "Strength Lower", ["Deadlift", "Front Squats", "Walking Lunges", "Calf Raises"], 60),
             day("Friday", "Strength Upper", ["Bench Press", "Barbell Rows", "Overhead Press", "Face Pulls"], 60),
-        ]),
+        ]).prescribing("4x4-6"),
         CatalogProgram(name: "Olympic Lifting", description: "Snatch and clean & jerk technique plus strength", daysPerWeek: 4, difficulty: "Advanced", goal: "Power", icon: "🏋️‍♀️", days: [
             day("Monday", "Snatch Day", ["Snatch", "Overhead Squats", "Snatch Pulls", "Core Work"], 75),
             day("Tuesday", "Clean & Jerk Day", ["Clean and Jerk", "Front Squats", "Push Press", "Pull-ups"], 75),
             day("Thursday", "Strength Day", ["Squats", "Deadlift", "Strict Press", "Barbell Rows"], 75),
             day("Saturday", "Technique Day", ["Hang Snatch", "Hang Cleans", "Jerk Dips", "Ab Wheel"], 60),
-        ]),
+        ]).prescribing("5x3"),
         CatalogProgram(name: "Calisthenics Foundations", description: "Bodyweight-only strength you can do anywhere", daysPerWeek: 3, difficulty: "Beginner", goal: "General Fitness", icon: "🤸", days: [
             day("Monday", "Push", ["Push-ups", "Pike Push-ups", "Dips", "Plank"], 40),
             day("Wednesday", "Pull", ["Pull-ups", "Inverted Rows", "Chin-ups", "Hollow Hold"], 40),
             day("Friday", "Legs & Core", ["Pistol Squat Progressions", "Walking Lunges", "Glute Bridges", "Hanging Leg Raises"], 40),
-        ]),
+        ]).prescribing("3x6-12"),
         CatalogProgram(name: "Longevity & Mobility", description: "Joint-friendly strength, balance, and mobility for the long game", daysPerWeek: 3, difficulty: "Beginner", goal: "Longevity", icon: "🛡️", days: [
             day("Monday", "Strength + Balance", ["Goblet Squats", "Dumbbell Press", "Single-Leg Romanian Deadlifts", "Farmer's Carry"], 45),
             day("Wednesday", "Zone 2 + Core", ["Incline Walk", "Dead Bug", "Bird Dog", "Side Plank"], 45),
             day("Friday", "Full Body + Mobility", ["Trap Bar Deadlift", "Seated Rows", "Step-ups", "Mobility Flow"], 45),
-        ]),
+        ]).prescribing("3x8-12"),
         CatalogProgram(name: "Time-Crunched 2x", description: "Two efficient full-body sessions a week", daysPerWeek: 2, difficulty: "Beginner", goal: "General Fitness", icon: "⏱️", days: [
             day("Tuesday", "Full Body A", ["Squats", "Bench Press", "Barbell Rows", "Plank"], 40),
             day("Saturday", "Full Body B", ["Deadlift", "Overhead Press", "Pull-ups", "Walking Lunges"], 40),
-        ]),
+        ]).prescribing("3x6-10"),
         CatalogProgram(name: "Home Dumbbell Only", description: "Complete program with just a pair of dumbbells", daysPerWeek: 3, difficulty: "Beginner", goal: "Muscle Building", icon: "🏠", days: [
             day("Monday", "Upper", ["Dumbbell Bench Press", "Dumbbell Rows", "Dumbbell Shoulder Press", "Hammer Curls"], 45),
             day("Wednesday", "Lower", ["Goblet Squats", "Dumbbell Romanian Deadlifts", "Walking Lunges", "Calf Raises"], 45),
             day("Friday", "Full Body", ["Dumbbell Thrusters", "Renegade Rows", "Split Squats", "Overhead Tricep Extension"], 45),
-        ]),
+        ]).prescribing("3x10-15"),
     ]
 }
 
@@ -800,7 +845,7 @@ struct MesocycleView: View {
     private var progress: (workout: Int, total: Int, phase: String) {
         let workoutsPerWeek = max(1, workoutManager.weeklySchedule.count)
         let total = max(1, totalWeeks * workoutsPerWeek)
-        let current = workoutManager.sessions.count % total
+        let current = workoutManager.loggedSessions.count % total
         let currentWeek = current / workoutsPerWeek
         var week = 0
         for phase in workoutManager.mesoPhases {

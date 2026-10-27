@@ -7,12 +7,14 @@
 // the app touches goes through `HealthKitManager.shared`.
 //
 // What it does:
-//   • asks for read access to steps, active energy, heart rate and body mass,
-//     and write access for strength-training workouts
+//   • asks for read access to steps and active energy (the only types it
+//     reads), and write access for strength-training workouts
 //   • reads today's step count and active kilocalories (HKStatisticsQuery)
 //   • keeps an HKObserverQuery on steps so the dashboard refreshes itself
 //   • writes a finished session as an HKWorkout (.traditionalStrengthTraining)
-//     when the "Sync workouts to Apple Health" setting is on
+//     when the "Sync workouts to Apple Health" setting is on. Only sessions
+//     with at least one completed set are ever saved (WorkoutManager.
+//     completeWorkout returns before this point otherwise).
 //
 // The step/energy numbers also ride along on the sync payload
 // (`steps_today`, `active_kcal_today`) so server-side quests can use them.
@@ -55,11 +57,11 @@ final class HealthKitManager: ObservableObject {
     private var stepType: HKQuantityType { HKQuantityType(.stepCount) }
     private var energyType: HKQuantityType { HKQuantityType(.activeEnergyBurned) }
     private var readTypes: Set<HKObjectType> {
+        // Only what is read: asking for more than the app uses is an App
+        // Review problem and a privacy one.
         [
             HKQuantityType(.stepCount),
             HKQuantityType(.activeEnergyBurned),
-            HKQuantityType(.heartRate),
-            HKQuantityType(.bodyMass),
         ]
     }
     private var shareTypes: Set<HKSampleType> { [HKWorkoutType.workoutType()] }
@@ -143,7 +145,7 @@ final class HealthKitManager: ObservableObject {
     /// Save a finished strength session to Health. No-op unless connected,
     /// the setting is on, and the session has a positive duration.
     func saveStrengthWorkout(start: Date, durationSecs: Int, name: String?, activeKcal: Double? = nil) {
-        guard isAvailable, isConnected, syncWorkoutsToHealth, durationSecs > 0 else { return }
+        guard isAvailable, isConnected, syncWorkoutsToHealth, durationSecs > 0, start <= Date() else { return }
         let end = start.addingTimeInterval(TimeInterval(durationSecs))
         Task { await self.writeWorkout(start: start, end: end, name: name, activeKcal: activeKcal) }
     }

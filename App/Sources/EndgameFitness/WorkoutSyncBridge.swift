@@ -169,4 +169,13 @@ enum WorkoutSyncBridge {
     /// (sign-out, or a different member signs in) so per-account local state is
     /// swapped rather than shared. `nil` = signed out.
     static var accountChanged: (_ userID: String?) -> Void = { _ in }
+
+    /// Installed by GameProfileService (added 2026-10-27): queue one fully
+    /// built session for upload, replacing any queued copy with the same id and
+    /// keeping its `clientRev` as given. The training log sends edits through
+    /// it (clientRev + 1) and deletes (`deleted == true`, a tombstone).
+    ///
+    /// While nil, new workouts fall back to `recordWorkout(...)`, and edits and
+    /// deletes stay on this device (recordWorkout cannot carry either).
+    static var enqueue: ((SyncSession) -> Void)? = nil
 }
