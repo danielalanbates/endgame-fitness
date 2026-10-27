@@ -40,7 +40,7 @@
  *   GET    challenges              mine: pending / active / finished (+ live standings)
  *   POST   challenges              { kind, metric, opponent_user_id | (guild), days }
  *   POST   challenges/:id/accept
- *   POST   challenges/:id/decline
+ *   POST   challenges/:id/decline     (the creator declining withdraws the invite)
  *   GET    quests                  active daily + weekly quests (generated on read)
  *   POST   quests/:id/claim        claim a completed quest → XP + feed item
  *   GET    achievements            catalog + unlocked state
@@ -2127,6 +2127,7 @@ async function createChallenge(request, env, userId) {
     const rel = await relationship(env, userId, opponentId);
     if (!rel.friend || rel.blocked) return json({ error: 'You can only duel a friend' }, 403);
 
+    await expireStaleInvites(env, userId);
     const open = await env.DB.prepare(
       `SELECT id FROM challenges
         WHERE kind = 'duel' AND status IN ('pending','active')
@@ -2174,11 +2175,29 @@ async function createChallenge(request, env, userId) {
   return json({ success: true, challenge_id: challengeId, status: 'active' }, 201);
 }
 
+// A duel invite nobody answers expires after a week, so it cannot block the
+// pair from ever starting another one.
+const DUEL_INVITE_TTL = 7 * 86400;
+
+async function expireStaleInvites(env, userId) {
+  await env.DB.prepare(
+    `UPDATE challenges SET status = 'declined'
+      WHERE kind = 'duel' AND status = 'pending' AND created_at < ?
+        AND (creator_id = ? OR opponent_id = ?)`
+  ).bind(now() - DUEL_INVITE_TTL, userId, userId).run();
+}
+
 async function respondToChallenge(env, userId, challengeId, accept) {
   const row = await env.DB.prepare('SELECT * FROM challenges WHERE id = ?').bind(challengeId).first();
   if (!row) return json({ error: 'Challenge not found' }, 404);
   if (row.kind !== 'duel' || row.status !== 'pending') return json({ error: 'Nothing to respond to' }, 409);
-  // Only the invited side may answer — the creator cannot self-accept.
+  // The creator may withdraw a pending invite (decline); only the invited side
+  // may accept, so the creator cannot self-accept.
+  if (!accept && row.creator_id === userId) {
+    await env.DB.prepare(`UPDATE challenges SET status = 'declined' WHERE id = ? AND status = 'pending'`)
+      .bind(challengeId).run();
+    return json({ success: true, status: 'declined' });
+  }
   if (row.opponent_id !== userId) return json({ error: 'Not your invite' }, 403);
 
   const t = now();
@@ -2285,6 +2304,7 @@ async function hydrateChallenge(env, row, userId) {
 }
 
 async function listChallenges(env, userId) {
+  await expireStaleInvites(env, userId);
   // Open challenges, plus only the 10 most recent finished ones (the response
   // never shows more), so the per-challenge hydrate stays bounded.
   const rows = await env.DB.prepare(

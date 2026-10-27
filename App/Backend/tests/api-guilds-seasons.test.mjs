@@ -253,6 +253,23 @@ test('duels: friends only, standings ignore flagged and deleted sessions', async
   assert.equal(mine.sessions, 1);
 });
 
+test('duel invites: the creator can withdraw one, and unanswered ones expire after a week', async () => {
+  const env = makeEnv();
+  const a = createUser(env);
+  const b = createUser(env);
+  await call(env, a, 'POST', 'friends/request', { user_id: b.id });
+  await call(env, b, 'POST', 'friends/respond', { user_id: a.id, accept: true });
+  const first = await call(env, a, 'POST', 'challenges', { kind: 'duel', metric: 'workouts', opponent_user_id: b.id });
+  assert.equal((await call(env, a, 'POST', 'challenges', { kind: 'duel', metric: 'workouts', opponent_user_id: b.id })).status, 409);
+  assert.equal((await call(env, a, 'POST', `challenges/${first.body.challenge_id}/accept`)).status, 403);
+  assert.equal((await call(env, a, 'POST', `challenges/${first.body.challenge_id}/decline`)).body.status, 'declined');
+  const second = await call(env, a, 'POST', 'challenges', { kind: 'duel', metric: 'workouts', opponent_user_id: b.id });
+  assert.equal(second.status, 201);
+  clock.now += 8 * 86400;
+  assert.equal((await call(env, b, 'GET', 'challenges')).body.pending.length, 0);
+  assert.equal((await call(env, a, 'POST', 'challenges', { kind: 'duel', metric: 'workouts', opponent_user_id: b.id })).status, 201);
+});
+
 test('raid: a kill pays every contributor XP, title and aura', async () => {
   const env = makeEnv();
   const a = createUser(env);
