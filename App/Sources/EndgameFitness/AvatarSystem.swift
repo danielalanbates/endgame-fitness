@@ -127,6 +127,11 @@ struct AvatarBodyProfile: Codable, Equatable {
         }
     }
 
+    enum CodingKeys: String, CodingKey {
+        case height, bodyType, bellySize, muscleLevel, leanLevel, shoulderWidth
+        case legThickness, skinColor, hasEyes, hasMouth, outfit
+    }
+
     // Default blob (brand new user)
     static var defaultBlob: AvatarBodyProfile {
         AvatarBodyProfile(
@@ -142,6 +147,65 @@ struct AvatarBodyProfile: Codable, Equatable {
             hasMouth: false,
             outfit: nil
         )
+    }
+}
+
+// MARK: - Lenient decoding
+
+extension AvatarBodyProfile {
+    /// The server keeps `avatar_config` as an opaque blob and older builds or
+    /// the web client may have saved only some keys, so every field falls back
+    /// to the default blob instead of failing the whole profile decode.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AvatarBodyProfile.defaultBlob
+        func int(_ key: CodingKeys, _ fallback: Int) -> Int {
+            if let v = try? c.decode(Int.self, forKey: key) { return max(0, min(100, v)) }
+            if let v = try? c.decode(Double.self, forKey: key) { return max(0, min(100, Int(v))) }
+            return fallback
+        }
+        height = (try? c.decode(Height.self, forKey: .height)) ?? d.height
+        bodyType = (try? c.decode(BodyType.self, forKey: .bodyType)) ?? d.bodyType
+        bellySize = (try? c.decode(BellySize.self, forKey: .bellySize)) ?? d.bellySize
+        muscleLevel = int(.muscleLevel, d.muscleLevel)
+        leanLevel = int(.leanLevel, d.leanLevel)
+        shoulderWidth = int(.shoulderWidth, d.shoulderWidth)
+        legThickness = int(.legThickness, d.legThickness)
+        skinColor = (try? c.decode(BlobColor.self, forKey: .skinColor)) ?? d.skinColor
+        hasEyes = (try? c.decode(Bool.self, forKey: .hasEyes)) ?? d.hasEyes
+        hasMouth = (try? c.decode(Bool.self, forKey: .hasMouth)) ?? d.hasMouth
+        outfit = try? c.decode(AvatarOutfit.self, forKey: .outfit)
+    }
+
+    /// The JSON object PUT fitness/profile expects for `avatar_config`.
+    var wireObject: [String: Any]? {
+        guard let data = try? JSONEncoder().encode(self) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// This avatar after the player's server-side progress is applied: muscle
+    /// from lifetime volume, a face from level 3. Colours chosen by the player
+    /// are kept; ones above the player's level are not allowed.
+    func evolved(level: Int, totalVolume: Double) -> AvatarBodyProfile {
+        var next = self
+        AvatarEvolutionEngine.updateAvatar(&next, totalVolume: totalVolume, weightChange: 0, level: level)
+        if next.skinColor.unlockLevel > level { next.skinColor = .blue }
+        return next
+    }
+}
+
+extension AvatarBodyProfile.BlobColor {
+    /// SwiftUI colour for 2D renderings (cards, rows, pickers).
+    var swatch: Color {
+        switch self {
+        case .blue:    return Color(red: 0.3, green: 0.5, blue: 0.9)
+        case .green:   return Color(red: 0.3, green: 0.8, blue: 0.4)
+        case .purple:  return Color(red: 0.6, green: 0.3, blue: 0.9)
+        case .orange:  return Color(red: 0.9, green: 0.5, blue: 0.2)
+        case .red:     return Color(red: 0.9, green: 0.3, blue: 0.3)
+        case .gold:    return Color(red: 0.9, green: 0.7, blue: 0.2)
+        case .rainbow: return Color(red: 0.75, green: 0.45, blue: 0.85)
+        }
     }
 }
 

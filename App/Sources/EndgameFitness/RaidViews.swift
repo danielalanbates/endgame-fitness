@@ -38,7 +38,7 @@ struct RaidCard: View {
                 HStack(spacing: 10) {
                     Image(systemName: "shield.slash")
                         .foregroundStyle(.secondary)
-                    Text("No raid available. Pull to refresh once the API is reachable.")
+                    Text("Couldn't load this week's boss.")
                         .font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     Button("Retry") { Task { await game.loadRaid() } }
@@ -90,6 +90,7 @@ struct RaidBossPanel: View {
 
     /// Animated separately from `raid` so the bar slides rather than snaps.
     @State private var shownFraction: Double = 1
+    @State private var selectedPlayer: PlayerRef?
 
     private var gradient: LinearGradient {
         let colors = raid.boss.gradient.compactMap { Color(raidHex: $0) }
@@ -123,6 +124,7 @@ struct RaidBossPanel: View {
         .onChange(of: raid.hpFraction) { _, new in
             withAnimation(.easeOut(duration: 0.9)) { shownFraction = new }
         }
+        .playerProfileSheet($selectedPlayer)
     }
 
     private var header: some View {
@@ -208,26 +210,38 @@ struct RaidBossPanel: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(raid.contributors) { entry in
-                HStack(spacing: 10) {
-                    Text("\(entry.rank)")
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .frame(width: 18, alignment: .trailing)
-                        .foregroundStyle(entry.rank == 1 ? Color.brandYellow : .secondary)
-                    Text(entry.isSelf ? "You" : entry.displayName)
-                        .font(.callout)
-                        .fontWeight(entry.isSelf ? .semibold : .regular)
-                        .lineLimit(1)
-                    Text("Lv \(entry.level)")
-                        .font(.caption2).foregroundStyle(.secondary)
-                    Spacer()
-                    Text(RaidFormat.number(entry.damage))
-                        .font(.callout.monospacedDigit())
-                    Text("dmg")
-                        .font(.caption2).foregroundStyle(.secondary)
+                Button {
+                    if !entry.isSelf {
+                        selectedPlayer = PlayerRef(id: entry.userID, displayName: entry.displayName)
+                    }
+                } label: {
+                    contributorRow(entry)
                 }
-                .padding(.vertical, 2)
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    private func contributorRow(_ entry: RaidContributor) -> some View {
+        HStack(spacing: 10) {
+            Text("\(entry.rank)")
+                .font(.caption.weight(.bold).monospacedDigit())
+                .frame(width: 18, alignment: .trailing)
+                .foregroundStyle(entry.rank == 1 ? Color.brandYellow : .secondary)
+            Text(entry.isSelf ? "You" : entry.displayName)
+                .font(.callout)
+                .fontWeight(entry.isSelf ? .semibold : .regular)
+                .lineLimit(1)
+            Text("Lv \(entry.level)")
+                .font(.caption2).foregroundStyle(.secondary)
+            Spacer()
+            Text(RaidFormat.number(entry.damage))
+                .font(.callout.monospacedDigit())
+            Text("dmg")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 
@@ -329,6 +343,11 @@ struct RaidDamageToast: View {
                         Text("Title unlocked: \(title)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.brandYellow)
+                    }
+                    if let aura = hit.rewardCosmetic, !aura.isEmpty {
+                        Text("\(aura.auraDisplayName) unlocked. Equip it in Account.")
+                            .font(.caption)
+                            .foregroundStyle(aura.auraColor)
                     }
                 } else if hit.defeated {
                     Text("Boss already defeated — still counted")

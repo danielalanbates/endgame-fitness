@@ -24,7 +24,9 @@ struct QuestBoardView: View {
                     questSection(title: "Daily Quests", subtitle: "Reset at midnight UTC", quests: game.dailyQuests)
                     questSection(title: "Weekly Quests", subtitle: "Reset Monday", quests: game.weeklyQuests)
                     if game.dailyQuests.isEmpty && game.weeklyQuests.isEmpty {
-                        Text("Loading your board…")
+                        Text(game.questsLoaded
+                             ? "No quests right now. New ones arrive at the daily reset."
+                             : "Loading your board…")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 30)
@@ -211,17 +213,22 @@ struct TodaysQuestsCard: View {
                         .background(Color.brandYellow)
                         .clipShape(Capsule())
                 }
-                Button("All quests", action: onOpenBoard)
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button("All quests") {
+                    // Community opens on the Quests section, not the feed.
+                    game.requestedCommunitySection = .quests
+                    onOpenBoard()
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if !auth.isSignedIn {
                 Text("Sign in to receive daily quests.")
                     .font(.callout).foregroundStyle(.secondary)
             } else if game.dailyQuests.isEmpty {
-                Text("Loading…").font(.callout).foregroundStyle(.secondary)
+                Text(game.questsLoaded ? "No daily quests right now." : "Loading…")
+                    .font(.callout).foregroundStyle(.secondary)
             } else {
                 ForEach(game.dailyQuests) { quest in
                     HStack(spacing: 10) {

@@ -49,6 +49,16 @@ struct TalentTreeView: View {
                     branchColumn(state, branch: selectedBranch)
                         .padding(16)
                 }
+            } else if let error = game.talentsError {
+                Spacer()
+                VStack(spacing: 10) {
+                    Text(error)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Try again") { Task { await game.loadTalents() } }
+                }
+                .padding()
+                Spacer()
             } else {
                 Spacer()
                 SwiftUI.ProgressView("Loading talents…")
@@ -80,7 +90,9 @@ struct TalentTreeView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Talents").font(.title2.bold())
                 if let state = game.talents {
-                    Text("\(state.spent) spent · \(state.unspent) unspent")
+                    Text(state.remainingCapacity == 0
+                         ? "\(state.spent) spent · every talent is maxed"
+                         : "\(state.spent) spent · \(state.unspent) unspent")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
