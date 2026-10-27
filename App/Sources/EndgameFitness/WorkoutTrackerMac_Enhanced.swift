@@ -1,11 +1,15 @@
 //
-//  WorkoutTracker macOS - Enhanced Implementation
-//  All features: Persistence, Python Integration, Progress Tracking, Rest Timer, Export/Import
+//  WorkoutTracker - Enhanced Implementation
+//  The app entry point, WorkoutManager (the training log's state) and most of
+//  the app's screens. The data model lives in TrainingModels.swift, storage in
+//  WorkoutStore.swift, sync in TrainingSync.swift.
 //
 
 import SwiftUI
 import Foundation
+import Combine
 import Charts
+import UniformTypeIdentifiers
 
 // MARK: - Brand Colors
 extension Color {
@@ -26,12 +30,23 @@ extension Color {
 struct WorkoutTrackerMacApp: App {
     @StateObject private var workoutManager = WorkoutManager.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // Before RootView's first sync, so pulled history and account changes
+        // have somewhere to go.
+        WorkoutManager.shared.installSyncHooks()
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView(hasCompletedOnboarding: $hasCompletedOnboarding)
                 .environmentObject(workoutManager)
                 .onAppear { Platform.activate() }
+                .onChange(of: scenePhase) { _, phase in
+                    // iOS may end the process any time after this.
+                    if phase != .active { workoutManager.flushActiveWorkout() }
+                }
         }
         #if os(macOS)
         .windowStyle(DefaultWindowStyle())
@@ -39,11 +54,14 @@ struct WorkoutTrackerMacApp: App {
         #endif
         .commands {
             CommandGroup(replacing: .newItem) {
+                // Never silently replaces a workout in progress: the Workout
+                // tab asks first.
                 Button("New Workout Session") {
-                    workoutManager.startNewWorkout()
+                    workoutManager.requestNewWorkout()
                 }
                 .keyboardShortcut("n", modifiers: [.command])
             }
+            #if os(macOS)
             CommandGroup(after: .importExport) {
                 Button("Export Workouts...") {
                     workoutManager.exportWorkouts()
@@ -55,70 +73,12 @@ struct WorkoutTrackerMacApp: App {
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
             }
+            #endif
         }
     }
 }
 
-// MARK: - Data Models
-struct WorkoutSession: Codable, Identifiable {
-    let id: UUID
-    var date: Date
-    var programName: String?
-    var exercises: [Exercise]
-    var notes: String?
-    var duration: TimeInterval?
-    var completed: Bool
-
-    init(id: UUID = UUID(), date: Date = Date(), programName: String? = nil, exercises: [Exercise] = [], notes: String? = nil, duration: TimeInterval? = nil, completed: Bool = false) {
-        self.id = id
-        self.date = date
-        self.programName = programName
-        self.exercises = exercises
-        self.notes = notes
-        self.duration = duration
-        self.completed = completed
-    }
-
-    var totalVolume: Double {
-        exercises.reduce(0) { $0 + $1.totalVolume }
-    }
-}
-
-struct Exercise: Codable, Identifiable {
-    let id: UUID
-    var name: String
-    var sets: [ExerciseSet]
-    var muscleGroup: String?
-    var notes: String?
-
-    init(id: UUID = UUID(), name: String, sets: [ExerciseSet] = [], muscleGroup: String? = nil, notes: String? = nil) {
-        self.id = id
-        self.name = name
-        self.sets = sets
-        self.muscleGroup = muscleGroup
-        self.notes = notes
-    }
-
-    var totalVolume: Double {
-        sets.reduce(0) { $0 + (Double($1.reps) * $1.weight) }
-    }
-}
-
-struct ExerciseSet: Codable, Identifiable {
-    let id: UUID
-    var reps: Int
-    var weight: Double
-    var completed: Bool
-    var restTime: TimeInterval?
-
-    init(id: UUID = UUID(), reps: Int = 0, weight: Double = 0, completed: Bool = false, restTime: TimeInterval? = nil) {
-        self.id = id
-        self.reps = reps
-        self.weight = weight
-        self.completed = completed
-        self.restTime = restTime
-    }
-}
+// MARK: - Program Models (device-wide placeholders)
 
 struct WorkoutProgram: Codable, Identifiable {
     let id: UUID
@@ -172,9 +132,14 @@ struct ProgramExercise: Codable, Identifiable {
 class WorkoutManager: ObservableObject {
     static let shared = WorkoutManager()
 
+    /// Finished workouts for the signed-in account, oldest first.
     @Published var sessions: [WorkoutSession] = []
     @Published var programs: [WorkoutProgram] = []
-    @Published var currentWorkout: WorkoutSession?
+    /// The workout in progress. Saved to disk shortly after every change and
+    /// whenever the app leaves the foreground, and restored at launch.
+    @Published var currentWorkout: WorkoutSession? {
+        didSet { scheduleActiveSave() }
+    }
     @Published var isWorkoutActive: Bool = false
     @Published var selectedTab: Int = 0
     @Published var userProfile: UserProfile?
@@ -185,9 +150,42 @@ class WorkoutManager: ObservableObject {
     @Published var bodybuilderMiniActive: Bool = false
     @Published var currentProgramName: String?
     @Published var mesoPhases: [MesoPhase] = MesoPhase.classic12Week
+    /// A new workout was requested while one is in progress. The Workout tab
+    /// asks whether to resume or discard; nothing is replaced silently.
+    @Published var pendingStart: PendingStart?
+    /// A storage problem worth telling the lifter about (history restored from
+    /// a backup, an unreadable file set aside). Cleared when dismissed.
+    @Published var storeIssue: String?
+    /// Deleted workout id (lower-cased) -> the revision of the delete, so a
+    /// pulled copy of a deleted workout never comes back.
+    var tombstones: [String: Int] = [:]
 
-    private let persistenceService = PersistenceService.shared
-    private let pythonService = PythonGeneratorService.shared
+    enum PendingStart: Identifiable {
+        case empty
+        case scheduled(ScheduledWorkout)
+
+        var id: String {
+            switch self {
+            case .empty: return "empty"
+            case .scheduled(let s): return "scheduled-\(s.id)"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .empty: return "a new workout"
+            case .scheduled(let s): return s.workoutType
+            }
+        }
+    }
+
+    var authObserver: AnyCancellable?
+    private var activeSaveWork: DispatchWorkItem?
+    private var isApplyingSnapshot = false
+
+    /// Sessions that hold completed work. Stats, streaks and charts read this;
+    /// empty sessions saved by older builds are ignored.
+    var loggedSessions: [WorkoutSession] { sessions.filter(\.hasCompletedWork) }
 
     var currentStreak: Int {
         calculateStreak()
@@ -195,25 +193,48 @@ class WorkoutManager: ObservableObject {
 
     var todaysWorkouts: Int {
         let today = Calendar.current.startOfDay(for: Date())
-        return sessions.filter { Calendar.current.isDate($0.date, inSameDayAs: today) }.count
+        return loggedSessions.filter { Calendar.current.isDate($0.date, inSameDayAs: today) }.count
     }
 
     var weeklyWorkouts: Int {
         let calendar = Calendar.current
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date())!
-        return sessions.filter { $0.date >= weekAgo }.count
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return loggedSessions.filter { $0.date >= weekAgo }.count
     }
 
     private init() {
+        TrainingUnits.migrateLegacySetting()
         loadData()
         loadDefaultPrograms()
         loadModulations()
     }
 
     func loadData() {
-        sessions = persistenceService.loadSessions()
-        programs = persistenceService.loadPrograms()
+        applySnapshot(WorkoutStore.shared.load(WorkoutStore.shared.accountKey))
+        programs = WorkoutStore.shared.loadPrograms()
         loadScheduleState()
+    }
+
+    /// Replaces the in-memory log with a freshly loaded account store.
+    func applySnapshot(_ snapshot: WorkoutStore.Snapshot) {
+        isApplyingSnapshot = true
+        defer { isApplyingSnapshot = false }
+        activeSaveWork?.cancel()
+        sessions = snapshot.sessions.map { session in
+            var session = session
+            for i in session.exercises.indices { Self.attachLibraryMatch(&session.exercises[i]) }
+            return session
+        }
+        .sorted { $0.date < $1.date }
+        tombstones = snapshot.tombstones
+        currentWorkout = snapshot.activeWorkout
+        isWorkoutActive = snapshot.activeWorkout != nil
+        storeIssue = snapshot.issue
+        if let workout = snapshot.activeWorkout {
+            SessionGame.shared.resume(with: workout, history: sessions)
+        } else {
+            SessionGame.shared.sessionStarted()
+        }
     }
 
     func loadModulations() {
@@ -232,193 +253,289 @@ class WorkoutManager: ObservableObject {
     }
 
     func saveData() {
-        persistenceService.save(sessions: sessions)
-        persistenceService.save(programs: programs)
+        saveSessionsNow()
+        WorkoutStore.shared.savePrograms(programs)
         saveScheduleState()
     }
 
-    func startNewWorkout() {
-        currentWorkout = WorkoutSession()
-        isWorkoutActive = true
-        selectedTab = 1
-        SessionGame.shared.sessionStarted() // SessionGameLayer hook
+    /// Writes history (atomically, with backups) for the active account.
+    func saveSessionsNow() {
+        WorkoutStore.shared.saveSessions(sessions, tombstones: tombstones)
     }
 
-    func startScheduledWorkout(_ scheduledWorkout: ScheduledWorkout, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 135) {
-        currentWorkout = WorkoutSession()
-        isWorkoutActive = true
-        selectedTab = 1
-        SessionGame.shared.sessionStarted() // SessionGameLayer hook
+    // MARK: Active workout persistence
 
-        // Add exercises from scheduled workout with custom defaults
-        for exerciseName in scheduledWorkout.exercises {
-            addExerciseToCurrentWorkout(name: exerciseName, muscleGroup: nil, defaultSets: defaultSets, defaultReps: defaultReps, defaultWeight: defaultWeight)
+    private func scheduleActiveSave() {
+        guard !isApplyingSnapshot else { return }
+        activeSaveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            WorkoutStore.shared.saveActiveWorkout(self.currentWorkout)
+        }
+        activeSaveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+    }
+
+    /// Saves the in-progress workout now (app going to the background).
+    func flushActiveWorkout() {
+        activeSaveWork?.cancel()
+        activeSaveWork = nil
+        WorkoutStore.shared.saveActiveWorkout(currentWorkout)
+    }
+
+    // MARK: Starting, logging and finishing
+
+    /// Cmd-N and the "Start Workout" buttons. Asks first if a workout is
+    /// already in progress.
+    func requestNewWorkout() { requestStart(.empty) }
+
+    func requestStart(_ start: PendingStart) {
+        if isWorkoutActive, currentWorkout != nil {
+            selectedTab = 1
+            pendingStart = start
+            return
+        }
+        perform(start)
+    }
+
+    /// Starts without asking. Only call after the lifter confirmed.
+    func perform(_ start: PendingStart) {
+        pendingStart = nil
+        switch start {
+        case .empty:
+            beginWorkout(named: nil, exercises: [])
+        case .scheduled(let scheduled):
+            let history = loggedSessions
+            let exercises = scheduled.plannedExercises.map { makeExercise(from: $0, history: history) }
+            beginWorkout(named: scheduled.workoutType, exercises: exercises)
         }
     }
 
-    func addExerciseToCurrentWorkout(name: String, muscleGroup: String? = nil, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 135) {
+    func startNewWorkout() { requestStart(.empty) }
+
+    func startScheduledWorkout(_ scheduledWorkout: ScheduledWorkout) {
+        requestStart(.scheduled(scheduledWorkout))
+    }
+
+    private func beginWorkout(named name: String?, exercises: [Exercise]) {
+        currentWorkout = WorkoutSession(date: Date(), programName: name, exercises: exercises, completed: false)
+        isWorkoutActive = true
+        selectedTab = 1
+        SessionGame.shared.sessionStarted() // SessionGameLayer hook
+        flushActiveWorkout()
+    }
+
+    /// A program exercise with its prescription and planned rows.
+    func makeExercise(from plan: PlannedExercise, history: [WorkoutSession]) -> Exercise {
+        var exercise = Exercise(name: plan.name, targetSets: plan.sets, targetRepMin: plan.repMin,
+                                targetRepMax: plan.repMax, targetSeconds: plan.seconds, targetLoadLb: plan.loadLb)
+        Self.attachLibraryMatch(&exercise)
+        exercise.tracking = exercise.resolvedTracking
+        exercise.sets = ProgressionEngine.plannedSets(for: exercise, history: history)
+        return exercise
+    }
+
+    /// Adds an exercise from the library (or a custom name) to the workout in
+    /// progress, with planned rows from history when there is any.
+    func addExercise(_ entry: LibraryExercise?, customName: String? = nil) {
         guard currentWorkout != nil else { return }
-
-        // Check if we have performance data for this exercise
-        let perfData = getPerformanceDefaults(for: name)
-        let useSets = perfData.sets > 0 ? perfData.sets : defaultSets
-        let useReps = perfData.reps > 0 ? perfData.reps : defaultReps
-        let useWeight = perfData.weight > 0 ? perfData.weight : defaultWeight
-
-        // Create exercise with performance-based or custom default sets
-        var sets: [ExerciseSet] = []
-        for _ in 0..<useSets {
-            sets.append(ExerciseSet(reps: useReps, weight: useWeight, completed: false))
-        }
-
-        let exercise = Exercise(name: name, sets: sets, muscleGroup: muscleGroup)
+        let name = entry?.name ?? customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { return }
+        var exercise = Exercise(name: name, exerciseID: entry?.id, category: entry?.category,
+                                primaryMuscles: entry?.primary)
+        if entry == nil { Self.attachLibraryMatch(&exercise) }
+        exercise.tracking = exercise.resolvedTracking
+        exercise.sets = ProgressionEngine.plannedSets(for: exercise, history: loggedSessions)
         currentWorkout?.exercises.append(exercise)
-        objectWillChange.send()
     }
 
-    func addSetToExercise(exerciseId: UUID, reps: Int, weight: Double) {
-        // The old `sessions.firstIndex(... currentWorkout?.id)` guard always failed
-        // (an active workout is only appended to `sessions` on completion), so no
-        // set could ever be logged. Removed.
-        guard let exerciseIndex = currentWorkout?.exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
+    func removeExercise(_ exerciseID: UUID) {
+        currentWorkout?.exercises.removeAll { $0.id == exerciseID }
+        if let workout = currentWorkout { SessionGame.shared.recalculate(for: workout, history: loggedSessions) }
+    }
 
-        let newSet = ExerciseSet(reps: reps, weight: weight, completed: true)
-        currentWorkout?.exercises[exerciseIndex].sets.append(newSet)
-        objectWillChange.send()
+    func moveExercise(_ exerciseID: UUID, by offset: Int) {
+        guard var workout = currentWorkout, let i = workout.exercises.firstIndex(where: { $0.id == exerciseID }) else { return }
+        let j = i + offset
+        guard workout.exercises.indices.contains(j) else { return }
+        workout.exercises.swapAt(i, j)
+        currentWorkout = workout
+    }
+
+    /// Replaces one exercise of the workout in progress (field edits).
+    func updateExercise(_ exercise: Exercise) {
+        guard let i = currentWorkout?.exercises.firstIndex(where: { $0.id == exercise.id }),
+              let before = currentWorkout?.exercises[i] else { return }
+        currentWorkout?.exercises[i] = exercise
+        // A completed set was deleted: the running XP estimate must drop too.
+        if exercise.completedSets.count < before.completedSets.count, let workout = currentWorkout {
+            SessionGame.shared.recalculate(for: workout, history: loggedSessions)
+        }
+    }
+
+    /// The check button. Returns false when the set is missing reps/load (or a
+    /// duration) and so cannot be ticked.
+    @discardableResult
+    func toggleSetCompleted(exerciseID: UUID, setID: UUID) -> Bool {
+        guard var workout = currentWorkout,
+              let ei = workout.exercises.firstIndex(where: { $0.id == exerciseID }),
+              let si = workout.exercises[ei].sets.firstIndex(where: { $0.id == setID }) else { return false }
+        var set = workout.exercises[ei].sets[si]
+        if set.completed {
+            set.completed = false
+            set.completedAt = nil
+        } else {
+            guard set.isLoggable(as: workout.exercises[ei].resolvedTracking) else { return false }
+            set.completed = true
+            set.completedAt = Date()
+        }
+        workout.exercises[ei].sets[si] = set
+        currentWorkout = workout
 
         // SessionGameLayer hook: XP pop-up, combo/PR detection, rest timer.
-        if let workout = currentWorkout {
-            SessionGame.shared.setLogged(newSet, in: workout.exercises[exerciseIndex], workout: workout, history: sessions)
+        if set.completed {
+            SessionGame.shared.setLogged(set, in: workout.exercises[ei], workout: workout, history: loggedSessions)
+        } else {
+            SessionGame.shared.recalculate(for: workout, history: loggedSessions)
         }
+        return true
     }
 
-    func updateSet(exerciseId: UUID, setId: UUID, reps: Int, weight: Double) {
-        guard let exerciseIndex = currentWorkout?.exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
-        guard let setIndex = currentWorkout?.exercises[exerciseIndex].sets.firstIndex(where: { $0.id == setId }) else { return }
-
-        currentWorkout?.exercises[exerciseIndex].sets[setIndex].reps = reps
-        currentWorkout?.exercises[exerciseIndex].sets[setIndex].weight = weight
-        objectWillChange.send()
+    /// "+ Add Set": a planned row copying the last row's numbers.
+    func addSet(to exerciseID: UUID) {
+        guard let ei = currentWorkout?.exercises.firstIndex(where: { $0.id == exerciseID }),
+              let exercise = currentWorkout?.exercises[ei] else { return }
+        let last = exercise.sets.last
+        let set = ExerciseSet(reps: last?.reps ?? exercise.targetRepMin ?? 0,
+                              weight: last?.weight ?? 0,
+                              durationSecs: last?.durationSecs ?? exercise.targetSeconds)
+        currentWorkout?.exercises[ei].sets.append(set)
     }
 
-    func completeWorkout() {
-        guard var workout = currentWorkout else { return }
-        workout.completed = true
-        // SessionGameLayer hook: duration was never recorded, so the server saw 0.
-        if workout.duration == nil { workout.duration = Date().timeIntervalSince(workout.date) }
-        sessions.append(workout)
+    func deleteSet(exerciseID: UUID, setID: UUID) {
+        guard let ei = currentWorkout?.exercises.firstIndex(where: { $0.id == exerciseID }) else { return }
+        currentWorkout?.exercises[ei].sets.removeAll { $0.id == setID }
+        if let workout = currentWorkout { SessionGame.shared.recalculate(for: workout, history: loggedSessions) }
+    }
 
-        // Track performance for future AI programming
-        updatePerformanceData(from: workout)
-
-        saveData()
-
-        // Hand the session to the game layer. Only completed sets count toward
-        // XP — logging a set you didn't do shouldn't level you up. The server
-        // decides the actual XP award; this just reports what happened.
-        let completedSets = workout.exercises.flatMap { $0.sets }.filter { $0.completed }
-        let volume = completedSets.reduce(0.0) { $0 + Double($1.reps) * $1.weight }
-        let reps = completedSets.reduce(0) { $0 + $1.reps }
-
-        if reps > 0 {
-            // Completed sets per exercise, so the server can detect personal
-            // records (best weight at each rep count).
-            let syncExercises: [SyncExercise] = workout.exercises.compactMap { exercise in
-                let done = exercise.sets.filter { $0.completed && $0.reps > 0 && $0.weight > 0 }
-                guard !done.isEmpty else { return nil }
-                return SyncExercise(name: exercise.name, sets: done.map { .init(reps: $0.reps, weight: $0.weight) })
-            }
-            let sessionID = workout.id.uuidString
-            let sessionName = workout.programName ?? "Workout"
-            let performedAt = workout.date
-            let duration = Int(workout.duration ?? 0)
-            Task { @MainActor in
-                GameProfileService.shared.recordWorkout(
-                    id: sessionID,
-                    name: sessionName,
-                    performedAt: performedAt,
-                    durationSecs: duration,
-                    totalVolume: volume,
-                    totalReps: reps,
-                    exercises: syncExercises
-                )
-                // Mirror the session into Apple Health (iOS only; no-op on macOS
-                // and whenever the Settings toggle is off).
-                HealthKitManager.shared.saveStrengthWorkout(
-                    start: performedAt,
-                    durationSecs: duration,
-                    name: sessionName
-                )
-            }
-        }
-
+    /// Throws the workout in progress away (after the lifter confirmed).
+    func discardWorkout() {
         currentWorkout = nil
         isWorkoutActive = false
+        SessionGame.shared.sessionStarted()
+        flushActiveWorkout()
     }
 
-    // Track user performance to improve future AI recommendations
-    func updatePerformanceData(from workout: WorkoutSession) {
-        for exercise in workout.exercises {
-            let exerciseName = exercise.name
-            let totalSets = exercise.sets.count
-            let avgReps = exercise.sets.isEmpty ? 0 : exercise.sets.map { $0.reps }.reduce(0, +) / exercise.sets.count
-            let avgWeight = exercise.sets.isEmpty ? 0.0 : exercise.sets.map { $0.weight }.reduce(0, +) / Double(exercise.sets.count)
+    /// Completed sets in the workout in progress.
+    var currentCompletedSetCount: Int { currentWorkout?.completedSetCount ?? 0 }
 
-            // Store in UserDefaults for future AI calculations
-            UserDefaults.standard.set(totalSets, forKey: "perf_\(exerciseName)_sets")
-            UserDefaults.standard.set(avgReps, forKey: "perf_\(exerciseName)_reps")
-            UserDefaults.standard.set(avgWeight, forKey: "perf_\(exerciseName)_weight")
+    /// Saves the workout in progress to history. Only completed sets are kept;
+    /// returns false (and saves nothing) when no set was completed — the
+    /// caller offers to discard instead.
+    @discardableResult
+    func completeWorkout() -> Bool {
+        guard var workout = currentWorkout else { return false }
+        workout.exercises = workout.exercises.compactMap { exercise in
+            var exercise = exercise
+            exercise.sets = exercise.sets.filter(\.completed)
+            return exercise.sets.isEmpty ? nil : exercise
         }
+        guard !workout.exercises.isEmpty else { return false }
+
+        workout.completed = true
+        if workout.duration == nil { workout.duration = Self.duration(of: workout) }
+        workout.clientRev = max(workout.clientRev, 0) + 1
+        workout.updatedAt = Date()
+
+        sessions.append(workout)
+        sessions.sort { $0.date < $1.date }
+        currentWorkout = nil
+        isWorkoutActive = false
+        flushActiveWorkout()
+        saveData()
+
+        // Hand the session to the game layer. The server decides the actual
+        // XP award; this just reports what happened.
+        uploadSession(workout)
+        let start = workout.date
+        let seconds = Int(workout.duration ?? 0)
+        let name = workout.displayName
+        Task { @MainActor in
+            // Mirror the session into Apple Health (iOS only; no-op on macOS
+            // and whenever the Settings toggle is off).
+            HealthKitManager.shared.saveStrengthWorkout(start: start, durationSecs: seconds, name: name)
+        }
+        return true
     }
 
-    // Get performance-based defaults for an exercise
-    func getPerformanceDefaults(for exerciseName: String) -> (sets: Int, reps: Int, weight: Double) {
-        let defaultSets = UserDefaults.standard.integer(forKey: "perf_\(exerciseName)_sets")
-        let defaultReps = UserDefaults.standard.integer(forKey: "perf_\(exerciseName)_reps")
-        let defaultWeight = UserDefaults.standard.double(forKey: "perf_\(exerciseName)_weight")
+    /// Start to the last completed set (plus a minute), so a workout restored
+    /// hours after the app was closed doesn't claim the whole gap. Capped at
+    /// six hours, the server's limit.
+    static func duration(of workout: WorkoutSession) -> TimeInterval {
+        let lastSet = workout.exercises.flatMap(\.sets).compactMap(\.completedAt).max()
+        let end = lastSet.map { $0.addingTimeInterval(60) } ?? Date()
+        return min(max(end.timeIntervalSince(workout.date), 60), 6 * 3600)
+    }
 
-        // If no data exists, return standard defaults
-        if defaultSets == 0 {
-            return (3, 10, 135)
+    // MARK: Editing history
+
+    /// Saves an edited past workout and re-queues it with the next revision.
+    func updateSession(_ edited: WorkoutSession) {
+        guard let i = sessions.firstIndex(where: { $0.id == edited.id }) else { return }
+        var session = edited
+        session.exercises = session.exercises.compactMap { exercise in
+            var exercise = exercise
+            exercise.sets = exercise.sets.filter(\.completed)
+            return exercise.sets.isEmpty ? nil : exercise
         }
+        // At least 2: sessions saved by older builds have no local revision but
+        // were uploaded as revision 1, and the server ignores a same-revision replay.
+        session.clientRev = max(sessions[i].clientRev, session.clientRev, 1) + 1
+        session.updatedAt = Date()
+        sessions[i] = session
+        sessions.sort { $0.date < $1.date }
+        saveSessionsNow()
+        uploadSession(session)
+    }
 
-        return (defaultSets, defaultReps, defaultWeight)
+    /// Deletes a past workout here and, through sync, everywhere else.
+    func deleteSession(_ id: UUID) {
+        guard let i = sessions.firstIndex(where: { $0.id == id }) else { return }
+        var session = sessions[i]
+        session.clientRev = max(session.clientRev, 1) + 1
+        session.updatedAt = Date()
+        sessions.remove(at: i)
+        tombstones[session.syncID.lowercased()] = session.clientRev
+        saveSessionsNow()
+        uploadDeletion(of: session)
     }
 
     func quickLogWorkout() {
-        selectedTab = 1
-        startNewWorkout()
+        requestStart(.empty)
     }
 
     func showTodayProgress() {
         selectedTab = 3
     }
 
+    /// Consecutive days with a logged workout, ending today (or yesterday, so
+    /// the streak doesn't read 0 before today's session).
     func calculateStreak() -> Int {
-        guard !sessions.isEmpty else { return 0 }
-
-        let sortedSessions = sessions.sorted { $0.date > $1.date }
+        let calendar = Calendar.current
+        let days = Set(loggedSessions.map { calendar.startOfDay(for: $0.date) })
+        guard !days.isEmpty else { return 0 }
+        var day = calendar.startOfDay(for: Date())
+        if !days.contains(day) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: day), days.contains(yesterday) else { return 0 }
+            day = yesterday
+        }
         var streak = 0
-        var currentDate = Calendar.current.startOfDay(for: Date())
-
-        for session in sortedSessions {
-            let sessionDate = Calendar.current.startOfDay(for: session.date)
-            if Calendar.current.isDate(sessionDate, inSameDayAs: currentDate) {
-                streak += 1
-                currentDate = Calendar.current.date(byAdding: .day, value: -1, to: currentDate)!
-            } else if sessionDate < currentDate {
-                break
-            }
+        while days.contains(day) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = previous
         }
-
         return streak
-    }
-
-    func generateProgramFromPython(weeks: Int = 12, daysPerWeek: Int = 5) {
-        if let programData = pythonService.generateProgram(weeks: weeks, daysPerWeek: daysPerWeek) {
-            // Parse and add program
-            print("Generated program: \(programData)")
-        }
     }
 
     func generateInitialProgram() {
@@ -1531,36 +1648,43 @@ class WorkoutManager: ObservableObject {
     }
 
 
-    /// Writes the full session history as JSON. The file panel lives in
-    /// `WorkoutTransfer` so this compiles on iOS, where there is no panel.
-    @discardableResult
-    func exportWorkouts() -> URL? {
-        do {
-            let data = try JSONEncoder().encode(sessions)
-            return WorkoutTransfer.exportJSON(data, suggestedName: "workouts_export.json")
-        } catch {
-            print("Export error: \(error)")
-            return nil
-        }
+    /// The full history as this app's JSON export (ISO 8601 dates).
+    func exportData() -> Data? {
+        WorkoutStore.exportData(sessions)
     }
 
-    /// Merges sessions from a JSON export. Existing ids win, so re-importing the
-    /// same file twice doesn't duplicate history.
+    /// macOS: writes the export through a save panel. iOS presents
+    /// `.fileExporter` from Settings instead (see SettingsView).
+    @discardableResult
+    func exportWorkouts() -> URL? {
+        guard let data = exportData() else { return nil }
+        return WorkoutTransfer.exportJSON(data, suggestedName: "endgame-fitness-workouts.json")
+    }
+
+    /// macOS: picks a file with an open panel. iOS uses `.fileImporter`.
     func importWorkouts() {
         guard let data = WorkoutTransfer.importJSON() else { return }
         importWorkouts(from: data)
     }
 
-    func importWorkouts(from data: Data) {
-        do {
-            let imported = try JSONDecoder().decode([WorkoutSession].self, from: data)
-            let knownIDs = Set(sessions.map(\.id))
-            let fresh = imported.filter { !knownIDs.contains($0.id) }
-            sessions.append(contentsOf: fresh)
-            saveData()
-        } catch {
-            print("Import error: \(error)")
-        }
+    /// Merges sessions from an export. Existing ids win, so importing the same
+    /// file twice doesn't duplicate history. Imported workouts stay on this
+    /// device (they are not uploaded, so old sessions earn no XP). Returns how
+    /// many were added, or nil if the file was not a workout export.
+    @discardableResult
+    func importWorkouts(from data: Data) -> Int? {
+        guard let imported = WorkoutStore.importSessions(from: data) else { return nil }
+        let knownIDs = Set(sessions.map(\.id))
+        let fresh = imported.filter { !knownIDs.contains($0.id) && !tombstones.keys.contains($0.syncID.lowercased()) }
+            .map { session -> WorkoutSession in
+                var session = session
+                for i in session.exercises.indices { Self.attachLibraryMatch(&session.exercises[i]) }
+                return session
+            }
+        sessions.append(contentsOf: fresh)
+        sessions.sort { $0.date < $1.date }
+        saveSessionsNow()
+        return fresh.count
     }
 
     func loadDefaultPrograms() {
@@ -1579,7 +1703,7 @@ class WorkoutManager: ObservableObject {
     var currentMesocyclePhase: String {
         // Determine phase based on workout count in current cycle
         let cycleLength = 12 // 12-week mesocycle
-        let workoutCount = sessions.count
+        let workoutCount = loggedSessions.count
         let weekInCycle = (workoutCount / 3) % cycleLength // Assuming 3 workouts per week
 
         if weekInCycle < 4 {
@@ -1591,136 +1715,6 @@ class WorkoutManager: ObservableObject {
         }
     }
 
-    // Add exercise with AI-generated presets
-    func addExerciseWithPresets(name: String, muscleGroup: String, sets: Int, reps: Int, weight: Double) {
-        guard currentWorkout != nil else { return }
-
-        var exerciseSets: [ExerciseSet] = []
-        for _ in 0..<sets {
-            exerciseSets.append(ExerciseSet(reps: reps, weight: weight, completed: false))
-        }
-
-        let exercise = Exercise(name: name, sets: exerciseSets, muscleGroup: muscleGroup)
-        currentWorkout?.exercises.append(exercise)
-        objectWillChange.send()
-        saveData()
-    }
-}
-
-// MARK: - Persistence Service
-class PersistenceService {
-    static let shared = PersistenceService()
-    private let sessionsURL: URL
-    private let programsURL: URL
-    private let scheduleURL: URL
-
-    private init() {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let appFolder = documents.appendingPathComponent("WorkoutTracker", isDirectory: true)
-
-        // Create app folder if needed
-        try? FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
-
-        sessionsURL = appFolder.appendingPathComponent("workout_sessions.json")
-        programsURL = appFolder.appendingPathComponent("workout_programs.json")
-        scheduleURL = appFolder.appendingPathComponent("weekly_schedule.json")
-    }
-
-    func save(sessions: [WorkoutSession]) {
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(sessions)
-            try data.write(to: sessionsURL)
-        } catch {
-            print("Error saving sessions: \(error)")
-        }
-    }
-
-    func loadSessions() -> [WorkoutSession] {
-        do {
-            let data = try Data(contentsOf: sessionsURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode([WorkoutSession].self, from: data)
-        } catch {
-            print("Error loading sessions: \(error)")
-            return []
-        }
-    }
-
-    func save(programs: [WorkoutProgram]) {
-        do {
-            let data = try JSONEncoder().encode(programs)
-            try data.write(to: programsURL)
-        } catch {
-            print("Error saving programs: \(error)")
-        }
-    }
-
-    func save(schedule: [ScheduledWorkout]) {
-        do {
-            let data = try JSONEncoder().encode(schedule)
-            try data.write(to: scheduleURL)
-        } catch {
-            print("Error saving schedule: \(error)")
-        }
-    }
-
-    func loadSchedule() -> [ScheduledWorkout] {
-        guard let data = try? Data(contentsOf: scheduleURL) else { return [] }
-        return (try? JSONDecoder().decode([ScheduledWorkout].self, from: data)) ?? []
-    }
-
-    func loadPrograms() -> [WorkoutProgram] {
-        do {
-            let data = try Data(contentsOf: programsURL)
-            return try JSONDecoder().decode([WorkoutProgram].self, from: data)
-        } catch {
-            print("Error loading programs: \(error)")
-            return []
-        }
-    }
-}
-
-// MARK: - Python Generator Service
-class PythonGeneratorService {
-    static let shared = PythonGeneratorService()
-    private init() {}
-
-    /// Shells out to a local Python script. `Process` does not exist on iOS, and
-    /// spawning a subprocess is not permitted there, so this is macOS-only and
-    /// callers must handle nil.
-    ///
-    /// NOTE: the paths below point at a checkout that may not exist. Treat a nil
-    /// return as the normal case, not an error worth surfacing to the user.
-    func generateProgram(weeks: Int = 12, daysPerWeek: Int = 5) -> String? {
-        #if !os(macOS)
-        return nil
-        #else
-        let task = Process()
-        let pipe = Pipe()
-
-        // Use the venv python
-        let pythonPath = "/Users/daniel/Documents/GitHub/copilot/.venv/bin/python3"
-        let scriptPath = "/Users/daniel/Documents/GitHub/copilot/04-Business_Productivity/workout_routine_generator.py"
-
-        task.executableURL = URL(fileURLWithPath: pythonPath)
-        task.arguments = [scriptPath, String(weeks), String(daysPerWeek)]
-        task.standardOutput = pipe
-        task.standardError = pipe
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8)
-        } catch {
-            print("Error running Python generator: \(error)")
-            return nil
-        }
-        #endif
-    }
 }
 
 // MARK: - Main Content View
@@ -1748,7 +1742,7 @@ struct ContentView: View {
             CommunityView()
                 .tabItem { Label("Community", systemImage: "person.2.fill") }
                 .tag(7)
-            ProgressView()
+            TrainingProgressView()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(3)
             ProgramsView()
@@ -1876,7 +1870,7 @@ struct ContentView: View {
             case 2:
                 ProgramsView()
             case 3:
-                ProgressView()
+                TrainingProgressView()
             case 4:
                 MesocycleView()
             case 5:
@@ -1931,6 +1925,7 @@ struct SidebarButton: View {
 // MARK: - Dashboard View
 struct DashboardView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
+    @AppStorage("weeklyGoal") private var weeklyGoal = 5
     @State private var showProgramWizard = false
 
     private var todaysScheduledWorkout: ScheduledWorkout? {
@@ -1942,7 +1937,7 @@ struct DashboardView: View {
     // First login: nothing trained, no program built yet. Show a calm
     // setup state instead of the full grid.
     private var needsSetup: Bool {
-        workoutManager.sessions.isEmpty && workoutManager.weeklySchedule.isEmpty
+        workoutManager.loggedSessions.isEmpty && workoutManager.weeklySchedule.isEmpty && !workoutManager.isWorkoutActive
     }
 
     var body: some View {
@@ -1971,6 +1966,14 @@ struct DashboardView: View {
                     Text("Dashboard")
                         .font(.screenTitle)
                         .bold()
+                }
+
+                if let issue = workoutManager.storeIssue {
+                    StoreIssueBanner(message: issue) { workoutManager.storeIssue = nil }
+                }
+
+                if workoutManager.isWorkoutActive, let workout = workoutManager.currentWorkout {
+                    ResumeWorkoutBanner(workout: workout) { workoutManager.selectedTab = 1 }
                 }
 
                 // Today: streak, XP ring, today's workout CTA, friends strip, live duel
@@ -2010,7 +2013,7 @@ struct DashboardView: View {
                 // Quick Stats
                 LazyVGrid(columns: adaptiveColumns(desktop: 3, phone: 2), spacing: 20) {
                     StatCard(title: "Today's Workouts", value: "\(workoutManager.todaysWorkouts)", icon: "figure.strengthtraining.traditional", color: .blue)
-                    StatCard(title: "Weekly Progress", value: "\(workoutManager.weeklyWorkouts)/21", icon: "chart.bar.fill", color: .green)
+                    StatCard(title: "Last 7 Days", value: "\(workoutManager.weeklyWorkouts)/\(max(weeklyGoal, 1))", icon: "chart.bar.fill", color: .green)
                     StatCard(title: "Current Streak", value: "\(workoutManager.currentStreak) days", icon: "flame.fill", color: .orange)
                 }
 
@@ -2039,12 +2042,17 @@ struct DashboardView: View {
                 }
 
                 // Recent Workouts
-                if !workoutManager.sessions.isEmpty {
+                if !workoutManager.loggedSessions.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Recent Workouts")
-                            .font(.headline)
+                        HStack {
+                            Text("Recent Workouts")
+                                .font(.headline)
+                            Spacer()
+                            Button("See All") { workoutManager.selectedTab = 3 }
+                                .font(.subheadline)
+                        }
 
-                        ForEach(workoutManager.sessions.suffix(5).reversed()) { session in
+                        ForEach(workoutManager.loggedSessions.sorted { $0.date > $1.date }.prefix(5)) { session in
                             RecentWorkoutCard(session: session)
                         }
                     }
@@ -2060,309 +2068,104 @@ struct DashboardView: View {
 // MARK: - Workout View
 struct WorkoutView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
-    @State private var showAddExercise = false
-    @State private var newExerciseName = ""
-    @State private var selectedMuscleGroup = "Chest"
-    @State private var restTimer: RestTimer?
     @State private var selectedScheduledWorkoutIndex = 0
-    @State private var currentExerciseIndex = 0
-    @State private var showCelebration = false
     @State private var sessionSummary: SessionSummary? // SessionGameLayer hook
 
-    let muscleGroups = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core"]
+    private var pendingBinding: Binding<Bool> {
+        Binding(
+            get: { workoutManager.pendingStart != nil },
+            set: { if !$0 { workoutManager.pendingStart = nil } }
+        )
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Text("Workouts")
-                    .font(.screenTitle)
-                    .bold()
-
-                // Active workout indicator
-                if workoutManager.isWorkoutActive {
-                    HStack(spacing: 6) {
-                        Image(systemName: "figure.strengthtraining.traditional")
-                            .foregroundColor(.brandGreen)
-                            .font(.title2)
-                            .symbolEffect(.pulse, options: .repeating)
-                        if Platform.isDesktop {
-                            Text("Active")
-                                .font(.subheadline)
-                                .foregroundColor(.brandGreen)
-                                .bold()
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.brandGreen.opacity(0.2))
-                    .cornerRadius(20)
-                }
-
-                if workoutManager.isWorkoutActive { SessionXPBadge() } // SessionGameLayer hook
-
-                Spacer()
-
-                if workoutManager.isWorkoutActive, let workout = workoutManager.currentWorkout {
-                    HStack(spacing: 12) {
-                        // Previous Exercise Button
-                        Button(action: {
-                            if currentExerciseIndex > 0 {
-                                withAnimation {
-                                    currentExerciseIndex -= 1
-                                }
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "chevron.left")
-                                if Platform.isDesktop { Text("Previous") }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .disabled(currentExerciseIndex == 0)
-
-                        // Exercise Counter
-                        Text("\(currentExerciseIndex + 1) / \(workout.exercises.count)")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-
-                        // Next Exercise Button
-                        Button(action: {
-                            if currentExerciseIndex < workout.exercises.count - 1 {
-                                withAnimation {
-                                    currentExerciseIndex += 1
-                                }
-                            } else {
-                                // All exercises complete - show celebration
-                                showCelebration = true
-                            }
-                        }) {
-                            HStack {
-                                if Platform.isDesktop {
-                                    Text(currentExerciseIndex < workout.exercises.count - 1 ? "Next" : "Finish")
-                                }
-                                Image(systemName: currentExerciseIndex < workout.exercises.count - 1 ? "chevron.right" : "checkmark.circle.fill")
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(currentExerciseIndex < workout.exercises.count - 1 ? .blue : .green)
-                        .controlSize(.large)
+        #if os(iOS)
+        // The stack only hosts the keyboard toolbar: number pads have no
+        // return key, so "Done" sits above them.
+        NavigationStack {
+            screen
+                .toolbar(.hidden, for: .navigationBar)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { Platform.dismissKeyboard() }
                     }
                 }
-            }
+        }
+        #else
+        screen
+        #endif
+    }
 
-            if workoutManager.isWorkoutActive, let workout = workoutManager.currentWorkout {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Workout Header
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Active Workout")
-                                .font(.title2)
-                                .bold()
-                            Text(workout.date, style: .time)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color.accentColor.opacity(0.1))
-                        .cornerRadius(10)
-
-                        RestTimerBar() // SessionGameLayer hook
-
-                        // Exercises
-                        ForEach(Array(workout.exercises.enumerated()), id: \.element.id) { index, exercise in
-                            ExerciseCard(
-                                exercise: exercise,
-                                restTimer: $restTimer,
-                                isCurrentExercise: index == currentExerciseIndex
-                            )
-                            .scaleEffect(index == currentExerciseIndex ? 1.02 : 1.0)
-                            .shadow(color: index == currentExerciseIndex ? .blue.opacity(0.3) : .clear, radius: 8)
-                        }
-
-                        // Add Exercise Button
-                        Button(action: { showAddExercise = true }) {
-                            Label("Add Exercise", systemImage: "plus.circle.fill")
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .tint(.blue)
-                    }
-                }
-                .overlay(XPPopupOverlay()) // SessionGameLayer hook
+    private var screen: some View {
+        Group {
+            if workoutManager.isWorkoutActive, workoutManager.currentWorkout != nil {
+                ActiveWorkoutView(summary: $sessionSummary)
             } else {
-                // Show programmed workouts
-                if !workoutManager.weeklySchedule.isEmpty {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // Workout Selector
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Button(action: {
-                                        print("Left button pressed")
-                                        if selectedScheduledWorkoutIndex > 0 {
-                                            selectedScheduledWorkoutIndex -= 1
-                                        }
-                                    }) {
-                                        Image(systemName: "chevron.left.circle.fill")
-                                            .font(.title)
-                                            .foregroundColor(selectedScheduledWorkoutIndex == 0 ? .gray : .blue)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .disabled(selectedScheduledWorkoutIndex == 0)
-                                    .help("Previous workout")
-
-                                    Spacer()
-
-                                    VStack(spacing: 4) {
-                                        Text(workoutManager.weeklySchedule[selectedScheduledWorkoutIndex].workoutType)
-                                            .font(.title.bold())
-
-                                        HStack(spacing: 8) {
-                                            Text(workoutManager.weeklySchedule[selectedScheduledWorkoutIndex].dayOfWeek)
-                                                .font(.subheadline)
-                                                .foregroundColor(.secondary)
-
-                                            if isTodaysWorkout(workoutManager.weeklySchedule[selectedScheduledWorkoutIndex]) {
-                                                Text("• TODAY")
-                                                    .font(.caption.bold())
-                                                    .foregroundColor(.green)
-                                            }
-                                        }
-                                    }
-
-                                    Spacer()
-
-                                    Button(action: {
-                                        print("Right button pressed")
-                                        if selectedScheduledWorkoutIndex < workoutManager.weeklySchedule.count - 1 {
-                                            selectedScheduledWorkoutIndex += 1
-                                        }
-                                    }) {
-                                        Image(systemName: "chevron.right.circle.fill")
-                                            .font(.title)
-                                            .foregroundColor(selectedScheduledWorkoutIndex >= workoutManager.weeklySchedule.count - 1 ? .gray : .blue)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .disabled(selectedScheduledWorkoutIndex >= workoutManager.weeklySchedule.count - 1)
-                                    .help("Next workout")
-                                }
-
-                                Text("\(selectedScheduledWorkoutIndex + 1) of \(workoutManager.weeklySchedule.count)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .padding()
-                            .background(Color(.systemGray).opacity(0.1))
-                            .cornerRadius(12)
-
-                            // Exercise List
-                            VStack(alignment: .leading, spacing: 16) {
-                                Text("Exercises")
-                                    .font(.title2.bold())
-
-                                ForEach(workoutManager.weeklySchedule[selectedScheduledWorkoutIndex].exercises, id: \.self) { exercise in
-                                    HStack {
-                                        Image(systemName: "checkmark.circle")
-                                            .foregroundColor(.blue)
-                                        Text(exercise)
-                                            .font(.body)
-                                        Spacer()
-                                    }
-                                    .padding()
-                                    .background(Color.white.opacity(0.5))
-                                    .cornerRadius(8)
-                                }
-                            }
-
-                            // Start Workout Button
-                            Button(action: {
-                                workoutManager.startScheduledWorkout(workoutManager.weeklySchedule[selectedScheduledWorkoutIndex])
-                            }) {
-                                HStack {
-                                    Image(systemName: "play.circle.fill")
-                                    Text("Start This Workout")
-                                }
-                                .font(.title3.bold())
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .contentShape(Rectangle())
-                        }
-                        .padding()
-                    }
-                } else {
-                    // No programmed workouts
-                    VStack(spacing: 20) {
-                        Text("No programmed workouts")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-
-                        Text("Complete onboarding to generate your program")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-
-                        Button("Start Custom Workout") {
-                            workoutManager.startNewWorkout()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .font(.title3)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                idleContent
             }
         }
         .padding()
-        .sheet(isPresented: $showAddExercise) {
-            AddExerciseSheet(
-                exerciseName: $newExerciseName,
-                muscleGroup: $selectedMuscleGroup,
-                muscleGroups: muscleGroups,
-                onAdd: {
-                    workoutManager.addExerciseToCurrentWorkout(name: newExerciseName, muscleGroup: selectedMuscleGroup)
-                    newExerciseName = ""
-                    showAddExercise = false
-                }
-            )
-        }
-        .sheet(isPresented: $showCelebration) {
-            WorkoutCompletionView(onComplete: {
-                showCelebration = false
-                // SessionGameLayer hook: snapshot the summary before the workout is cleared.
-                let summary = workoutManager.currentWorkout.map {
-                    SessionSummary.make(from: $0, streak: max(workoutManager.currentStreak, 1))
-                }
-                workoutManager.completeWorkout()
-                currentExerciseIndex = 0
-                sessionSummary = summary
-            })
-        }
         .sheet(item: $sessionSummary) { summary in // SessionGameLayer hook
             SessionSummaryView(summary: summary, onDone: { sessionSummary = nil })
         }
+        // Cmd-N or a Start button while a workout is going: ask, never replace.
+        .alert("Workout in progress", isPresented: pendingBinding, presenting: workoutManager.pendingStart) { start in
+            Button("Resume Current Workout", role: .cancel) { workoutManager.pendingStart = nil }
+            Button("Discard and Start New", role: .destructive) {
+                workoutManager.discardWorkout()
+                workoutManager.perform(start)
+            }
+        } message: { start in
+            Text("Starting \(start.title) would replace the workout you have going. Its logged sets would be deleted.")
+        }
         .onAppear {
-            // Set today's workout as default
             if let todayIndex = getTodaysWorkoutIndex() {
                 selectedScheduledWorkoutIndex = todayIndex
             }
         }
-        .onChange(of: workoutManager.isWorkoutActive) { _, isActive in
-            if isActive {
-                // Reset exercise index when starting a new workout
-                currentExerciseIndex = 0
+    }
+
+    private var idleContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Workouts")
+                    .font(.screenTitle)
+                    .bold()
+
+                if workoutManager.weeklySchedule.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("No program yet")
+                            .font(.title3.bold())
+                        Text("Pick or build a program in the Programs tab, or just start logging.")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Browse Programs") { workoutManager.selectedTab = 2 }
+                            .buttonStyle(.bordered)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
+                } else {
+                    ScheduledWorkoutBrowser(
+                        schedule: workoutManager.weeklySchedule,
+                        index: $selectedScheduledWorkoutIndex,
+                        onStart: { workoutManager.startScheduledWorkout($0) }
+                    )
+                }
+
+                Button {
+                    workoutManager.requestNewWorkout()
+                } label: {
+                    Label("Start Empty Workout", systemImage: "plus.circle")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
+            .padding(.bottom, Platform.isDesktop ? 0 : 80)
         }
     }
 
@@ -2373,461 +2176,121 @@ struct WorkoutView: View {
 
         return workoutManager.weeklySchedule.firstIndex { $0.dayOfWeek == todayName }
     }
-
-    func isTodaysWorkout(_ workout: ScheduledWorkout) -> Bool {
-        let today = Calendar.current.component(.weekday, from: Date())
-        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        let todayName = dayNames[today - 1]
-
-        return workout.dayOfWeek == todayName
-    }
 }
 
-// MARK: - Exercise Card
-struct ExerciseCard: View {
-    let exercise: Exercise
-    @Binding var restTimer: RestTimer?
-    var isCurrentExercise: Bool = false
-    @State private var reps: Int = 10
-    @State private var weight: Double = 135
-    @State private var showAddSet = false
-    @State private var editingSetId: UUID? = nil
-    @State private var editReps: Int = 10
-    @State private var editWeight: Double = 135
+/// Steps through the program's days and starts one. The index is clamped, so
+/// switching to a shorter program can never read past the end.
+struct ScheduledWorkoutBrowser: View {
+    let schedule: [ScheduledWorkout]
+    @Binding var index: Int
+    let onStart: (ScheduledWorkout) -> Void
+
+    private var safeIndex: Int { min(max(index, 0), max(schedule.count - 1, 0)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text(exercise.name)
-                            .font(.headline)
-                        if isCurrentExercise {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .foregroundColor(.blue)
-                                .font(.title3)
-                        }
-                    }
-                    if let muscleGroup = exercise.muscleGroup {
-                        Text(muscleGroup)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                Text("\(Int(exercise.totalVolume)) lbs")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                ExerciseRestOverride(exerciseName: exercise.name) // SessionGameLayer hook
-            }
-
-            // Sets
-            ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
-                if editingSetId == set.id {
-                    // Edit mode
-                    if Platform.isDesktop {
-                        HStack {
-                            Text("Set \(index + 1)")
-                                .frame(width: 60, alignment: .leading)
-                            TextField("Reps", value: $editReps, format: .number)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(width: 60)
-                            Text("×")
-                            TextField("Weight", value: $editWeight, format: .number)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(width: 80)
-                            Text("lbs")
-
-                            Spacer()
-
-                            Button("Save") {
-                                WorkoutManager.shared.updateSet(exerciseId: exercise.id, setId: set.id, reps: editReps, weight: editWeight)
-                                editingSetId = nil
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-
-                            Button("Cancel") {
-                                editingSetId = nil
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                        .padding(.vertical, 4)
-                    } else {
-                        // iPhone: stacked edit layout
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Set \(index + 1)")
-                                .font(.caption.weight(.semibold))
-                            HStack(spacing: 8) {
-                                TextField("Reps", value: $editReps, format: .number)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .frame(maxWidth: 60)
-                                Text("×")
-                                    .frame(maxWidth: 20)
-                                TextField("Weight", value: $editWeight, format: .number)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .frame(maxWidth: 70)
-                                Text("lbs")
-                                    .font(.caption)
-                            }
-                            HStack(spacing: 8) {
-                                Button("Save") {
-                                    WorkoutManager.shared.updateSet(exerciseId: exercise.id, setId: set.id, reps: editReps, weight: editWeight)
-                                    editingSetId = nil
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .frame(maxWidth: .infinity)
-
-                                Button("Cancel") {
-                                    editingSetId = nil
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .padding(.vertical, 6)
-                    }
-                } else {
-                    // View mode
-                    if Platform.isDesktop {
-                        HStack {
-                            Text("Set \(index + 1)")
-                                .frame(width: 60, alignment: .leading)
-                            Text("\(set.reps) reps")
-                                .frame(width: 80, alignment: .leading)
-                            Text("\(Int(set.weight)) lbs")
-                                .frame(width: 80, alignment: .leading)
-                            Spacer()
-
-                            Button(action: {
-                                editingSetId = set.id
-                                editReps = set.reps
-                                editWeight = set.weight
-                            }) {
-                                Image(systemName: "pencil.circle")
-                                    .foregroundColor(.blue)
-                            }
-                            .buttonStyle(.plain)
-
-                            if set.completed {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    } else {
-                        // iPhone: compact layout
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Set \(index + 1)")
-                                    .font(.caption.weight(.semibold))
-                                Spacer()
-                                if set.completed {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green)
-                                        .font(.callout)
-                                }
-                            }
-                            HStack(spacing: 12) {
-                                Text("\(set.reps) × \(Int(set.weight)) lbs")
-                                    .font(.callout)
-                                Spacer()
-                                Button(action: {
-                                    editingSetId = set.id
-                                    editReps = set.reps
-                                    editWeight = set.weight
-                                }) {
-                                    Image(systemName: "pencil.circle")
-                                        .foregroundColor(.blue)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 6)
-                    }
-                }
-            }
-
-            // Add Set
-            if showAddSet {
-                HStack {
-                    TextField("Reps", value: $reps, format: .number)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 60)
-                    Text("×")
-                    TextField("Weight", value: $weight, format: .number)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 80)
-                    Text("lbs")
-
-                    Spacer()
-
-                    Button("Add") {
-                        WorkoutManager.shared.addSetToExercise(exerciseId: exercise.id, reps: reps, weight: weight)
-                        showAddSet = false
-                        // SessionGameLayer hook: rest timer now starts in SessionGame.setLogged
-                        // (the old RestTimer here was never displayed and only beeped).
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(.vertical, 8)
-            } else {
-                Button(action: { showAddSet = true }) {
-                    Label("Add Set", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .tint(.blue)
-            }
-        }
-        .padding()
-        .background(isCurrentExercise ? Color.blue.opacity(0.1) : Color.gray.opacity(0.05))
-        .cornerRadius(10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isCurrentExercise ? Color.blue : Color.clear, lineWidth: 2)
-        )
-    }
-}
-
-// MARK: - Workout Completion View
-struct WorkoutCompletionView: View {
-    let onComplete: () -> Void
-    @State private var confettiTrigger = false
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-                .frame(height: 20)
-
-            // Trophy Icon with animation
-            ZStack {
-                Circle()
-                    .fill(Color.yellow.opacity(0.2))
-                    .frame(width: 120, height: 120)
-                    .scaleEffect(confettiTrigger ? 1.2 : 1.0)
-                    .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: confettiTrigger)
-
-                Image(systemName: "trophy.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.yellow, .orange],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .rotationEffect(.degrees(confettiTrigger ? 10 : -10))
-                    .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: confettiTrigger)
-            }
-
-            VStack(spacing: 12) {
-                Text("Workout Complete!")
-                    .font(.system(size: 42, weight: .bold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.brandPurple, .brandBlue],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-
-                Text("Amazing work! You crushed it!")
-                    .font(.title2)
-                    .foregroundColor(.secondary)
-            }
-
-            // Confetti animation (using SF Symbols)
-            HStack(spacing: 20) {
-                ForEach(0..<5) { index in
-                    Image(systemName: "star.fill")
-                        .font(.title)
-                        .foregroundColor([.yellow, .orange, .pink, .purple, .blue][index])
-                        .offset(y: confettiTrigger ? -20 : 0)
-                        .animation(.spring(response: 0.6, dampingFraction: 0.5).delay(Double(index) * 0.1).repeatForever(autoreverses: true), value: confettiTrigger)
-                }
-            }
-
-            Spacer()
-
-            // Complete Button
-            Button(action: onComplete) {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Finish")
-                        .font(.title2.bold())
-                }
-                .frame(maxWidth: 400)
-                .padding(.vertical, 16)
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .contentShape(Rectangle())
-
-            Spacer()
-        }
-        .desktopSheetFrame(width: 500, height: 400)
-        .padding()
-        .onAppear {
-            confettiTrigger = true
-        }
-    }
-}
-
-// MARK: - Customize Workout Sheet
-struct CustomizeWorkoutSheet: View {
-    let scheduledWorkout: ScheduledWorkout
-    let onStart: (Int, Int, Double) -> Void
-    @Environment(\.dismiss) var dismiss
-
-    @State private var defaultSets = 3
-    @State private var defaultReps = 10
-    @State private var defaultWeight = 135.0
-
-    var body: some View {
-        VStack(spacing: 30) {
-            // Header
-            HStack {
-                Text("Customize Workout")
-                    .font(.screenTitle)
-                    .bold()
-
-                Spacer()
-
-                Button("Cancel") {
-                    dismiss()
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding()
-
-            VStack(alignment: .leading, spacing: 20) {
-                Text(scheduledWorkout.workoutType)
-                    .font(.title2)
-                    .bold()
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.brandPurple, .brandBlue],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-
-                Text("\(scheduledWorkout.exercises.count) exercises")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-
-                Divider()
-
-                Text("Set default values for all exercises:")
-                    .font(.headline)
-
-                // Sets
-                HStack {
-                    Text("Sets per exercise:")
-                        .frame(width: 150, alignment: .leading)
-                    Stepper("\(defaultSets)", value: $defaultSets, in: 1...10)
-                        .frame(width: 120)
-                }
-
-                // Reps
-                HStack {
-                    Text("Reps per set:")
-                        .frame(width: 150, alignment: .leading)
-                    Stepper("\(defaultReps)", value: $defaultReps, in: 1...50)
-                        .frame(width: 120)
-                }
-
-                // Weight
-                HStack {
-                    Text("Starting weight:")
-                        .frame(width: 150, alignment: .leading)
-                    TextField("Weight", value: $defaultWeight, format: .number)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 100)
-                    Text("lbs")
-                }
-
-                Text("You can adjust individual sets during your workout.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 8)
-            }
-            .padding()
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(12)
-
-            Spacer()
-
-            // Start Button
-            Button(action: {
-                onStart(defaultSets, defaultReps, defaultWeight)
-            }) {
-                HStack {
-                    Image(systemName: "play.circle.fill")
-                    Text("Start Workout")
+        if schedule.isEmpty {
+            EmptyView()
+        } else {
+            let workout = schedule[safeIndex]
+            VStack(alignment: .leading, spacing: 16) {
+                selector(workout)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Exercises")
                         .font(.title3.bold())
+                    ForEach(Array(workout.plannedExercises.enumerated()), id: \.offset) { _, planned in
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: "circle")
+                                .font(.caption)
+                                .foregroundColor(.brandBlue)
+                            Text(planned.name)
+                                .font(.body)
+                            Spacer()
+                            if planned.hasTarget {
+                                Text(planned.schemeText)
+                                    .font(.callout.monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    LinearGradient(
-                        colors: [.brandPurple, .brandBlue],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .foregroundColor(.white)
-                .cornerRadius(12)
+                Button {
+                    onStart(workout)
+                } label: {
+                    Label("Start This Workout", systemImage: "play.circle.fill")
+                        .font(.title3.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.brandBlue)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal)
-        }
-        .desktopSheetFrame(width: 500, height: 500)
-    }
-}
-
-// MARK: - Rest Timer
-class RestTimer: ObservableObject, Identifiable {
-    let id = UUID()
-    @Published var timeRemaining: TimeInterval
-    let duration: TimeInterval
-    private var timer: Timer?
-
-    init(duration: TimeInterval) {
-        self.duration = duration
-        self.timeRemaining = duration
-        startTimer()
-    }
-
-    func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            if self.timeRemaining > 0 {
-                self.timeRemaining -= 1
-            } else {
-                self.timer?.invalidate()
-                self.playSound()
-            }
+            .onAppear { index = safeIndex }
         }
     }
 
-    func playSound() {
-        Platform.beep()
+    private func selector(_ workout: ScheduledWorkout) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                Button {
+                    index = max(safeIndex - 1, 0)
+                } label: {
+                    Image(systemName: "chevron.left.circle.fill")
+                        .font(.title)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(safeIndex == 0 ? .gray : .brandBlue)
+                .disabled(safeIndex == 0)
+                .accessibilityLabel("Previous workout")
+
+                Spacer()
+
+                VStack(spacing: 4) {
+                    Text(workout.workoutType)
+                        .font(.title2.bold())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                    HStack(spacing: 8) {
+                        Text(workout.dayOfWeek)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        if isToday(workout) {
+                            Text("TODAY")
+                                .font(.caption.bold())
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    index = min(safeIndex + 1, schedule.count - 1)
+                } label: {
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.title)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(safeIndex >= schedule.count - 1 ? .gray : .brandBlue)
+                .disabled(safeIndex >= schedule.count - 1)
+                .accessibilityLabel("Next workout")
+            }
+            Text("\(safeIndex + 1) of \(schedule.count)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    deinit {
-        timer?.invalidate()
+    private func isToday(_ workout: ScheduledWorkout) -> Bool {
+        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        return workout.dayOfWeek == dayNames[Calendar.current.component(.weekday, from: Date()) - 1]
     }
 }
 
@@ -3063,98 +2526,130 @@ struct BubbleOption: View {
 }
 
 // MARK: - Progress View
-struct ProgressView: View {
+/// Named to avoid shadowing SwiftUI.ProgressView.
+struct TrainingProgressView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
 
-    var weeklyData: [(String, Int)] {
-        let calendar = Calendar.current
-        let today = Date()
-        var data: [(String, Int)] = []
+    private var unit: WeightUnit { TrainingUnits.unit(forPreference: unitPreference) }
 
-        for i in (0..<7).reversed() {
-            if let date = calendar.date(byAdding: .day, value: -i, to: today) {
-                let dayName = date.formatted(.dateTime.weekday(.abbreviated))
-                let count = workoutManager.sessions.filter {
-                    calendar.isDate($0.date, inSameDayAs: date)
-                }.count
-                data.append((dayName, count))
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                content(workoutManager.loggedSessions)
+                    .padding()
+                    .padding(.bottom, Platform.isDesktop ? 0 : 80)
             }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
-        return data
     }
 
-    var totalVolume: Double {
-        workoutManager.sessions.reduce(0) { $0 + $1.totalVolume }
-    }
+    private func content(_ logged: [WorkoutSession]) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Text("Progress")
+                    .font(.screenTitle)
+                    .bold()
+                Spacer()
+                NavigationLink {
+                    HistoryListView()
+                } label: {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+                .buttonStyle(.bordered)
+            }
 
-    var averageVolume: Double {
-        guard !workoutManager.sessions.isEmpty else { return 0 }
-        return totalVolume / Double(workoutManager.sessions.count)
+            ProgressStatsGrid(logged: logged, streak: workoutManager.currentStreak,
+                              weekly: workoutManager.weeklyWorkouts, unit: unit)
+            MuscleWeekCard(sessions: logged, unit: unit)
+            RecordsCard(sessions: logged, unit: unit)
+            WeeklyActivityChart(sessions: logged)
+            VolumeTrendChart(sessions: logged, unit: unit)
+            WorkoutCalendarView(sessions: logged)
+        }
+    }
+}
+
+struct ProgressStatsGrid: View {
+    let logged: [WorkoutSession]
+    let streak: Int
+    let weekly: Int
+    let unit: WeightUnit
+
+    var body: some View {
+        let total = logged.reduce(0.0) { $0 + $1.totalVolume }
+        let average = logged.isEmpty ? 0 : total / Double(logged.count)
+        LazyVGrid(columns: adaptiveColumns(desktop: 4, phone: 2), spacing: 15) {
+            StatCard(title: "Workouts", value: "\(logged.count)", icon: "list.bullet", color: .blue)
+            StatCard(title: "Day Streak", value: "\(streak)", icon: "flame.fill", color: .orange)
+            StatCard(title: "Total Volume", value: TrainingUnits.volume(total, unit), icon: "chart.bar.fill", color: .green)
+            StatCard(title: "Avg per Workout", value: TrainingUnits.volume(average, unit), icon: "chart.line.uptrend.xyaxis", color: .purple)
+        }
+    }
+}
+
+struct WeeklyActivityChart: View {
+    let sessions: [WorkoutSession]
+
+    private var days: [(String, Int)] {
+        let calendar = Calendar.current
+        return (0..<7).reversed().compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: Date()) else { return nil }
+            let count = sessions.filter { calendar.isDate($0.date, inSameDayAs: date) }.count
+            return (date.formatted(.dateTime.weekday(.abbreviated)), count)
+        }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Progress Tracking")
-                    .font(.screenTitle)
-                    .bold()
-
-                // Stats Overview
-                LazyVGrid(columns: adaptiveColumns(desktop: 4, phone: 2), spacing: 15) {
-                    StatCard(title: "Total Workouts", value: "\(workoutManager.sessions.count)", icon: "list.bullet", color: .blue)
-                    StatCard(title: "Current Streak", value: "\(workoutManager.currentStreak)", icon: "flame.fill", color: .orange)
-                    StatCard(title: "Total Volume", value: "\(Int(totalVolume))", icon: "chart.bar.fill", color: .green)
-                    StatCard(title: "Avg Volume", value: "\(Int(averageVolume))", icon: "chart.line.uptrend.xyaxis", color: .purple)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Workouts, Last 7 Days")
+                .font(.headline)
+            Chart {
+                ForEach(days, id: \.0) { day, count in
+                    BarMark(x: .value("Day", day), y: .value("Workouts", count))
+                        .foregroundStyle(Color.blue.gradient)
                 }
-
-                // Weekly Activity Chart
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("This Week's Activity")
-                        .font(.headline)
-
-                    if #available(macOS 13.0, *) {
-                        Chart {
-                            ForEach(weeklyData, id: \.0) { day, count in
-                                BarMark(
-                                    x: .value("Day", day),
-                                    y: .value("Workouts", count)
-                                )
-                                .foregroundStyle(Color.blue.gradient)
-                            }
-                        }
-                        .frame(height: 200)
-                        .padding()
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(10)
-                    }
-                }
-
-                // Volume Progress
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Volume Over Time")
-                        .font(.headline)
-
-                    if #available(macOS 13.0, *) {
-                        Chart {
-                            ForEach(Array(workoutManager.sessions.suffix(10).enumerated()), id: \.element.id) { index, session in
-                                LineMark(
-                                    x: .value("Session", index + 1),
-                                    y: .value("Volume", session.totalVolume)
-                                )
-                                .foregroundStyle(Color.green.gradient)
-                            }
-                        }
-                        .frame(height: 200)
-                        .padding()
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(10)
-                    }
-                }
-
-                Spacer()
             }
-            .padding()
+            .chartYAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
+            .frame(height: 160)
         }
+        .padding()
+        .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct VolumeTrendChart: View {
+    let sessions: [WorkoutSession]
+    let unit: WeightUnit
+
+    var body: some View {
+        let recent = Array(sessions.suffix(12))
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Volume per Workout (\(unit.label))")
+                .font(.headline)
+            if recent.count < 2 {
+                Text("Log two or more workouts to see the trend.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                Chart {
+                    ForEach(recent) { session in
+                        LineMark(x: .value("Date", session.date), y: .value("Volume", TrainingUnits.toDisplay(session.totalVolume, unit)))
+                            .foregroundStyle(Color.green.gradient)
+                        PointMark(x: .value("Date", session.date), y: .value("Volume", TrainingUnits.toDisplay(session.totalVolume, unit)))
+                            .foregroundStyle(Color.green)
+                    }
+                }
+                .frame(height: 180)
+                Text("Completed sets only: reps × load.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -3184,55 +2679,13 @@ struct PhaseCard: View {
     }
 }
 
-// MARK: - History View
-struct HistoryView: View {
-    @EnvironmentObject var workoutManager: WorkoutManager
-    @State private var selectedMonth = Date()
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Workout History")
-                    .font(.screenTitle)
-                    .bold()
-
-                if workoutManager.sessions.isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 60))
-                            .foregroundColor(.secondary)
-                        Text("No workout history yet")
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    // 12-Month Calendar View
-                    WorkoutCalendarView(workoutManager: workoutManager)
-
-                    Divider()
-                        .padding(.vertical)
-
-                    // List View
-                    Text("Recent Workouts")
-                        .font(.headline)
-
-                    ForEach(workoutManager.sessions.sorted(by: { $0.date > $1.date }).prefix(20)) { session in
-                        WorkoutHistoryRow(session: session)
-                    }
-                }
-            }
-            .padding()
-        }
-    }
-}
-
 // MARK: - Workout Calendar View
 struct WorkoutCalendarView: View {
-    let workoutManager: WorkoutManager
+    let sessions: [WorkoutSession]
 
     var workoutDates: Set<DateComponents> {
         var dates = Set<DateComponents>()
-        for session in workoutManager.sessions {
+        for session in sessions {
             let components = Calendar.current.dateComponents([.year, .month, .day], from: session.date)
             dates.insert(components)
         }
@@ -3517,6 +2970,7 @@ struct ToolDetailView: View {
 
 // Individual Calculator Views
 struct OneRMCalculatorView: View {
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @State private var weight = ""
     @State private var reps = ""
     @State private var oneRM: Double?
@@ -3527,8 +2981,11 @@ struct OneRMCalculatorView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Weight Lifted")
                         .font(.headline)
-                    TextField("Enter weight (lbs)", text: $weight)
+                    TextField("Enter weight (\(TrainingUnits.unit(forPreference: unitPreference).label))", text: $weight)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -3536,6 +2993,9 @@ struct OneRMCalculatorView: View {
                         .font(.headline)
                     TextField("Enter reps", text: $reps)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        #endif
                 }
 
                 Button("Calculate") {
@@ -3549,7 +3009,7 @@ struct OneRMCalculatorView: View {
                         Text("Your Estimated 1RM")
                             .font(.headline)
                             .foregroundColor(.secondary)
-                        Text("\(Int(result)) lbs")
+                        Text("\(Int(result)) \(TrainingUnits.unit(forPreference: unitPreference).label)")
                             .font(.system(size: 48, weight: .bold))
                             .foregroundColor(.brandPurple)
                     }
@@ -3564,9 +3024,9 @@ struct OneRMCalculatorView: View {
     }
 
     func calculateOneRM() {
-        guard let w = Double(weight), let r = Double(reps), r > 0 else { return }
-        // Epley formula: 1RM = w * (1 + r/30)
-        oneRM = w * (1 + r / 30)
+        guard let w = Double(weight.replacingOccurrences(of: ",", with: ".")), let r = Int(reps), r > 0 else { return }
+        // Epley, the same estimate the Progress tab shows.
+        oneRM = ProgressionEngine.e1RM(weight: w, reps: r)
     }
 }
 
@@ -3842,81 +3302,103 @@ struct MacroCard: View {
 }
 
 struct PlateCalculatorView: View {
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @State private var targetWeight = ""
-    @State private var barWeight = "45"
-    @State private var plates: [(weight: Double, count: Int)] = []
+    @State private var barWeight = ""
+    @State private var result: PlateBreakdown?
+
+    private var unit: WeightUnit { TrainingUnits.unit(forPreference: unitPreference) }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Target Weight (lbs)")
+                    Text("Target Weight (\(unit.label))")
                         .font(.headline)
                     TextField("Enter target weight", text: $targetWeight)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Bar Weight (lbs)")
+                    Text("Bar Weight (\(unit.label))")
                         .font(.headline)
-                    TextField("Enter bar weight", text: $barWeight)
+                    TextField(TrainingUnits.number(PlateMath.defaultBar(for: unit)), text: $barWeight)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
                 }
 
                 Button("Calculate") {
+                    Platform.dismissKeyboard()
                     calculatePlates()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                if !plates.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Plates Per Side")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-
-                        ForEach(plates, id: \.weight) { plate in
-                            HStack {
-                                Text("\(Int(plate.weight)) lbs")
-                                    .font(.title3)
-                                    .bold()
-                                Spacer()
-                                Text("× \(plate.count)")
-                                    .font(.title2)
-                                    .foregroundColor(.brandYellow)
-                            }
-                            .padding()
-                            .background(Color.brandYellow.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                    }
+                if let result {
+                    resultView(result)
                 }
             }
             .padding()
         }
+        .onChange(of: unitPreference) { _, _ in result = nil }
+    }
+
+    @ViewBuilder
+    private func resultView(_ result: PlateBreakdown) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if result.isBelowBar {
+                Text("That's less than the \(TrainingUnits.number(result.bar)) \(unit.label) bar.")
+                    .foregroundColor(.secondary)
+            } else if result.perSide.isEmpty {
+                Text("Just the bar.")
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Plates Per Side")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+
+                ForEach(result.perSide) { plate in
+                    HStack {
+                        Text("\(TrainingUnits.number(plate.weight)) \(unit.label)")
+                            .font(.title3)
+                            .bold()
+                        Spacer()
+                        Text("× \(plate.count)")
+                            .font(.title2)
+                            .foregroundColor(.brandYellow)
+                    }
+                    .padding()
+                    .background(Color.brandYellow.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+            if !result.isExact, !result.isBelowBar {
+                Label("Standard plates can't make this exactly. Closest: \(TrainingUnits.number(result.loadable)) \(unit.label), \(TrainingUnits.number(result.remainderPerSide)) \(unit.label) short per side.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundColor(.orange)
+            }
+        }
     }
 
     func calculatePlates() {
-        guard let target = Double(targetWeight), let bar = Double(barWeight) else { return }
-
-        var remaining = (target - bar) / 2.0 // Weight per side
-        let availablePlates = [45.0, 35.0, 25.0, 10.0, 5.0, 2.5]
-
-        var result: [(weight: Double, count: Int)] = []
-
-        for plateWeight in availablePlates {
-            let count = Int(remaining / plateWeight)
-            if count > 0 {
-                result.append((weight: plateWeight, count: count))
-                remaining -= Double(count) * plateWeight
-            }
+        let parse = { (text: String) in Double(text.replacingOccurrences(of: ",", with: ".")) }
+        guard let target = parse(targetWeight), target > 0 else {
+            result = nil
+            return
         }
-
-        plates = result
+        let bar = parse(barWeight) ?? PlateMath.defaultBar(for: unit)
+        result = PlateMath.breakdown(total: target, bar: bar, unit: unit)
     }
 }
 
 struct RepMaxChartView: View {
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @State private var oneRM = ""
     @State private var percentages: [(percent: Int, weight: Int)] = []
 
@@ -3924,10 +3406,13 @@ struct RepMaxChartView: View {
         ScrollView {
             VStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("1 Rep Max (lbs)")
+                    Text("1 Rep Max (\(TrainingUnits.unit(forPreference: unitPreference).label))")
                         .font(.headline)
                     TextField("Enter 1RM", text: $oneRM)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
                 }
 
                 Button("Calculate") {
@@ -3949,7 +3434,7 @@ struct RepMaxChartView: View {
                                     .bold()
                                     .frame(width: 60, alignment: .leading)
                                 Spacer()
-                                Text("\(item.weight) lbs")
+                                Text("\(item.weight) \(TrainingUnits.unit(forPreference: unitPreference).label)")
                                     .font(.title3)
                                     .foregroundColor(.purple)
                             }
@@ -3976,12 +3461,17 @@ struct RepMaxChartView: View {
 
 // MARK: - Settings View
 struct SettingsView: View {
-    @AppStorage("useMetric") private var useMetric = false
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @AppStorage("defaultRestTime") private var defaultRestTime = 90
     @AppStorage("weeklyGoal") private var weeklyGoal = 5
     @EnvironmentObject var workoutManager: WorkoutManager
     @ObservedObject private var health = HealthKitManager.shared
     @State private var showAccount = false
+    @State private var exportDocument: WorkoutExportDocument?
+    @State private var showExporter = false
+    @State private var showImporter = false
+    @State private var transferMessage: String?
+    @State private var confirmReset = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -4005,18 +3495,28 @@ struct SettingsView: View {
                 }
 
                 Section("Units") {
-                    Toggle("Use Metric Units (kg)", isOn: $useMetric)
+                    Picker("Weight", selection: $unitPreference) {
+                        Text("Pounds (lb)").tag("imperial")
+                        Text("Kilograms (kg)").tag("metric")
+                    }
+                    .compactSegmentedPicker()
+                    Text("Weights are entered and shown in this unit everywhere, including plate math. History is kept in pounds and converts automatically.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 #if os(iOS)
                 Section("Apple Health") {
                     if health.isConnected {
-                        Toggle("Sync workouts to Apple Health", isOn: $health.syncWorkoutsToHealth)
+                        Toggle("Save finished workouts to Apple Health", isOn: $health.syncWorkoutsToHealth)
                     } else {
                         Button("Connect Apple Health") {
                             Task { await health.requestAuthorization() }
                         }
                         .disabled(!health.isAvailable)
+                    }
+                    if !health.isAvailable {
+                        Text("Apple Health is not available on this device.").font(.caption).foregroundColor(.secondary)
                     }
                     if let error = health.lastError {
                         Text(error).font(.caption).foregroundColor(.secondary)
@@ -4031,41 +3531,38 @@ struct SettingsView: View {
                         TextField("Seconds", value: $defaultRestTime, format: .number)
                             .labelsHidden()
                             .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .multilineTextAlignment(.trailing)
+                            #if os(iOS)
+                            .keyboardType(.numberPad)
+                            #endif
                             .frame(width: 80)
                         Text("seconds")
                     }
 
-                    HStack {
-                        Text("Weekly Workout Goal")
-                        Spacer()
-                        TextField("Goal", value: $weeklyGoal, format: .number)
-                            .labelsHidden()
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .frame(width: 80)
-                        Text("workouts")
-                    }
+                    Stepper("Weekly goal: \(weeklyGoal) workout\(weeklyGoal == 1 ? "" : "s")", value: $weeklyGoal, in: 1...14)
                 }
 
                 SessionGameSettingsSection() // SessionGameLayer hook
 
-                Section("Data Management") {
-                    Button("Export Workouts") {
-                        workoutManager.exportWorkouts()
+                Section("Your Data") {
+                    Button("Export Workouts…") { export() }
+                    Button("Import Workouts…") { importTapped() }
+                    Text("An export is a JSON file of your whole training log: keep it as a backup or import it on another device. Imported workouts stay on that device.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let transferMessage {
+                        Text(transferMessage)
+                            .font(.caption)
                     }
-
-                    Button("Import Workouts") {
-                        workoutManager.importWorkouts()
-                    }
-
-                    Button("Generate Python Program") {
-                        workoutManager.generateProgramFromPython()
+                    if let issue = workoutManager.storeIssue {
+                        Text(issue)
+                            .font(.caption)
+                            .foregroundColor(.orange)
                     }
                 }
 
                 Section("Programming") {
-                    Button(action: {
-                        workoutManager.resetProgramming()
-                    }) {
+                    Button(action: { confirmReset = true }) {
                         HStack {
                             Image(systemName: "arrow.counterclockwise.circle.fill")
                                 .foregroundColor(.red)
@@ -4075,7 +3572,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("This will clear all scheduled workouts and allow you to start fresh with a new program.")
+                    Text("Clears your scheduled workouts so you can start fresh with a new program. Your workout history is not affected.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -4086,6 +3583,66 @@ struct SettingsView: View {
         }
         .padding()
         .sheet(isPresented: $showAccount) { NavigationStack { AccountView() } }
+        .confirmationDialog("Reset all programming?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Reset Programming", role: .destructive) { workoutManager.resetProgramming() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your scheduled workouts will be cleared. Finished workouts stay in your history.")
+        }
+        #if os(iOS)
+        .fileExporter(isPresented: $showExporter, document: exportDocument, contentType: .json,
+                      defaultFilename: "endgame-fitness-workouts") { result in
+            switch result {
+            case .success: transferMessage = "Exported \(workoutManager.sessions.count) workout\(workoutManager.sessions.count == 1 ? "" : "s")."
+            case .failure(let error): transferMessage = "Export failed: \(error.localizedDescription)"
+            }
+            exportDocument = nil
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+            switch result {
+            case .success(let url):
+                if let data = WorkoutTransfer.readPickedFile(url) {
+                    handleImport(data)
+                } else {
+                    transferMessage = "That file could not be read."
+                }
+            case .failure(let error):
+                transferMessage = "Import failed: \(error.localizedDescription)"
+            }
+        }
+        #endif
+    }
+
+    private func export() {
+        #if os(macOS)
+        if workoutManager.exportWorkouts() != nil {
+            transferMessage = "Exported \(workoutManager.sessions.count) workout\(workoutManager.sessions.count == 1 ? "" : "s")."
+        }
+        #else
+        guard let data = workoutManager.exportData() else {
+            transferMessage = "Export failed."
+            return
+        }
+        exportDocument = WorkoutExportDocument(data: data)
+        showExporter = true
+        #endif
+    }
+
+    private func importTapped() {
+        #if os(macOS)
+        guard let data = WorkoutTransfer.importJSON() else { return }
+        handleImport(data)
+        #else
+        showImporter = true
+        #endif
+    }
+
+    private func handleImport(_ data: Data) {
+        guard let added = workoutManager.importWorkouts(from: data) else {
+            transferMessage = "That file is not an Endgame Fitness workout export."
+            return
+        }
+        transferMessage = added == 0 ? "No new workouts in that file." : "Imported \(added) workout\(added == 1 ? "" : "s")."
     }
 }
 
@@ -4097,7 +3654,7 @@ struct MicrocycleProgressCard: View {
         let workoutsPerWeek = 3
         let weeksInMicrocycle = 4
         let totalWorkouts = workoutsPerWeek * weeksInMicrocycle // 12 workouts per microcycle
-        let currentWorkout = workoutManager.sessions.count % totalWorkouts
+        let currentWorkout = workoutManager.loggedSessions.count % totalWorkouts
         let currentWeek = (currentWorkout / workoutsPerWeek) + 1
 
         return (currentWorkout, totalWorkouts, currentWeek)
@@ -4155,7 +3712,7 @@ struct AICoachInsightCard: View {
     var insights: [(emoji: String, title: String, message: String, tip: String)] {
         let streak = workoutManager.currentStreak
         let weeklyWorkouts = workoutManager.weeklyWorkouts
-        let totalWorkouts = workoutManager.sessions.count
+        let totalWorkouts = workoutManager.loggedSessions.count
         let phase = workoutManager.currentMesocyclePhase
 
         var messages: [(String, String, String, String)] = []
@@ -4314,7 +3871,11 @@ struct ProgramRecommendationCard: View {
     var programDescription: String {
         let experienceText = profile.experienceLevel == .beginner ? "beginner-friendly" : profile.experienceLevel == .intermediate ? "intermediate" : "advanced"
         let goalText = profile.primaryGoals.first?.rawValue.lowercased() ?? "fitness"
-        return "We've created a \(experienceText) \(goalText) program based on your goals and current strength levels (Bench: \(profile.benchPress5RM)lbs, Squat: \(profile.squat5RM)lbs, Deadlift: \(profile.deadlift5RM)lbs)."
+        let unit = TrainingUnits.current
+        let bench = TrainingUnits.weight(Double(profile.benchPress5RM), unit)
+        let squat = TrainingUnits.weight(Double(profile.squat5RM), unit)
+        let deadlift = TrainingUnits.weight(Double(profile.deadlift5RM), unit)
+        return "A \(experienceText) \(goalText) program. Your starting 5-rep maxes: bench \(bench), squat \(squat), deadlift \(deadlift)."
     }
 
     var totalWeeklyMinutes: Int {
@@ -4347,12 +3908,6 @@ struct WorkoutScheduleCard: View {
                 // Today's workout
                 Button(action: {
                     workoutManager.selectedTab = 1
-                    // Find and select today's workout in the workout view
-                    if let todayIndex = workoutManager.weeklySchedule.firstIndex(where: {
-                        Calendar.current.isDateInToday(Date()) && $0.dayOfWeek == getTodayName()
-                    }) {
-                        // Store this to be used by WorkoutView
-                    }
                 }) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -4366,13 +3921,19 @@ struct WorkoutScheduleCard: View {
                                 .foregroundColor(.secondary)
                         }
 
-                        ForEach(todaysWorkout.exercises, id: \.self) { exercise in
+                        ForEach(Array(todaysWorkout.plannedExercises.enumerated()), id: \.offset) { _, planned in
                             HStack {
-                                Image(systemName: "checkmark.circle")
+                                Image(systemName: "circle")
                                     .foregroundColor(.brandGreen)
-                                    .opacity(0.5)
-                                Text(exercise)
+                                    .font(.caption)
+                                Text(planned.name)
                                     .font(.subheadline)
+                                if planned.hasTarget {
+                                    Spacer()
+                                    Text(planned.schemeText)
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
 
@@ -4465,7 +4026,7 @@ struct WorkoutScheduleCard: View {
                 .contentShape(Rectangle())
             }
 
-            if let lastWorkout = workoutManager.sessions.last {
+            if let lastWorkout = workoutManager.loggedSessions.last {
                 Divider()
 
                 HStack {
@@ -4482,8 +4043,7 @@ struct WorkoutScheduleCard: View {
             }
         }
         .padding()
-        .background(Color.white.opacity(0.5))
-        .cornerRadius(12)
+        .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
     }
 
     func getTodaysWorkout() -> ScheduledWorkout? {
@@ -4596,6 +4156,8 @@ struct StatCard: View {
                 .foregroundColor(color)
             Text(value)
                 .font(.title2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .bold()
             Text(title)
                 .font(.caption)
@@ -4672,38 +4234,39 @@ struct ProgramCard: View {
 struct RecentWorkoutCard: View {
     let session: WorkoutSession
     @EnvironmentObject var workoutManager: WorkoutManager
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @State private var isHovering = false
+    @State private var showDetail = false
 
     var body: some View {
-        Button(action: {
-            workoutManager.selectedTab = 1
-        }) {
+        Button(action: { showDetail = true }) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
+                    Text(session.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
                     Text(session.date.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text("\(session.exercises.count) exercises")
-                        .font(.subheadline)
                 }
 
                 Spacer()
 
-                VStack(alignment: .trailing) {
-                    Text("\(Int(session.totalVolume)) lbs")
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(TrainingUnits.volume(session.totalVolume, TrainingUnits.unit(forPreference: unitPreference)))
                         .font(.subheadline)
                         .bold()
-                    if session.completed {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                    }
+                    Text("\(session.completedSetCount) sets · \(session.exercises.count) exercises")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding()
             .background(Color.gray.opacity(isHovering ? 0.1 : 0.05))
             .cornerRadius(8)
-            .scaleEffect(isHovering ? 1.02 : 1.0)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
@@ -4712,447 +4275,75 @@ struct RecentWorkoutCard: View {
                 isHovering = hovering
             }
         }
+        .sheet(isPresented: $showDetail) {
+            NavigationStack {
+                SessionDetailView(sessionID: session.id)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showDetail = false }
+                        }
+                    }
+            }
+            .environmentObject(workoutManager)
+            .desktopSheetFrame(width: 600, height: 680)
+        }
     }
 }
 
-struct WorkoutHistoryRow: View {
-    let session: WorkoutSession
+/// A storage problem, said plainly, with a dismiss button.
+struct StoreIssueBanner: View {
+    let message: String
+    let onDismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(session.date.formatted(date: .long, time: .shortened))
-                    .font(.headline)
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding()
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Shown on the dashboard while a workout is in progress (including one
+/// restored after the app was closed).
+struct ResumeWorkoutBanner: View {
+    let workout: WorkoutSession
+    let onResume: () -> Void
+
+    var body: some View {
+        Button(action: onResume) {
+            HStack(spacing: 12) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .font(.title2)
+                    .foregroundColor(.brandGreen)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Workout in progress")
+                        .font(.headline)
+                    Text("\(workout.displayName) · \(workout.completedSetCount) sets done")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 Spacer()
-                if session.completed {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                }
+                Text("Resume")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.brandGreen)
             }
-
-            Text("\(session.exercises.count) exercises • \(Int(session.totalVolume)) lbs total volume")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            if let programName = session.programName {
-                Text(programName)
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.2))
-                    .cornerRadius(4)
-            }
+            .padding()
+            .background(Color.brandGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 4)
-    }
-}
-
-struct AddExerciseSheet: View {
-    @Binding var exerciseName: String
-    @Binding var muscleGroup: String
-    let muscleGroups: [String]
-    let onAdd: () -> Void
-    @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var workoutManager: WorkoutManager
-
-    @State private var step = 1
-    @State private var selectedBodyPart = "Chest"
-    @State private var selectedExercise: ExerciseTemplate?
-    @State private var suggestedSets = 3
-    @State private var suggestedReps = 10
-    @State private var suggestedWeight = 135.0
-
-    let bodyParts = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs", "Quads", "Hamstrings", "Glutes", "Calves", "Core", "Abs"]
-
-    let exerciseLibrary: [String: [ExerciseTemplate]] = [
-        "Chest": [
-            ExerciseTemplate(name: "Barbell Bench Press", difficulty: .intermediate),
-            ExerciseTemplate(name: "Dumbbell Bench Press", difficulty: .beginner),
-            ExerciseTemplate(name: "Incline Bench Press", difficulty: .intermediate),
-            ExerciseTemplate(name: "Dumbbell Flyes", difficulty: .beginner),
-            ExerciseTemplate(name: "Push-ups", difficulty: .beginner),
-            ExerciseTemplate(name: "Cable Flyes", difficulty: .intermediate)
-        ],
-        "Back": [
-            ExerciseTemplate(name: "Deadlift", difficulty: .advanced),
-            ExerciseTemplate(name: "Barbell Row", difficulty: .intermediate),
-            ExerciseTemplate(name: "Pull-ups", difficulty: .intermediate),
-            ExerciseTemplate(name: "Lat Pulldown", difficulty: .beginner),
-            ExerciseTemplate(name: "Dumbbell Row", difficulty: .beginner),
-            ExerciseTemplate(name: "Seated Cable Row", difficulty: .beginner)
-        ],
-        "Shoulders": [
-            ExerciseTemplate(name: "Overhead Press", difficulty: .intermediate),
-            ExerciseTemplate(name: "Dumbbell Shoulder Press", difficulty: .beginner),
-            ExerciseTemplate(name: "Lateral Raises", difficulty: .beginner),
-            ExerciseTemplate(name: "Front Raises", difficulty: .beginner),
-            ExerciseTemplate(name: "Face Pulls", difficulty: .beginner)
-        ],
-        "Biceps": [
-            ExerciseTemplate(name: "Barbell Curl", difficulty: .beginner),
-            ExerciseTemplate(name: "Dumbbell Curl", difficulty: .beginner),
-            ExerciseTemplate(name: "Hammer Curl", difficulty: .beginner),
-            ExerciseTemplate(name: "Cable Curl", difficulty: .beginner)
-        ],
-        "Triceps": [
-            ExerciseTemplate(name: "Tricep Dips", difficulty: .intermediate),
-            ExerciseTemplate(name: "Close Grip Bench", difficulty: .intermediate),
-            ExerciseTemplate(name: "Tricep Pushdown", difficulty: .beginner),
-            ExerciseTemplate(name: "Overhead Extension", difficulty: .beginner)
-        ],
-        "Legs": [
-            ExerciseTemplate(name: "Squat", difficulty: .intermediate),
-            ExerciseTemplate(name: "Romanian Deadlift", difficulty: .intermediate),
-            ExerciseTemplate(name: "Leg Press", difficulty: .beginner),
-            ExerciseTemplate(name: "Lunges", difficulty: .beginner)
-        ],
-        "Quads": [
-            ExerciseTemplate(name: "Front Squat", difficulty: .advanced),
-            ExerciseTemplate(name: "Leg Extension", difficulty: .beginner),
-            ExerciseTemplate(name: "Hack Squat", difficulty: .intermediate)
-        ],
-        "Hamstrings": [
-            ExerciseTemplate(name: "Leg Curl", difficulty: .beginner),
-            ExerciseTemplate(name: "Romanian Deadlift", difficulty: .intermediate),
-            ExerciseTemplate(name: "Good Mornings", difficulty: .intermediate)
-        ],
-        "Glutes": [
-            ExerciseTemplate(name: "Hip Thrust", difficulty: .intermediate),
-            ExerciseTemplate(name: "Bulgarian Split Squat", difficulty: .intermediate),
-            ExerciseTemplate(name: "Glute Bridge", difficulty: .beginner)
-        ],
-        "Calves": [
-            ExerciseTemplate(name: "Standing Calf Raise", difficulty: .beginner),
-            ExerciseTemplate(name: "Seated Calf Raise", difficulty: .beginner)
-        ],
-        "Core": [
-            ExerciseTemplate(name: "Plank", difficulty: .beginner),
-            ExerciseTemplate(name: "Ab Wheel", difficulty: .advanced),
-            ExerciseTemplate(name: "Cable Crunch", difficulty: .intermediate)
-        ],
-        "Abs": [
-            ExerciseTemplate(name: "Hanging Leg Raise", difficulty: .intermediate),
-            ExerciseTemplate(name: "Crunches", difficulty: .beginner),
-            ExerciseTemplate(name: "Russian Twists", difficulty: .beginner)
-        ]
-    ]
-
-    var body: some View {
-        VStack(spacing: 20) {
-            // Progress indicator
-            HStack(spacing: 4) {
-                ForEach(1...3, id: \.self) { s in
-                    Rectangle()
-                        .fill(step >= s ? Color.blue : Color.gray.opacity(0.3))
-                        .frame(height: 4)
-                        .cornerRadius(2)
-                }
-            }
-            .padding(.horizontal)
-
-            if step == 1 {
-                // Step 1: Choose Body Part
-                VStack(spacing: 16) {
-                    Text("Select Body Part")
-                        .font(.title2)
-                        .bold()
-
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 12) {
-                            ForEach(bodyParts, id: \.self) { part in
-                                Button(action: {
-                                    selectedBodyPart = part
-                                    step = 2
-                                }) {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: bodyPartIcon(part))
-                                            .font(.screenTitle)
-                                        Text(part)
-                                            .font(.caption)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(selectedBodyPart == part ? Color.blue.opacity(0.2) : Color.gray.opacity(0.1))
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .frame(height: 400)
-                }
-            } else if step == 2 {
-                // Step 2: Choose Exercise
-                VStack(spacing: 16) {
-                    Text("Select Exercise: \(selectedBodyPart)")
-                        .font(.title2)
-                        .bold()
-
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            ForEach(exerciseLibrary[selectedBodyPart] ?? [], id: \.name) { exercise in
-                                Button(action: {
-                                    selectedExercise = exercise
-                                    calculateAIPresets(for: exercise)
-                                    step = 3
-                                }) {
-                                    HStack {
-                                        VStack(alignment: .leading) {
-                                            Text(exercise.name)
-                                                .font(.headline)
-                                            Text(exercise.difficulty.rawValue)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .frame(height: 400)
-
-                    Button("← Back") {
-                        step = 1
-                    }
-                    .buttonStyle(.bordered)
-                }
-            } else if step == 3 {
-                // Step 3: Review AI Presets
-                if let exercise = selectedExercise {
-                    VStack(spacing: 16) {
-                        Text("AI Coaching Recommendation")
-                            .font(.title2)
-                            .bold()
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(exercise.name)
-                                .font(.title3)
-                                .bold()
-
-                            Divider()
-
-                            Text("Based on your mesocycle and training history:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-
-                            HStack {
-                                Label("Sets", systemImage: "list.number")
-                                Spacer()
-                                Stepper("\(suggestedSets)", value: $suggestedSets, in: 1...10)
-                            }
-
-                            HStack {
-                                Label("Reps", systemImage: "repeat")
-                                Spacer()
-                                Stepper("\(suggestedReps)", value: $suggestedReps, in: 1...30)
-                            }
-
-                            HStack {
-                                Label("Weight", systemImage: "scalemass")
-                                Spacer()
-                                HStack {
-                                    TextField("Weight", value: $suggestedWeight, format: .number)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 80)
-                                    Text("lbs")
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-
-                            Text(getCoachingTip())
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                                .padding()
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
-                        }
-                        .padding()
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(12)
-
-                        Spacer()
-
-                        HStack {
-                            Button("← Back") {
-                                step = 2
-                            }
-                            .buttonStyle(.bordered)
-
-                            Spacer()
-
-                            Button("Add Exercise") {
-                                exerciseName = exercise.name
-                                muscleGroup = selectedBodyPart
-                                // Add the exercise with AI presets
-                                workoutManager.addExerciseWithPresets(
-                                    name: exercise.name,
-                                    muscleGroup: selectedBodyPart,
-                                    sets: suggestedSets,
-                                    reps: suggestedReps,
-                                    weight: suggestedWeight
-                                )
-                                dismiss()
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                    }
-                }
-            }
-
-            Button("Cancel") {
-                dismiss()
-            }
-            .buttonStyle(.bordered)
-            .padding(.top)
-        }
-        .padding()
-        .desktopSheetFrame(width: 600, height: 600)
-    }
-
-    func bodyPartIcon(_ part: String) -> String {
-        switch part {
-        case "Chest": return "heart.fill"
-        case "Back": return "figure.strengthtraining.traditional"
-        case "Shoulders": return "arrow.up.circle.fill"
-        case "Biceps", "Triceps": return "figure.arms.open"
-        case "Legs", "Quads", "Hamstrings", "Glutes", "Calves": return "figure.walk"
-        case "Core", "Abs": return "circle.grid.cross.fill"
-        default: return "figure.strengthtraining.traditional"
-        }
-    }
-
-    func calculateAIPresets(for exercise: ExerciseTemplate) {
-        // AI coaching based on mesocycle phase
-        let phase = workoutManager.currentMesocyclePhase
-
-        switch phase {
-        case "Strength":
-            suggestedReps = exercise.difficulty == .advanced ? 3 : 5
-            suggestedSets = 5
-        case "Hypertrophy":
-            suggestedReps = 10
-            suggestedSets = 4
-        case "Endurance":
-            suggestedReps = 15
-            suggestedSets = 3
-        default:
-            suggestedReps = 10
-            suggestedSets = 3
-        }
-
-        // Estimate weight based on exercise history
-        suggestedWeight = estimateWeight(for: exercise.name)
-    }
-
-    func estimateWeight(for exerciseName: String) -> Double {
-        // Look at previous workouts for this exercise
-        let previousSets = workoutManager.sessions
-            .flatMap { $0.exercises }
-            .filter { $0.name == exerciseName }
-            .flatMap { $0.sets }
-            .filter { $0.completed }
-
-        if let lastWeight = previousSets.last?.weight {
-            // Progressive overload: suggest 5 lbs more than last time
-            return lastWeight + 5
-        }
-
-        // Default weights for common exercises
-        switch exerciseName {
-        case "Barbell Bench Press": return 135
-        case "Squat": return 185
-        case "Deadlift": return 225
-        case "Overhead Press": return 95
-        case "Barbell Row": return 115
-        default: return 95
-        }
-    }
-
-    func getCoachingTip() -> String {
-        let phase = workoutManager.currentMesocyclePhase
-
-        switch phase {
-        case "Strength":
-            return "💡 Strength phase: Focus on heavy weight with low reps. Rest 3-5 minutes between sets."
-        case "Hypertrophy":
-            return "💡 Hypertrophy phase: Moderate weight with 8-12 reps for muscle growth. Rest 60-90 seconds."
-        case "Endurance":
-            return "💡 Endurance phase: Lighter weight with higher reps. Rest 30-60 seconds between sets."
-        default:
-            return "💡 Focus on proper form and progressive overload."
-        }
-    }
-}
-
-struct ExerciseTemplate {
-    let name: String
-    let difficulty: Difficulty
-
-    enum Difficulty: String {
-        case beginner = "Beginner"
-        case intermediate = "Intermediate"
-        case advanced = "Advanced"
-    }
-}
-
-struct GenerateProgramSheet: View {
-    @State private var weeks = 12
-    @State private var daysPerWeek = 5
-    @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var workoutManager: WorkoutManager
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Generate Workout Program")
-                .font(.title2)
-                .bold()
-
-            Text("Uses your Python workout generator")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Form {
-                HStack {
-                    Text("Duration (weeks)")
-                    Spacer()
-                    TextField("Weeks", value: $weeks, format: .number)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 80)
-                }
-
-                HStack {
-                    Text("Days per week")
-                    Spacer()
-                    TextField("Days", value: $daysPerWeek, format: .number)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 80)
-                }
-            }
-            .formStyle(.grouped)
-
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                .buttonStyle(.bordered)
-
-                Button("Generate") {
-                    workoutManager.generateProgramFromPython(weeks: weeks, daysPerWeek: daysPerWeek)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding()
-        .desktopSheetFrame(width: 450, height: 350)
+        .buttonStyle(.plain)
     }
 }
 
@@ -5369,8 +4560,6 @@ struct OnboardingView: View {
     }
 
     func completeOnboarding() {
-        print("🎯 completeOnboarding() called")
-
         // Save user profile to WorkoutManager
         guard let age = Int(userAge),
               let weight = Double(userWeight),
@@ -5378,15 +4567,11 @@ struct OnboardingView: View {
               let bench = Int(benchPress5RM),
               let squat = Int(squat5RM),
               let deadlift = Int(deadlift5RM) else {
-            print("❌ Failed to parse onboarding values")
-            print("Age: \(userAge), Weight: \(userWeight), Height: \(userHeight)")
-            print("Bench: \(benchPress5RM), Squat: \(squat5RM), Deadlift: \(deadlift5RM)")
             errorMessage = "Please enter valid numbers for all fields"
             showError = true
             return
         }
 
-        print("✅ Creating user profile...")
         let profile = UserProfile(
             name: userName,
             age: age,
@@ -5408,12 +4593,10 @@ struct OnboardingView: View {
         // collects the full training preferences before generating.
         workoutManager.saveData()
 
-        print("✅ Completing onboarding, setting hasCompletedOnboarding = true")
         hasCompletedOnboarding = true
 
         // Force UserDefaults to sync
         UserDefaults.standard.synchronize()
-        print("✅ hasCompletedOnboarding is now: \(hasCompletedOnboarding)")
     }
 }
 
@@ -5458,29 +4641,29 @@ struct WelcomeStep: View {
             VStack(alignment: .leading, spacing: 20) {
                 FeatureRow(
                     icon: "brain.head.profile",
-                    title: "AI Coaching",
-                    description: "Personalized workout recommendations based on your progress",
+                    title: "Smart Progression",
+                    description: "Next-session targets from your own sets, plus an AI program reviewer",
                     color: .brandPurple
                 )
 
                 FeatureRow(
                     icon: "chart.line.uptrend.xyaxis",
-                    title: "Mesocycle Training",
-                    description: "12-week periodized programs for optimal gains",
+                    title: "Programs and Phases",
+                    description: "16 ready-made programs, a program builder and mesocycle phases",
                     color: .brandBlue
                 )
 
                 FeatureRow(
                     icon: "dumbbell.fill",
-                    title: "10,000+ Exercises",
-                    description: "Complete wger exercise database with videos & instructions",
+                    title: "876 Exercises",
+                    description: "Searchable by muscle and equipment, each with step-by-step instructions",
                     color: .brandGreen
                 )
 
                 FeatureRow(
                     icon: "calendar.badge.clock",
-                    title: "Smart Tracking",
-                    description: "Progress visualization with calendar heatmaps",
+                    title: "Progress Tracking",
+                    description: "Personal records, weekly sets per muscle and a 12-month calendar",
                     color: .brandOrange
                 )
             }
@@ -5769,7 +4952,7 @@ struct BasicInfoStep: View {
                             .frame(width: 90)
                             .focused($focusedField, equals: .age)
                             .onSubmit { focusedField = .weight }
-                            .onChange(of: userAge) { v in
+                            .onChange(of: userAge) { _, v in
                                 userAge = String(v.filter(\.isNumber).prefix(3))
                             }
                     }
@@ -5800,7 +4983,7 @@ struct BasicInfoStep: View {
                                 .font(.title3)
                                 .frame(width: 110)
                                 .focused($focusedField, equals: .weight)
-                                .onChange(of: userWeight) { v in
+                                .onChange(of: userWeight) { _, v in
                                     userWeight = String(v.filter { $0.isNumber || $0 == "." }.prefix(6))
                                 }
                         }
@@ -6324,11 +5507,51 @@ struct UserProfile: Codable {
 }
 
 struct ScheduledWorkout: Identifiable, Codable {
-    let id = UUID()
+    var id = UUID()
     var dayOfWeek: String
     var workoutType: String
+    /// Exercise names as shown. Older saves may carry a scheme suffix
+    /// ("Bench Press 4x8"); `plannedExercises` splits it off.
     var exercises: [String]
     var estimatedDuration: Int // minutes
     var completed: Bool = false
     var date: Date?
+    /// The prescription for each exercise, aligned with `exercises`.
+    var plan: [PlannedExercise]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, dayOfWeek, workoutType, exercises, estimatedDuration, completed, date, plan
+    }
+
+    /// One entry per exercise: the stored prescription when it still matches
+    /// the name, otherwise whatever scheme the name carries.
+    var plannedExercises: [PlannedExercise] {
+        exercises.enumerated().map { i, name in
+            if let plan, plan.indices.contains(i), plan[i].name == name { return plan[i] }
+            return ProgramTargetParser.parse(name)
+        }
+    }
+
+    /// Moves any "4x8" suffix out of the names and into `plan`.
+    mutating func normalizePlan() {
+        let planned = plannedExercises
+        plan = planned
+        exercises = planned.map(\.name)
+    }
+}
+
+extension ScheduledWorkout {
+    /// Tolerant: the id used to regenerate on every launch (it was never
+    /// saved), and `plan` is new.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID()
+        dayOfWeek = (try? c.decodeIfPresent(String.self, forKey: .dayOfWeek)) ?? ""
+        workoutType = (try? c.decodeIfPresent(String.self, forKey: .workoutType)) ?? "Workout"
+        exercises = (try? c.decodeIfPresent([String].self, forKey: .exercises)) ?? []
+        estimatedDuration = (try? c.decodeIfPresent(Int.self, forKey: .estimatedDuration)) ?? 60
+        completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? false
+        date = try? c.decodeIfPresent(Date.self, forKey: .date)
+        plan = try? c.decodeIfPresent([PlannedExercise].self, forKey: .plan)
+    }
 }

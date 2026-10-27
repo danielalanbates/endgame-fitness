@@ -245,7 +245,7 @@ struct ProgramWizardView: View {
             card("Training Days", icon: "calendar") {
                 Stepper("Days per week: \(config.daysPerWeek)",
                         value: $config.daysPerWeek, in: 2...6)
-                    .onChange(of: config.daysPerWeek) { _ in trimWeekdays() }
+                    .onChange(of: config.daysPerWeek) { _, _ in trimWeekdays() }
 
                 Text("Which days?")
                     .font(.subheadline)
