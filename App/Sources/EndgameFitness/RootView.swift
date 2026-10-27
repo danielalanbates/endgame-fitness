@@ -85,13 +85,19 @@ struct RootView: View {
             .overlay { RewardToastOverlay() }
             .overlay {
                 if let level = celebratingLevel {
-                    LevelUpOverlay(level: level, hasPointToSpend: (game.profile?.talentPoints ?? 0) > 0) {
+                    LevelUpOverlay(level: level, hasPointToSpend: hasTalentToSpend) {
                         celebratingLevel = nil
                     }
                     .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: celebratingLevel)
+    }
+
+    /// Points are only worth announcing while the tree has room for them.
+    private var hasTalentToSpend: Bool {
+        guard (game.profile?.talentPoints ?? 0) > 0 else { return false }
+        return (game.talents?.remainingCapacity ?? 1) > 0
     }
 
     // MARK: Gate

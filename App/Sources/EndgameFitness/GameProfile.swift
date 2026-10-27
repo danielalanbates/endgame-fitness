@@ -1465,6 +1465,9 @@ final class GameProfileService: ObservableObject {
         queue.append(session)
         setPending(queue, for: account)
 
+        // A sync already in flight captured the queue before this session was
+        // added: have it go round once more instead of dropping the request.
+        if isSyncing { syncAgain = true }
         Task { await sync() }
     }
 
@@ -1563,12 +1566,7 @@ final class GameProfileService: ObservableObject {
     /// everything the server had was received.
     @discardableResult
     func sync() async -> Bool {
-        guard auth.isSignedIn, let account = accountID else { return false }
-        if isSyncing {
-            // A workout finished mid-sync: go again once this pass is done.
-            syncAgain = true
-            return false
-        }
+        guard auth.isSignedIn, let account = accountID, !isSyncing else { return false }
         isSyncing = true
         defer { isSyncing = false }
 

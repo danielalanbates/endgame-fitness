@@ -17,6 +17,7 @@ import SwiftUI
 struct ChallengesView: View {
     @ObservedObject var game = GameProfileService.shared
     @State private var showCreate = false
+    @State private var respondError: String?
 
     var body: some View {
         ScrollView {
@@ -36,8 +37,11 @@ struct ChallengesView: View {
                     sectionHeader("Invites")
                     ForEach(game.pendingChallenges) { challenge in
                         PendingChallengeRow(challenge: challenge) { accept in
-                            Task { await game.respondToChallenge(id: challenge.id, accept: accept) }
+                            Task { respondError = await game.respondToChallenge(id: challenge.id, accept: accept) }
                         }
+                    }
+                    if let respondError {
+                        Text(respondError).font(.caption).foregroundStyle(.red)
                     }
                 }
 
