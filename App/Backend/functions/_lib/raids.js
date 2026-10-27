@@ -125,9 +125,11 @@ export function bossForWeek(epoch) {
   return BOSS_CATALOG[weekIndex(epoch) % BOSS_CATALOG.length];
 }
 
-/** Boss hp scales with guild size so a 3-person crew and a 25-person crew both have a fight. */
+export const MAX_GUILD_MEMBERS = 50;
+
+/** Boss hp scales with guild size so a 3-person crew and a 50-person crew both have a fight. */
 export function hpForGuild(boss, memberCount) {
-  const members = Math.min(25, Math.max(1, Math.floor(Number(memberCount) || 1)));
+  const members = Math.min(MAX_GUILD_MEMBERS, Math.max(1, Math.floor(Number(memberCount) || 1)));
   return Math.round(boss.base_hp * members);
 }
 
@@ -136,8 +138,9 @@ export const DAMAGE_PER_PR = 250;
 export const MAX_PRS_PER_SESSION = 20; // the client reports PRs, so bound the blast radius
 
 /**
- * Damage one synced session deals. Volume is sum(reps * weight) in lb as
- * reported by the client; each new personal record is worth a flat bonus.
+ * Damage one synced session deals. Volume is sum(reps * weight) in lb as the
+ * server recomputed it from the session's sets (flagged sessions deal none);
+ * each new personal record is worth a flat bonus.
  */
 export function raidDamage({ total_volume = 0, pr_count = 0 } = {}) {
   const volume = Math.max(0, Number(total_volume) || 0);
