@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiGetProfile, apiSync } from '../api';
+import { apiGetProfile, apiPullHistory } from '../api';
 import { Empty, Loading } from '../components/ui';
 
 interface SessionRow {
@@ -9,6 +9,7 @@ interface SessionRow {
   total_volume: number;
   total_reps: number;
   xp_earned: number;
+  deleted?: boolean | number;
   payload: { exercises?: { name: string; sets: { reps: number; weight: number }[] }[] } | null;
 }
 
@@ -35,11 +36,12 @@ export default function Progress() {
   useEffect(() => {
     (async () => {
       try {
-        const [syncRes, prof] = await Promise.all([
-          apiSync([], 0),
+        // Full history, paged with the v2 sync cursor (not just the first page).
+        const [history, prof] = await Promise.all([
+          apiPullHistory<SessionRow>(),
           apiGetProfile(),
         ]);
-        const rows = (syncRes.sessions as SessionRow[]).sort((a, b) => b.performed_at - a.performed_at);
+        const rows = history.sort((a, b) => b.performed_at - a.performed_at);
         setSessions(rows);
         setPrs((prof.personal_records as PR[]).sort((a, b) => b.weight - a.weight));
       } catch {

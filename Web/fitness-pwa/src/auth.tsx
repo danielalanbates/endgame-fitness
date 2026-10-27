@@ -13,6 +13,39 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+// Reasons functions/membership.js can send back as ?signin_error=<reason>
+// after a Google or Apple sign-in. Never render the raw value.
+const SIGNIN_ERRORS: Record<string, string> = {
+  access_denied: 'Sign-in was cancelled.',
+  state_mismatch: 'That sign-in attempt expired or was interrupted. Please try again.',
+  code_replayed: 'That sign-in link had already been used. Please try again.',
+  token_rejected: "The provider's response could not be verified. Please try again.",
+  no_identity_token: 'Apple did not return a sign-in token. Please try again.',
+  bad_response: 'The response from Apple was malformed. Please try again.',
+  not_configured: 'This sign-in method is not available right now. Use email and password instead.',
+  account_exists:
+    'An account with this email already exists, and the provider has not confirmed the address. Sign in with your password instead.',
+  server_error: 'Something went wrong on our end. Please try again.',
+};
+
+/** Read and strip the OAuth return markers so a reload does not replay them. */
+function takeSigninResult(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get('signin_error');
+    if (reason !== null || params.has('signed_in')) {
+      params.delete('signin_error');
+      params.delete('signed_in');
+      const rest = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+    }
+    if (reason === null) return null;
+    return SIGNIN_ERRORS[reason] || 'Sign-in did not complete. Please try again.';
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [ready, setReady] = useState(false);
@@ -20,6 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    const signinError = takeSigninResult();
+    if (signinError) setError(signinError);
     (async () => {
       // Always ask the backend: it accepts the stored Bearer <redacted> AND the
       // website's batesai_session cookie (same-origin, sent automatically), so

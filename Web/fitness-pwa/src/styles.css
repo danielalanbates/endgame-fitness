@@ -149,6 +149,15 @@ input, select, textarea { font: inherit; color: var(--text); }
 
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.field textarea {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  padding: 12px 14px;
+  font-size: 16px;
+  width: 100%;
+  resize: vertical;
+}
 .field input, .field select {
   min-height: 48px;
   border-radius: 12px;
@@ -299,6 +308,32 @@ input, select, textarea { font: inherit; color: var(--text); }
   box-shadow: 0 12px 40px rgba(124, 92, 255, 0.5);
   margin: 0 auto;
 }
+/* Sign in with Apple / Google: the providers' white button style, which both
+   allow on dark backgrounds. Links styled as buttons, so no underline. */
+.btn-provider {
+  background: #ffffff;
+  color: #1f1f1f;
+  border: 1px solid #747775;
+  text-decoration: none;
+  font-weight: 600;
+}
+.provider-logo { width: 18px; height: 18px; flex: none; }
+.auth-divider {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+}
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.auth-wrap a:not(.btn) { color: var(--text); }
+
+.class-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 99px;
+  border: 1px solid var(--accent); color: var(--text);
+  font-size: 12px; font-weight: 700;
+}
+.player-title { color: var(--gold); font-weight: 700; font-size: 13px; }
+.player-bio { margin: 12px 0 0; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 .error-box {
   background: #2a1420;
   border: 1px solid var(--danger);
