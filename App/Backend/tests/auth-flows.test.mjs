@@ -485,6 +485,21 @@ console.log('\nAccount pre-hijack and identity linking\n');
 }
 
 /* ------------------------------------------------------------------ */
+/* Logout                                                              */
+/* ------------------------------------------------------------------ */
+
+console.log('\nLogout\n');
+{
+  const creds = { email: 'legacy@example.com', password: 'old password' };
+  const bearer = (await api('POST', 'login', { body: creds })).data.token;
+  const cookie = (await api('POST', 'login', { body: creds })).data.token;
+  const out = await api('POST', 'logout', { token: bearer, cookie: `batesai_session=${cookie}` });
+  check('logout ends the Bearer session', (await api('GET', 'verify', { token: bearer })).status === 401);
+  check('…and the cookie session sent alongside it', (await api('GET', 'verify', { cookie: `batesai_session=${cookie}` })).status === 401);
+  check('…and clears the cookie', /Max-Age=0/.test(cookiesOf(out.headers).batesai_session?.raw || ''));
+}
+
+/* ------------------------------------------------------------------ */
 /* Rate limits                                                         */
 /* ------------------------------------------------------------------ */
 

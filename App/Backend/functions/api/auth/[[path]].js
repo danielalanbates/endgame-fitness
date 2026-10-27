@@ -767,15 +767,22 @@ async function handleVerify(request, env) {
 
 async function handleLogout(request, env) {
   const authHeader = request.headers.get('Authorization') || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : readCookie(request, 'batesai_session');
-  if (token) {
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const cookie = readCookie(request, 'batesai_session') || '';
+  // A same-origin web client (the PWA) can hold both a stored Bearer token and
+  // the website cookie. Ending only one would leave it signed in by the other.
+  for (const token of new Set([bearer, cookie].filter(Boolean))) {
     try {
       await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256Hex(token)).run();
     } catch (e) {
       console.error('Logout cleanup failed:', e && e.message);
     }
   }
-  return json({ message: 'Logged out successfully' }, 200);
+  const res = json({ message: 'Logged out successfully' }, 200);
+  if (cookie) {
+    res.headers.append('Set-Cookie', 'batesai_session=; Path=/; Max-Age=0; SameSite=Lax; Secure; HttpOnly');
+  }
+  return res;
 }
 
 /* ------------------------------------------------------------------ */
