@@ -176,7 +176,9 @@ private struct EmptyWorkoutHint: View {
                 .foregroundStyle(.secondary)
             Text("Add your first exercise")
                 .font(.headline)
-            Text("Search 876 exercises by name, muscle or equipment, or type your own.")
+            Text(ExerciseLibrary.shared.count > 0
+                 ? "Search \(ExerciseLibrary.shared.count) exercises by name, muscle or equipment, or type your own."
+                 : "Type the name of an exercise to add it.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

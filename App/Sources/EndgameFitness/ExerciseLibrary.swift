@@ -176,7 +176,8 @@ final class ExerciseLibrary {
         s = String(s.map { $0.isLetter || $0.isNumber ? $0 : " " })
         let words = s.split(separator: " ").map { word -> String in
             var w = String(word)
-            if w.count > 3, w.hasSuffix("s"), !w.hasSuffix("ss") { w.removeLast() }
+            // "ups" counts too, so "pull-ups" matches "pull up".
+            if w.count > 2, w.hasSuffix("s"), !w.hasSuffix("ss"), !w.hasSuffix("us") { w.removeLast() }
             return w
         }
         return words.joined(separator: " ")

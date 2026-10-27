@@ -364,8 +364,13 @@ class WorkoutManager: ObservableObject {
 
     /// Replaces one exercise of the workout in progress (field edits).
     func updateExercise(_ exercise: Exercise) {
-        guard let i = currentWorkout?.exercises.firstIndex(where: { $0.id == exercise.id }) else { return }
+        guard let i = currentWorkout?.exercises.firstIndex(where: { $0.id == exercise.id }),
+              let before = currentWorkout?.exercises[i] else { return }
         currentWorkout?.exercises[i] = exercise
+        // A completed set was deleted: the running XP estimate must drop too.
+        if exercise.completedSets.count < before.completedSets.count, let workout = currentWorkout {
+            SessionGame.shared.recalculate(for: workout, history: loggedSessions)
+        }
     }
 
     /// The check button. Returns false when the set is missing reps/load (or a
@@ -483,7 +488,9 @@ class WorkoutManager: ObservableObject {
             exercise.sets = exercise.sets.filter(\.completed)
             return exercise.sets.isEmpty ? nil : exercise
         }
-        session.clientRev = max(sessions[i].clientRev, session.clientRev, 0) + 1
+        // At least 2: sessions saved by older builds have no local revision but
+        // were uploaded as revision 1, and the server ignores a same-revision replay.
+        session.clientRev = max(sessions[i].clientRev, session.clientRev, 1) + 1
         session.updatedAt = Date()
         sessions[i] = session
         sessions.sort { $0.date < $1.date }
@@ -495,7 +502,7 @@ class WorkoutManager: ObservableObject {
     func deleteSession(_ id: UUID) {
         guard let i = sessions.firstIndex(where: { $0.id == id }) else { return }
         var session = sessions[i]
-        session.clientRev = max(session.clientRev, 0) + 1
+        session.clientRev = max(session.clientRev, 1) + 1
         session.updatedAt = Date()
         sessions.remove(at: i)
         tombstones[session.syncID.lowercased()] = session.clientRev
@@ -2072,6 +2079,25 @@ struct WorkoutView: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        // The stack only hosts the keyboard toolbar: number pads have no
+        // return key, so "Done" sits above them.
+        NavigationStack {
+            screen
+                .toolbar(.hidden, for: .navigationBar)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { Platform.dismissKeyboard() }
+                    }
+                }
+        }
+        #else
+        screen
+        #endif
+    }
+
+    private var screen: some View {
         Group {
             if workoutManager.isWorkoutActive, workoutManager.currentWorkout != nil {
                 ActiveWorkoutView(summary: $sessionSummary)
@@ -2944,6 +2970,7 @@ struct ToolDetailView: View {
 
 // Individual Calculator Views
 struct OneRMCalculatorView: View {
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @State private var weight = ""
     @State private var reps = ""
     @State private var oneRM: Double?
@@ -2954,8 +2981,11 @@ struct OneRMCalculatorView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Weight Lifted")
                         .font(.headline)
-                    TextField("Enter weight (lbs)", text: $weight)
+                    TextField("Enter weight (\(TrainingUnits.unit(forPreference: unitPreference).label))", text: $weight)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -2963,6 +2993,9 @@ struct OneRMCalculatorView: View {
                         .font(.headline)
                     TextField("Enter reps", text: $reps)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        #endif
                 }
 
                 Button("Calculate") {
@@ -2976,7 +3009,7 @@ struct OneRMCalculatorView: View {
                         Text("Your Estimated 1RM")
                             .font(.headline)
                             .foregroundColor(.secondary)
-                        Text("\(Int(result)) lbs")
+                        Text("\(Int(result)) \(TrainingUnits.unit(forPreference: unitPreference).label)")
                             .font(.system(size: 48, weight: .bold))
                             .foregroundColor(.brandPurple)
                     }
@@ -2991,9 +3024,9 @@ struct OneRMCalculatorView: View {
     }
 
     func calculateOneRM() {
-        guard let w = Double(weight), let r = Double(reps), r > 0 else { return }
-        // Epley formula: 1RM = w * (1 + r/30)
-        oneRM = w * (1 + r / 30)
+        guard let w = Double(weight.replacingOccurrences(of: ",", with: ".")), let r = Int(reps), r > 0 else { return }
+        // Epley, the same estimate the Progress tab shows.
+        oneRM = ProgressionEngine.e1RM(weight: w, reps: r)
     }
 }
 
@@ -3365,6 +3398,7 @@ struct PlateCalculatorView: View {
 }
 
 struct RepMaxChartView: View {
+    @AppStorage(TrainingUnits.preferenceKey) private var unitPreference = "imperial"
     @State private var oneRM = ""
     @State private var percentages: [(percent: Int, weight: Int)] = []
 
@@ -3372,10 +3406,13 @@ struct RepMaxChartView: View {
         ScrollView {
             VStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("1 Rep Max (lbs)")
+                    Text("1 Rep Max (\(TrainingUnits.unit(forPreference: unitPreference).label))")
                         .font(.headline)
                     TextField("Enter 1RM", text: $oneRM)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
                 }
 
                 Button("Calculate") {
@@ -3397,7 +3434,7 @@ struct RepMaxChartView: View {
                                     .bold()
                                     .frame(width: 60, alignment: .leading)
                                 Spacer()
-                                Text("\(item.weight) lbs")
+                                Text("\(item.weight) \(TrainingUnits.unit(forPreference: unitPreference).label)")
                                     .font(.title3)
                                     .foregroundColor(.purple)
                             }
@@ -4921,7 +4958,7 @@ struct BasicInfoStep: View {
                             .frame(width: 90)
                             .focused($focusedField, equals: .age)
                             .onSubmit { focusedField = .weight }
-                            .onChange(of: userAge) { v in
+                            .onChange(of: userAge) { _, v in
                                 userAge = String(v.filter(\.isNumber).prefix(3))
                             }
                     }
@@ -4952,7 +4989,7 @@ struct BasicInfoStep: View {
                                 .font(.title3)
                                 .frame(width: 110)
                                 .focused($focusedField, equals: .weight)
-                                .onChange(of: userWeight) { v in
+                                .onChange(of: userWeight) { _, v in
                                     userWeight = String(v.filter { $0.isNumber || $0 == "." }.prefix(6))
                                 }
                         }

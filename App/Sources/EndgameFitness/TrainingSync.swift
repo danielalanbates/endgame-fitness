@@ -128,92 +128,18 @@ extension WorkoutManager {
 
     // MARK: Download
 
-    /// Merges a page of pulled workouts. Safe to call repeatedly with the same
-    /// data: the same revision changes nothing.
+    /// Merges a page of pulled workouts (rules: HistoryMerge.swift). Safe to
+    /// call repeatedly with the same data: the same revision changes nothing.
     func mergePulled(_ remotes: [RemoteWorkout]) {
         guard !remotes.isEmpty else { return }
-        var list = sessions
-        var dead = tombstones
-        var indexByID: [String: Int] = [:]
-        for (i, s) in list.enumerated() {
-            indexByID[s.syncID.lowercased()] = i
-            indexByID[s.id.uuidString.lowercased()] = i
-        }
-        var changed = false
-        var removed: Set<Int> = []
-
-        for remote in remotes {
-            let key = remote.id.lowercased()
-            let rev = max(remote.clientRev ?? 1, 1)
-            let localIndex = indexByID[key].flatMap { removed.contains($0) ? nil : $0 }
-
-            if remote.deleted == true {
-                if let i = localIndex, list[i].clientRev <= rev {
-                    removed.insert(i)
-                    changed = true
-                }
-                if (dead[key] ?? 0) < rev { dead[key] = rev; changed = true }
-                continue
-            }
-            if let deletedRev = dead[key], deletedRev >= rev { continue }
-
-            if let i = localIndex {
-                guard rev > list[i].clientRev else { continue }
-                list[i] = Self.session(from: remote, localID: list[i].id)
-                changed = true
-            } else {
-                list.append(Self.session(from: remote, localID: nil))
-                indexByID[key] = list.count - 1
-                changed = true
-            }
-        }
-        guard changed else { return }
-        sessions = list.enumerated().filter { !removed.contains($0.offset) }.map(\.element).sorted { $0.date < $1.date }
-        tombstones = dead
+        let result = HistoryMerge.merge(remotes, into: sessions, tombstones: tombstones)
+        guard result.changed else { return }
+        sessions = result.sessions
+        tombstones = result.tombstones
         saveSessionsNow()
     }
 
-    /// A pulled workout as a local session. Every pulled set is a completed set.
-    static func session(from remote: RemoteWorkout, localID: UUID?) -> WorkoutSession {
-        let uuid = UUID(uuidString: remote.id)
-        let exercises: [Exercise] = (remote.payload?.exercises ?? []).map { e in
-            var exercise = Exercise(
-                name: e.name,
-                sets: e.sets.map { ExerciseSet(reps: $0.reps, weight: $0.weight, completed: true, rir: $0.rir) },
-                exerciseID: e.exerciseID,
-                category: e.category,
-                primaryMuscles: e.primaryMuscles
-            )
-            attachLibraryMatch(&exercise)
-            return exercise
-        }
-        let hasDetail = !exercises.isEmpty
-        return WorkoutSession(
-            id: localID ?? uuid ?? UUID(),
-            date: Date(timeIntervalSince1970: TimeInterval(remote.performedAt)),
-            programName: remote.name,
-            exercises: exercises,
-            notes: remote.payload?.notes,
-            duration: remote.durationSecs.map(TimeInterval.init),
-            completed: true,
-            clientRev: max(remote.clientRev ?? 1, 1),
-            updatedAt: remote.updatedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) },
-            remoteID: uuid == nil ? remote.id : nil,
-            syncedTotalVolume: hasDetail ? nil : remote.totalVolume,
-            syncedTotalReps: hasDetail ? nil : remote.totalReps,
-            xpEarned: remote.xpEarned
-        )
-    }
-
-    /// Fills the library id, category and muscles for a free-text name when the
-    /// library has an unambiguous match. The lifter's name is kept, minus any
-    /// "4x10" scheme suffix older programs left in it.
     static func attachLibraryMatch(_ exercise: inout Exercise) {
-        let cleaned = ProgramTargetParser.parse(exercise.name).name
-        if !cleaned.isEmpty, cleaned != exercise.name { exercise.name = cleaned }
-        guard exercise.exerciseID == nil, let entry = ExerciseLibrary.shared.match(name: exercise.name) else { return }
-        exercise.exerciseID = entry.id
-        if exercise.category == nil { exercise.category = entry.category }
-        if exercise.primaryMuscles?.isEmpty ?? true { exercise.primaryMuscles = entry.primary }
+        HistoryMerge.attachLibraryMatch(&exercise)
     }
 }
