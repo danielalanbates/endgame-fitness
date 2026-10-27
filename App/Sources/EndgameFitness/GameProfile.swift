@@ -1451,7 +1451,9 @@ final class GameProfileService: ObservableObject {
         ))
     }
 
-    private func enqueue(_ session: SyncSession) {
+    /// Queue any session (new, edited or a tombstone). The training log reaches
+    /// this through `WorkoutSyncBridge.enqueue` for history edits and deletes.
+    func enqueue(_ session: SyncSession) {
         guard let account = accountID else { return }
         var session = session
         var revs = revisions(for: account)

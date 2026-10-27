@@ -38,7 +38,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>The AI form coach uses the camera on-device to check your lifting technique. Video is not uploaded or stored.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Endgame Fitness reads your workouts and body metrics so your training history and progress stay accurate across devices.</string>
+	<string>Endgame Fitness reads your steps and active energy to show them on your dashboard and to complete the daily Step Count quest. Only today's totals are sent to your batesai.org account.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Endgame Fitness saves completed workouts to Health so they count toward your activity rings.</string>
 	<key>UILaunchScreen</key>

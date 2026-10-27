@@ -1310,8 +1310,30 @@ extension String {
         case "aura_verdant": return Color(red: 0.2, green: 0.8, blue: 0.4)
         case "aura_violet":  return Color(red: 0.8, green: 0.4, blue: 0.9)
         case "aura_gold":    return Color.brandYellow
+        // Season auras — same hex values as _lib/seasons.js on the server.
+        case "aura_dawn":     return Color(hex: 0xFFB347)
+        case "aura_daybreak": return Color(hex: 0xFF7A45)
+        case "aura_frost":    return Color(hex: 0x8FD3FF)
+        case "aura_glacier":  return Color(hex: 0x4A90E2)
+        case "aura_storm":    return Color(hex: 0x7B8CDE)
+        case "aura_thunder":  return Color(hex: 0xFFE066)
+        case "aura_sprout":   return Color(hex: 0x7ED957)
+        case "aura_grove":    return Color(hex: 0x2E8B57)
+        case "aura_cinder":   return Color(hex: 0xFF6B3D)
+        case "aura_inferno":  return Color(hex: 0xD7263D)
+        case "aura_star":     return Color(hex: 0xC7B8FF)
+        case "aura_nova":     return Color(hex: 0xF5E663)
         case "":             return Color.clear
         default:             return Color.brandPurple   // season and future auras
         }
+    }
+}
+
+extension Color {
+    /// 0xRRGGBB, matching the server's "#RRGGBB" palette entries.
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255,
+                  green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255)
     }
 }

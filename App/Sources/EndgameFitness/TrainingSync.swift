@@ -91,6 +91,9 @@ extension WorkoutManager {
     @MainActor
     func installSyncHooks() {
         guard authObserver == nil else { return }
+        WorkoutSyncBridge.enqueue = { session in
+            GameProfileService.shared.enqueue(session)
+        }
         WorkoutSyncBridge.receivePulled = { remotes in
             WorkoutManager.shared.mergePulled(remotes)
         }

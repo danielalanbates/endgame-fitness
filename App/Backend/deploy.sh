@@ -66,26 +66,13 @@ apply_sql_file() {
   # statement at a time and "duplicate column name" is treated as done.
   local file="$1" stmt out
   echo "==> Applying $(basename "$file")"
-  python3 - "$file" > "$WRANGLER_CWD/stmts.txt" <<'PY'
-import sys, re
-sql = open(sys.argv[1]).read()
-sql = re.sub(r'--[^\n]*', '', sql)          # strip line comments
-parts, buf, depth = [], [], 0
-for tok in re.split(r'(;|\bBEGIN\b|\bEND\b)', sql, flags=re.I):
-    up = tok.upper()
-    if up == 'BEGIN': depth += 1
-    if up == 'END' and depth: depth -= 1
-    if tok == ';' and depth == 0:
-        s = ''.join(buf).strip()
-        if s: parts.append(s + ';')
-        buf = []
-    else:
-        buf.append(tok)
-tail = ''.join(buf).strip()
-if tail: parts.append(tail + ';')
-for p in parts:
-    print(p.replace('\n', ' ') + '\0', end='')
-PY
+  # Same splitter the test suite uses (tests/lib/d1.mjs), NUL-separated.
+  node --input-type=module -e "
+    import { splitStatements } from '$BACKEND_DIR/tests/lib/d1.mjs';
+    import { readFileSync } from 'node:fs';
+    for (const s of splitStatements(readFileSync(process.argv[1], 'utf8')))
+      process.stdout.write(s.replace(/\\n/g, ' ') + '\\0');
+  " "$file" > "$WRANGLER_CWD/stmts.txt"
   while IFS= read -r -d '' stmt; do
     [ -n "${stmt// }" ] || continue
     if $DRY_RUN; then echo "  [dry-run] d1 execute: ${stmt:0:90}…"; continue; fi

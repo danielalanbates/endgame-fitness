@@ -15,6 +15,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
+import { splitStatements } from './lib/d1.mjs';
 import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -80,16 +81,20 @@ function makeD1(db) {
 
 const sqlite = new DatabaseSync(':memory:');
 sqlite.exec('PRAGMA foreign_keys = ON'); // D1 enforces foreign keys
-// schema.sql documents the friend_code column as a hand-applied ALTER (live D1
-// has it) but leaves the statement commented out, so a fresh database needs it
-// run explicitly before the index that references it.
-sqlite.exec(readFileSync(join(backend, 'schema.sql'), 'utf8')
-  .replace('-- ALTER TABLE fitness_profiles ADD COLUMN friend_code TEXT;',
-    'ALTER TABLE fitness_profiles ADD COLUMN friend_code TEXT;'));
+// Same order and mode as deploy.sh: schema.sql, then every migration one
+// statement at a time ("duplicate column name" = already applied).
+const applyFile = (path) => {
+  for (const stmt of splitStatements(readFileSync(path, 'utf8'))) {
+    try { sqlite.exec(stmt); } catch (e) {
+      if (!/duplicate column name/i.test(String(e && e.message))) throw e;
+    }
+  }
+};
+applyFile(join(backend, 'schema.sql'));
 const migrations = readdirSync(join(backend, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
 for (let pass = 0; pass < 2; pass++) {
   // Twice: deploy.sh re-runs every migration on each deploy.
-  for (const file of migrations) sqlite.exec(readFileSync(join(backend, 'migrations', file), 'utf8'));
+  for (const file of migrations) applyFile(join(backend, 'migrations', file));
 }
 const DB = makeD1(sqlite);
 const q = (sql, ...args) => sqlite.prepare(sql).all(...args).map((r) => ({ ...r }));
