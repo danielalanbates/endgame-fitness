@@ -11,6 +11,7 @@
 //     reads), and write access for strength-training workouts
 //   • reads today's step count and active kilocalories (HKStatisticsQuery)
 //   • keeps an HKObserverQuery on steps so the dashboard refreshes itself
+//     while the app is open
 //   • writes a finished session as an HKWorkout (.traditionalStrengthTraining)
 //     when the "Sync workouts to Apple Health" setting is on. Only sessions
 //     with at least one completed set are ever saved (WorkoutManager.
@@ -137,7 +138,9 @@ final class HealthKitManager: ObservableObject {
         }
         stepObserver = query
         store.execute(query)
-        store.enableBackgroundDelivery(for: stepType, frequency: .hourly) { _, _ in }
+        // No background delivery: it needs the healthkit.background-delivery
+        // entitlement, which the app does not have, and the numbers are only
+        // shown while the app is open.
     }
 
     // MARK: Writing workouts

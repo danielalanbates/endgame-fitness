@@ -653,9 +653,16 @@ struct ExerciseRestOverride: View {
                 .frame(width: Platform.isDesktop ? 56 : 64)
                 .accessibilityLabel("Rest seconds for \(exerciseName)")
                 .onChange(of: seconds) { _, new in
+                    // Only a value that differs from the default is an
+                    // override. Showing the default (onAppear) must not pin
+                    // it, or a later change to Default Rest Time would never
+                    // reach this exercise.
                     let key = SessionGameSettings.exerciseRestKey(exerciseName)
-                    if new > 0 { UserDefaults.standard.set(new, forKey: key) }
-                    else { UserDefaults.standard.removeObject(forKey: key) }
+                    if new > 0, new != SessionGameSettings.defaultRestSeconds {
+                        UserDefaults.standard.set(new, forKey: key)
+                    } else {
+                        UserDefaults.standard.removeObject(forKey: key)
+                    }
                 }
             Text("s")
                 .font(.caption)
