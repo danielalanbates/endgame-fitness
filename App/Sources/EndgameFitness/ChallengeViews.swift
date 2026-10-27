@@ -278,7 +278,11 @@ struct LiveDuelCard: View {
 
     var body: some View {
         if let challenge = featured {
-            Button(action: onOpen) {
+            Button {
+                // Community opens on Challenges, not the feed.
+                game.requestedCommunitySection = .challenges
+                onOpen()
+            } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Label(challenge.isDuel ? "Live duel" : "Guild challenge", systemImage: "flag.2.crossed.fill")
@@ -464,9 +468,15 @@ struct TodayCardCluster: View {
                 .symbolEffectIfAvailable(active: streak > 0)
             Text("\(streak)")
                 .font(.title2.monospacedDigit().bold())
-            Text(streak == 1 ? "day streak" : "day streak")
+            Text(streak == 0 && game.profile?.streakAlive == false ? "start a streak" : "day streak")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if let freezes = game.profile?.streakFreezes, freezes > 0 {
+                Label("\(freezes)", systemImage: "snowflake")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.brandBlue)
+                    .help("Streak freezes protect your streak on a missed day.")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(10)
@@ -566,6 +576,8 @@ struct FriendsStrip: View {
     let items: [ActivityItem]
     var onOpen: () -> Void = {}
 
+    @State private var selectedPlayer: PlayerRef?
+
     private var recent: [ActivityItem] {
         // One entry per friend, newest first.
         var seen = Set<String>()
@@ -592,32 +604,40 @@ struct FriendsStrip: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(recent) { item in
-                            HStack(spacing: 8) {
-                                ZStack(alignment: .bottomTrailing) {
-                                    ZStack {
-                                        Circle().fill(item.tint.opacity(0.2))
-                                        Text("\(item.level)").font(.caption2.bold())
-                                    }
-                                    .frame(width: 30, height: 30)
-                                    if isLive(item) {
-                                        Circle().fill(Color.brandGreen)
-                                            .frame(width: 9, height: 9)
-                                            .overlay(Circle().stroke(Color.platformControlBackground, lineWidth: 1.5))
-                                    }
-                                }
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(item.displayName).font(.caption.weight(.semibold)).lineLimit(1)
-                                    Text(item.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                                .frame(maxWidth: 150, alignment: .leading)
+                            Button {
+                                selectedPlayer = PlayerRef(id: item.userID, displayName: item.displayName)
+                            } label: {
+                                chip(item)
                             }
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(Color.platformControlBackground)
-                            .clipShape(Capsule())
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
+            .playerProfileSheet($selectedPlayer)
         }
     }
+
+    private func chip(_ item: ActivityItem) -> some View {
+        HStack(spacing: 8) {
+            ZStack(alignment: .bottomTrailing) {
+                AvatarBadgeView(config: nil, level: item.level, cosmetic: item.authorCosmetic,
+                                size: 30, tint: FitnessProfile.rankColor(for: item.level))
+                if isLive(item) {
+                    Circle().fill(Color.brandGreen)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(Color.platformControlBackground, lineWidth: 1.5))
+                }
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.displayName).font(.caption.weight(.semibold)).lineLimit(1)
+                Text(item.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: 150, alignment: .leading)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color.platformControlBackground)
+        .clipShape(Capsule())
+    }
 }
+
