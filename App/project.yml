@@ -39,6 +39,9 @@ targets:
       # 876 exercises from free-exercise-db (The Unlicense / public domain).
       - path: Resources/exercise_library.json
         buildPhase: resources
+      # Required-reason API + collected-data declarations (App Store privacy manifest).
+      - path: Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Endgame Fitness
@@ -75,6 +78,9 @@ targets:
       - path: Resources/Assets.xcassets
       # 876 exercises from free-exercise-db (The Unlicense / public domain).
       - path: Resources/exercise_library.json
+        buildPhase: resources
+      # Required-reason API + collected-data declarations (App Store privacy manifest).
+      - path: Resources/PrivacyInfo.xcprivacy
         buildPhase: resources
     settings:
       base:
