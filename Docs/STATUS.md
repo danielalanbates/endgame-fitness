@@ -109,7 +109,7 @@ via the old website membership; TestFlight on macOS + iOS.
 
 ## Next steps (in order)
 
-1. Accept the TestFlight invite (email to danielalanbates@live.com); install build 6 on iPhone + Mac; exercise Sign in with Apple and the HealthKit permission sheet on device.
+1. Accept the TestFlight invite (email to the Apple ID owner); install build 6 on iPhone + Mac; exercise Sign in with Apple and the HealthKit permission sheet on device.
 2. Simulator pass over every iOS screen with `-ef.autologin`, fix what the
    layout helpers missed (set rows, charts, sheets).
 3. Apply raid reward title/cosmetic to the profile/avatar; show raid results in
