@@ -13,7 +13,6 @@
 //
 
 import SwiftUI
-import AuthenticationServices
 
 // MARK: - Player card
 

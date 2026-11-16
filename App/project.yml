@@ -5,8 +5,8 @@
 #
 #   xcodegen generate --spec App/project.yml
 #
-# Both targets compile the SAME sources; everything platform-specific is behind
-# `#if os(...)` in Platform.swift.
+# macOS only for now (iOS target archived 2026-11-16). Platform-specific code
+# stays behind `#if os(...)` in Platform.swift so iOS can be restored.
 
 name: EndgameFitness
 
@@ -14,7 +14,6 @@ options:
   bundleIdPrefix: org.batesai
   deploymentTarget:
     macOS: "14.0"
-    iOS: "17.0"
   createIntermediateGroups: true
 
 settings:
@@ -68,59 +67,14 @@ targets:
         # Gym Party (MultipeerConnectivity) accepts incoming peer connections.
         com.apple.security.network.server: true
         com.apple.security.files.user-selected.read-write: true
-        com.apple.developer.applesignin: [Default]
         com.apple.developer.game-center: true
 
-  EndgameFitness-iOS:
-    type: application
-    platform: iOS
-    sources:
-      - path: Sources/EndgameFitness
-      # xcodegen has no `resources:` key — asset catalogs listed under sources
-      # land in the Copy Bundle Resources phase automatically.
-      - path: Resources/Assets.xcassets
-      # 876 exercises from free-exercise-db (The Unlicense / public domain).
-      - path: Resources/exercise_library.json
-        buildPhase: resources
-      # Required-reason API + collected-data declarations (App Store privacy manifest).
-      - path: Resources/PrivacyInfo.xcprivacy
-        buildPhase: resources
-    settings:
-      base:
-        PRODUCT_NAME: Endgame Fitness
-        PRODUCT_BUNDLE_IDENTIFIER: org.batesai.endgamefitness
-        INFOPLIST_FILE: Support/Info-iOS.plist
-        CODE_SIGN_IDENTITY: "Apple Distribution"
-        PROVISIONING_PROFILE_SPECIFIER: "Endgame Fitness IOS_APP_STORE"
-        SKIP_INSTALL: NO
-        INSTALL_PATH: /Applications
-        CODE_SIGN_ENTITLEMENTS: Support/EndgameFitness-iOS.entitlements
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        TARGETED_DEVICE_FAMILY: "1,2"
-    entitlements:
-      path: Support/EndgameFitness-iOS.entitlements
-      properties:
-        com.apple.developer.applesignin: [Default]
-        com.apple.developer.healthkit: true
-        com.apple.developer.game-center: true
-        # NOT healthkit.access — that is Verifiable Health Records and needs Apple approval.
-    # HealthKit capability (iOS only — the framework does not exist on macOS).
-    # SystemCapabilities is what Xcode writes when the capability is ticked.
-    attributes:
-      SystemCapabilities:
-        com.apple.HealthKit:
-          enabled: 1
+  # iOS target archived 2026-11-16 (Mac first): _archive/accounts-and-ios-2026-11-16/
 
 schemes:
   EndgameFitness-macOS:
     build:
       targets:
         EndgameFitness-macOS: all
-    archive:
-      config: Release
-  EndgameFitness-iOS:
-    build:
-      targets:
-        EndgameFitness-iOS: all
     archive:
       config: Release

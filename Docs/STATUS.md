@@ -1,5 +1,11 @@
 # Endgame Fitness — status and next actions
 
+## 2026-11-16 (later) — accounts + iOS archived, Mac first
+
+- Backend, web login apps, auth docs, Sign in with Apple, iOS target, TestFlight/deploy workflows → `_archive/accounts-and-ios-2026-11-16/` (WHY_ARCHIVED.md).
+- macOS Release build + `-ef.selftest` 63/63 PASS; /Applications copy updated.
+- Next: run every Mac screen by hand; iOS later from the archive.
+
 ## 2026-11-16 — local players (branch worldclass-2026-11-16)
 
 - **No accounts.** Launch shows "Who's training?" (`PlayerPickerView`): create,

@@ -1,8 +1,9 @@
 # Endgame Fitness
 
 A strength-training app that behaves like a game: you level up, earn talent
-points, hold streaks, and your friends can see it. macOS and iOS, one codebase,
-signed in through your **batesai.org membership**.
+points, hold streaks, and your friends can see it. **macOS only for now**, no
+accounts: local players on the device. Login/backend/iOS are archived in
+`_archive/accounts-and-ios-2026-11-16/`.
 
 ---
 

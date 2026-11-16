@@ -1,8 +1,6 @@
 name: Build
 
-# Compile both platforms on every push. This is the only place the iOS build is
-# verified: the development machine has Command Line Tools but no Xcode and not
-# enough free disk to install one, so there is no local iOS SDK.
+# Compile the macOS app on every push (iOS + backend archived 2026-11-16).
 #
 # No signing here — `CODE_SIGNING_ALLOWED=NO` means this runs without any
 # secrets and still catches every compile error. Shipping is testflight.yml.
@@ -23,12 +21,6 @@ jobs:
           - name: macOS
             scheme: EndgameFitness-macOS
             destination: platform=macOS,arch=arm64
-          # Naming a specific simulator ("iPhone 16") breaks whenever the runner
-          # image ships a different device set. A generic destination just needs
-          # the SDK to exist, which is all a compile check requires.
-          - name: iOS
-            scheme: EndgameFitness-iOS
-            destination: generic/platform=iOS Simulator
 
     name: ${{ matrix.name }}
     steps:
@@ -67,17 +59,3 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM=""
 
-  backend:
-    name: Backend checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      # The auth worker verifies Apple/Google identity tokens. These tests prove
-      # forged tokens, wrong audiences and alg:none downgrades are rejected —
-      # regressing any of them would be a full account-takeover bug.
-      - name: Auth verification tests
-        run: node App/Backend/tests/auth-verification.test.mjs
