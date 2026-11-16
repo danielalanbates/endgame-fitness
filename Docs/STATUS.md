@@ -1,5 +1,29 @@
 # Endgame Fitness — status and next actions
 
+## 2026-11-16 — local players (branch worldclass-2026-11-16)
+
+- **No accounts.** Launch shows "Who's training?" (`PlayerPickerView`): create,
+  pick, edit, delete local players (name, symbol + colour avatar, optional
+  4-digit PIN). Multiple players per device = the household.
+- **The game runs on the device.** `GameRules.swift` is a 1:1 port of
+  `App/Backend/functions/_lib/*.js` (XP, levels, PRs, quests, achievements,
+  talents, challenges, raids, seasons, streaks, hero class, titles);
+  `LocalGame.swift` applies it to JSON state in
+  `~/Library/Application Support/EndgameFitness/Game/` (`players.json`,
+  `household.json`, `Players/<id>/game.json`). `GameProfileService` keeps the
+  old API, so every view works offline.
+- Household = friends (auto), one household guild, weekly raid boss (guild or
+  solo), duels between local players, shared feed with reactions/comments.
+- Existing history: the first player created adopts the device's existing
+  training log and replays it once (XP/totals/streak/PR baselines; no quests,
+  raid damage or season XP for sessions before this week).
+- Backup: Player screen → Export backup / Import (one JSON per player).
+- Verify: `xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -o /tmp/ef_check App/Sources/EndgameFitness/*.swift && /tmp/ef_check -ef.selftest` → `SELFTEST PASS 48/48`.
+- Archived: batesai.org auth/account/sign-in/networked service →
+  `_archive/batesai-account-2026-11-16/` (see WHY_ARCHIVED.md). AI coach is
+  disabled offline.
+
+
 _Updated 2026-08-29 (autonomous session; supersedes the 2026-08-28 status)._
 
 Goal: world-class fitness app that blurs social game and training log; profiles

@@ -117,15 +117,12 @@ enum FitnessAI {
     static func complete(task: String, payload: [String: Any]) async throws -> String {
         var body = payload
         body["task"] = task
-        let auth = BatesAIAuth.shared
-        guard auth.isSignedIn else {
-            throw Failure(message: "Sign in to use AI features.")
-        }
-        let data = try await auth.requestRaw("fitness/ai", method: "POST", token: auth.token, body: body)
-        guard let decoded = try? JSONDecoder().decode(AIResponse.self, from: data) else {
-            throw Failure(message: "Unexpected AI response.")
-        }
-        return decoded.text
+        // The AI coach ran on the batesai.org account backend, which this
+        // local-players build no longer signs in to (see
+        // _archive/batesai-account-2026-11-16/WHY_ARCHIVED.md).
+        _ = body
+        _ = AIResponse.self
+        throw Failure(message: "AI coaching isn't available in the offline, local-players version yet.")
     }
 
     static func improveWorkout(days: [ScheduledWorkout], profile: UserProfile?) async throws -> String {

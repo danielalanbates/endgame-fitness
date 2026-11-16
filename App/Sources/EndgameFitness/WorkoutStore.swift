@@ -69,7 +69,7 @@ final class WorkoutStore {
 
     // MARK: Accounts
 
-    /// A folder-safe key for a batesai.org user id.
+    /// A folder-safe key for a player id.
     static func accountKey(forUserID userID: String?) -> String {
         guard let userID, !userID.isEmpty else { return guestKey }
         let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
@@ -87,6 +87,43 @@ final class WorkoutStore {
     func activate(_ key: String) {
         accountKey = key
         defaults.set(key, forKey: lastAccountKey)
+    }
+
+    // MARK: Local players
+
+    /// The training log a first local player should adopt: the last account
+    /// used on this device (signed-in member or guest) when it has history.
+    func legacyKeyToAdopt() -> String? {
+        var candidates: [String] = []
+        if let last = defaults.string(forKey: lastAccountKey) { candidates.append(last) }
+        candidates.append(Self.guestKey)
+        let accounts = root.appendingPathComponent("Accounts", isDirectory: true)
+        let others = ((try? fm.contentsOfDirectory(atPath: accounts.path)) ?? []).filter { $0.hasPrefix("user-") }.sorted()
+        candidates.append(contentsOf: others)
+        return candidates.first { fm.fileExists(atPath: directory(for: $0).appendingPathComponent(sessionsName).path) }
+    }
+
+    /// The raw history file for a backup.
+    func rawSessionsFile(for key: String) -> Data? {
+        try? Data(contentsOf: directory(for: key).appendingPathComponent(sessionsName))
+    }
+
+    func writeRawSessionsFile(_ data: Data, for key: String) throws {
+        _ = try decodeSessions(data)   // refuse anything this build can't read
+        let dir = directory(for: key)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard atomicWrite(data, to: dir.appendingPathComponent(sessionsName)) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+    }
+
+    /// A deleted player's log is moved aside (never destroyed outright).
+    func removeAccount(_ key: String) {
+        let dir = directory(for: key)
+        guard fm.fileExists(atPath: dir.path) else { return }
+        let aside = root.appendingPathComponent("DeletedPlayers", isDirectory: true)
+        try? fm.createDirectory(at: aside, withIntermediateDirectories: true)
+        try? fm.moveItem(at: dir, to: aside.appendingPathComponent("\(key)-\(Int(Date().timeIntervalSince1970))"))
     }
 
     // MARK: Loading

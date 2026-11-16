@@ -500,7 +500,7 @@ struct TodayCardCluster: View {
                     .foregroundStyle(.secondary)
             } else {
                 XPRing(progress: 0, level: 1).frame(width: 44, height: 44)
-                Text("Sign in").font(.caption.weight(.semibold))
+                Text("Pick a player").font(.caption.weight(.semibold))
                 Text("to earn XP").font(.caption2).foregroundStyle(.secondary)
             }
         }

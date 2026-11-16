@@ -190,7 +190,7 @@ struct PlayerProfileView: View {
             blocked = loaded?.isBlocked ?? false
             loadError = nil
             isHidden = false
-        } catch let error as AuthError where error.status == 404 {
+        } catch is LocalGameError {
             loaded = nil
             isHidden = true
         } catch {

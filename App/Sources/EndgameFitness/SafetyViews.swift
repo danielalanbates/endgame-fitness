@@ -87,7 +87,7 @@ struct ReportSheet: View {
                         if value.count > Self.detailLimit { details = String(value.prefix(Self.detailLimit)) }
                     }
             } footer: {
-                Text("Reports are reviewed by the Endgame Fitness team. The person you report isn't told who sent it. For anything urgent, email \(BatesAIAuth.helpEmail).")
+                Text("Reports are reviewed by the Endgame Fitness team. The person you report isn't told who sent it. For anything urgent, email \(AppInfo.helpEmail).")
             }
             if let error {
                 Section { Text(error).foregroundStyle(.red) }
@@ -179,7 +179,7 @@ struct HelpContactLink: View {
     var body: some View {
         if let url = mailURL {
             Link(destination: url) {
-                Label("Contact \(BatesAIAuth.helpEmail)", systemImage: "envelope")
+                Label("Contact \(AppInfo.helpEmail)", systemImage: "envelope")
             }
         }
     }
@@ -187,7 +187,7 @@ struct HelpContactLink: View {
     private var mailURL: URL? {
         var components = URLComponents()
         components.scheme = "mailto"
-        components.path = BatesAIAuth.helpEmail
+        components.path = AppInfo.helpEmail
         components.queryItems = [URLQueryItem(name: "subject", value: subject)]
         return components.url
     }

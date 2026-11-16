@@ -3,42 +3,30 @@
 //  Endgame Fitness
 //
 //  Decides what the user sees at launch, in this order:
-//    1. restoring a stored session              -> splash
-//    2. not signed in                           -> SignInView
-//    3. signed in, account not onboarded yet    -> wait for the server profile,
-//                                                  then OnboardingView only if
-//                                                  the server has no answers
-//    4. first time this account is on a device  -> ProfileSetupView (once)
-//    5. otherwise                               -> the app
+//    1. no local player chosen                 -> PlayerPickerView
+//    2. this player hasn't onboarded yet       -> OnboardingView
+//    3. otherwise                              -> the app
 //
-//  Sign-in comes before onboarding on purpose: the onboarding answers (goal,
-//  experience, equipment, bodyweight) belong on the server profile, so we need
-//  to know who the person is before asking them — and a returning member on a
-//  new device should not be asked again (API_V2 §2.1 `onboarded`).
+//  There is no account and no network: players are local to the device
+//  (LocalPlayers.swift) and the game runs on the device (LocalGame.swift).
 //
 
 import SwiftUI
 
 struct RootView: View {
-    /// Device-wide flag owned by the app scene. Kept for the training log and
-    /// for migrating installs from before onboarding was tracked per account.
+    /// Device-wide flag owned by the app scene. Kept for the training log.
     @Binding var hasCompletedOnboarding: Bool
 
     @EnvironmentObject var workoutManager: WorkoutManager
-    @StateObject private var auth = BatesAIAuth.shared
+    @StateObject private var players = LocalPlayerStore.shared
     @StateObject private var game = GameProfileService.shared
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var celebratingLevel: Int?
     @State private var onboardedAccounts = AccountFlags(key: "ef.onboardedAccounts")
-    @State private var setupDoneAccounts = AccountFlags(key: "ef.profileSetupAccounts")
-    /// Onboarding finished but the answers have not reached the server yet.
-    @State private var answersPending = AccountFlags(key: "ef.onboardingAnswersPending")
-    @State private var justOnboarded = false
-    @State private var continueOffline = false
 
     private enum Stage: Equatable {
-        case splash, signIn, loadingProfile, offline, onboarding, profileSetup, app
+        case picker, onboarding, app
     }
 
     var body: some View {
@@ -47,35 +35,15 @@ struct RootView: View {
                 minWidth: Platform.isDesktop ? 900 : nil,
                 minHeight: Platform.isDesktop ? 700 : nil
             )
-            .task { await launch() }
-            .onChange(of: auth.user?.id) { _, userID in
-                continueOffline = false
-                justOnboarded = false
-                if userID != nil {
-                    Task { await game.loadAll() }
-                } else {
-                    game.reset()
-                }
-            }
-            .onChange(of: game.profileState) { _, state in
-                // Onboarded offline: deliver the answers once the server answers.
-                guard state == .loaded, let userID = auth.user?.id, answersPending.contains(userID) else { return }
-                Task { await deliverOnboardingAnswers(for: userID) }
-            }
+            .task { launch() }
             .onChange(of: game.profile?.isOnboarded) { _, onboarded in
-                // The server has this member's answers: never ask again here.
-                if onboarded == true, let profile = game.profile, profile.userID == auth.user?.id {
-                    onboardedAccounts.insert(profile.userID)
-                }
+                if onboarded == true, let id = players.currentID { onboardedAccounts.insert(id) }
             }
             .onChange(of: scenePhase) { _, phase in
-                guard phase == .active else { return }
-                Task {
-                    await auth.revalidateIfNeeded()
-                    if auth.isSignedIn { await game.sync() }
-                }
+                guard phase == .active, players.current != nil else { return }
+                Task { await game.sync() }
             }
-            // A sync can report more than one level gained at once; show the
+            // A workout can report more than one level gained at once; show the
             // level actually reached rather than a burst of overlays.
             .onChange(of: game.pendingLevelUps) { _, count in
                 guard count > 0, let level = game.profile?.level else { return }
@@ -103,144 +71,79 @@ struct RootView: View {
     // MARK: Gate
 
     private var stage: Stage {
-        if auth.isRestoring { return .splash }
-        guard let userID = auth.user?.id else { return .signIn }
-
-        let serverProfile = game.profile?.userID == userID ? game.profile : nil
-        if onboardedAccounts.contains(userID) || serverProfile?.isOnboarded == true {
-            return needsProfileSetup(userID, profile: serverProfile) ? .profileSetup : .app
-        }
-        if serverProfile != nil || continueOffline { return .onboarding }
-        switch game.profileState {
-        case .failed:
-            return .offline
-        case .idle, .loading, .loaded:
-            return .loadingProfile
-        }
-    }
-
-    /// Hero name + privacy, once per account per device: right after
-    /// onboarding, or when the profile still looks untouched (private, no bio).
-    private func needsProfileSetup(_ userID: String, profile: FitnessProfile?) -> Bool {
-        guard !setupDoneAccounts.contains(userID), let profile else { return false }
-        return justOnboarded || (!profile.isPublic && (profile.bio ?? "").isEmpty)
+        guard let id = players.currentID else { return .picker }
+        if onboardedAccounts.contains(id) || game.profile?.isOnboarded == true { return .app }
+        return .onboarding
     }
 
     @ViewBuilder
     private var content: some View {
         switch stage {
-        case .splash:
-            SplashView()
-        case .signIn:
-            SignInView()
-        case .loadingProfile:
-            SplashView(message: "Loading your profile…")
-        case .offline:
-            OfflineProfileView(
-                message: offlineMessage,
-                onRetry: { Task { await game.loadProfile() } },
-                onContinue: { continueOffline = true }
-            )
+        case .picker:
+            PlayerPickerView()
         case .onboarding:
             OnboardingView(hasCompletedOnboarding: onboardingBinding)
                 .environmentObject(workoutManager)
-        case .profileSetup:
-            ProfileSetupView {
-                if let userID = auth.user?.id { setupDoneAccounts.insert(userID) }
-                justOnboarded = false
-            }
-            .environmentObject(workoutManager)
         case .app:
             ContentView()
                 .environmentObject(workoutManager)
         }
     }
 
-    private var offlineMessage: String {
-        if case .failed(let message) = game.profileState { return message }
-        return "Can't reach batesai.org."
-    }
-
-    /// OnboardingView reports completion by setting its binding to true. The
-    /// device flag may already be true (another member onboarded here), so
-    /// completion is caught in the setter rather than by observing the flag.
+    /// OnboardingView reports completion by setting its binding to true.
     private var onboardingBinding: Binding<Bool> {
         Binding(
             get: { false },
             set: { done in
                 guard done else { return }
                 hasCompletedOnboarding = true
-                guard let userID = auth.user?.id else { return }
-                onboardedAccounts.insert(userID)
-                justOnboarded = true
-                answersPending.insert(userID)
-                Task { await deliverOnboardingAnswers(for: userID) }
+                guard let id = players.currentID else { return }
+                onboardedAccounts.insert(id)
+                saveOnboardingAnswers()
             }
         )
     }
 
     // MARK: Launch
 
-    private func launch() async {
-        await auth.restoreSession()
+    private func launch() {
         #if DEBUG
-        // Headless UI verification (simulator): `-ef.autologin email password`
-        // signs in a test account without touching the keyboard.
-        if !auth.isSignedIn, let i = CommandLine.arguments.firstIndex(of: "-ef.autologin"),
-           CommandLine.arguments.count > i + 2 {
-            await auth.signIn(email: CommandLine.arguments[i + 1], password: CommandLine.arguments[i + 2])
-        }
         // `-ef.skipOnboarding` and `-ef.tab <n>` jump straight to a tab so
-        // every screen can be screenshotted with `simctl io` (no taps).
+        // every screen can be screenshotted without taps. `-ef.player <name>`
+        // picks (or creates) a local player.
+        if let i = CommandLine.arguments.firstIndex(of: "-ef.player"), CommandLine.arguments.count > i + 1 {
+            let name = CommandLine.arguments[i + 1]
+            let player = players.players.first { $0.name == name }
+                ?? players.create(name: name, symbol: LocalPlayer.symbols[0], colorIndex: 0, pin: nil)
+            players.select(player.id)
+        }
         if CommandLine.arguments.contains("-ef.skipOnboarding") {
             hasCompletedOnboarding = true
-            if let userID = auth.user?.id {
-                onboardedAccounts.insert(userID)
-                setupDoneAccounts.insert(userID)
-            }
+            if let id = players.currentID { onboardedAccounts.insert(id) }
         }
         if let i = CommandLine.arguments.firstIndex(of: "-ef.tab"), CommandLine.arguments.count > i + 1,
            let tab = Int(CommandLine.arguments[i + 1]) {
             workoutManager.selectedTab = tab
         }
         #endif
-        // Installs from before per-account onboarding: whoever's session is
-        // being restored is the person who onboarded this device.
-        if hasCompletedOnboarding, onboardedAccounts.isEmpty, let userID = auth.user?.id {
-            onboardedAccounts.insert(userID)
-            setupDoneAccounts.insert(userID)
-            answersPending.insert(userID)
-            await deliverOnboardingAnswers(for: userID)
+        // Installs from before local players: the device was already onboarded,
+        // so the player who adopts its history doesn't need to be asked again.
+        if hasCompletedOnboarding, onboardedAccounts.isEmpty, players.players.count == 1, let id = players.currentID {
+            onboardedAccounts.insert(id)
         }
     }
 
-    private func deliverOnboardingAnswers(for userID: String) async {
-        guard auth.user?.id == userID else { return }
-        if await syncOnboardingAnswers() { answersPending.remove(userID) }
-    }
-
-    /// Push the onboarding answers up to the server profile so a second device
-    /// doesn't have to ask again. Returns true once the server has them.
-    private func syncOnboardingAnswers() async -> Bool {
-        var fields: [String: Any] = [:]
+    /// Onboarding answers go on the local player's profile.
+    private func saveOnboardingAnswers() {
+        var fields: [String: Any] = ["onboarded": true]
         if let profile = workoutManager.userProfile {
-            // The onboarding flow collects several goals; the server profile
-            // stores the primary one for programming decisions.
-            if let goal = profile.primaryGoals.first {
-                fields["training_goal"] = goal.rawValue
-            }
+            if let goal = profile.primaryGoals.first { fields["training_goal"] = goal.rawValue }
             fields["experience_level"] = profile.experienceLevel.rawValue
             fields["equipment_level"] = profile.availableEquipment.rawValue
             if profile.weight > 0 { fields["body_weight"] = profile.weight }
             if profile.height > 0 { fields["height_inches"] = profile.height }
-            // The hero name chosen in ProfileSetupView wins over the onboarding name.
-            let setupDone = auth.user.map { setupDoneAccounts.contains($0.id) } ?? false
-            if !setupDone, ProfileRules.displayNameProblem(profile.name) == nil {
-                fields["display_name"] = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
         }
-        fields["tz_offset_min"] = TimeZone.current.secondsFromGMT() / 60
-        return await game.saveProfile(fields) == nil
+        game.applyProfileFields(fields)
     }
 }
 
@@ -295,42 +198,5 @@ struct SplashView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.platformWindowBackground.ignoresSafeArea())
         .onAppear { pulse = true }
-    }
-}
-
-/// Signed in, but the profile could not be fetched and this account has not
-/// onboarded on this device yet.
-struct OfflineProfileView: View {
-    let message: String
-    let onRetry: () -> Void
-    let onContinue: () -> Void
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("Couldn't load your profile")
-                .font(.title2.bold())
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Text("If you've used Endgame Fitness before, try again once you're online so your setup comes with you. Or set up on this device now; your answers are saved to your profile when you're back online.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-            HStack(spacing: 12) {
-                Button("Set up on this device", action: onContinue)
-                    .buttonStyle(.bordered)
-                Button("Try again", action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.brandPurple)
-            }
-        }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.platformWindowBackground.ignoresSafeArea())
     }
 }

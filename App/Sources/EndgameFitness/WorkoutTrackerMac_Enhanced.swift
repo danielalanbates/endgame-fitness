@@ -33,6 +33,8 @@ struct WorkoutTrackerMacApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        // `-ef.selftest`: check the local game engine, print PASS/FAIL, exit.
+        EngineSelfTest.runIfRequested()
         // Before RootView's first sync, so pulled history and account changes
         // have somewhere to go.
         WorkoutManager.shared.installSyncHooks()
@@ -3486,7 +3488,7 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             Image(systemName: "person.crop.circle")
-                            Text(BatesAIAuth.shared.user?.email ?? "Account")
+                            Text(LocalPlayerStore.shared.current?.name ?? "Player")
                             Spacer()
                             Text("Manage").foregroundColor(.secondary)
                         }

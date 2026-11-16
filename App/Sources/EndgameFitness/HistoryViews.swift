@@ -162,7 +162,7 @@ struct SessionDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(WorkoutSyncBridge.enqueue != nil
-                 ? "It will be removed from your history on every device where you're signed in. XP already earned is kept."
+                 ? "It will be removed from your history. XP already earned is kept."
                  : "It will be removed from this device's history.")
         }
     }

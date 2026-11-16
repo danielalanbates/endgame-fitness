@@ -52,6 +52,8 @@ struct GuildPane: View {
                     GuildHomeView(guild: guild, open: open)
                 } else {
                     NoGuildView(open: open)
+                    // No guild: the weekly boss is a solo raid.
+                    RaidCard()
                 }
             }
             .padding(16)

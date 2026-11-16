@@ -10,7 +10,7 @@
 //      and goes to the queue GameProfileService owns
 //    • download: pulled sessions merge into local history by id — tombstones
 //      delete, a higher clientRev wins, the same revision is a no-op
-//    • accounts: each batesai.org member gets their own local store
+//    • players: each local player gets their own store (LocalPlayers.swift)
 //
 //  Only completed sets are uploaded. Timed sets (planks, cardio) have no reps
 //  field on the wire and stay on the device; the session's duration still
@@ -100,18 +100,25 @@ extension WorkoutManager {
         WorkoutSyncBridge.accountChanged = { userID in
             WorkoutManager.shared.switchAccount(to: userID)
         }
-        // Also follow the auth state directly, so the right store is active
-        // before the first pull even if nothing calls accountChanged. A nil
-        // user while the stored session is still being checked (or offline)
-        // keeps the last account's store.
-        authObserver = BatesAIAuth.shared.$user
-            .map { $0?.id }
+        // Follow the local player: their training log becomes the active store,
+        // then the game loads their progress (seeded once from that log).
+        authObserver = LocalPlayerStore.shared.$currentID
             .removeDuplicates()
-            .sink { userID in
-                if let userID {
-                    WorkoutManager.shared.switchAccount(to: userID)
-                } else if !BatesAIAuth.shared.isRestoring {
-                    WorkoutManager.shared.switchAccount(to: nil)
+            .receive(on: DispatchQueue.main)
+            .sink { id in
+                MainActor.assumeIsolated {
+                    let manager = WorkoutManager.shared
+                    let store = LocalPlayerStore.shared
+                    // No player (the picker is showing): leave the store alone so
+                    // the first player can adopt the existing history.
+                    if let key = id.flatMap({ pid in store.players.first { $0.id == pid }?.storeKey }) {
+                        manager.switchStore(to: key)
+                    }
+                    let game = GameProfileService.shared
+                    game.activate()
+                    if id != nil {
+                        game.seedFromHistory(manager.sessions.map { manager.syncPayload(for: $0) })
+                    }
                 }
             }
     }
@@ -119,9 +126,13 @@ extension WorkoutManager {
     // MARK: Accounts
 
     /// Saves the current account's log, then loads `userID`'s (nil = the
-    /// signed-out local store). Idempotent.
+    /// guest store). Idempotent.
     func switchAccount(to userID: String?) {
-        let key = WorkoutStore.accountKey(forUserID: userID)
+        switchStore(to: WorkoutStore.accountKey(forUserID: userID))
+    }
+
+    /// Saves the current log, then loads the one in folder `key`. Idempotent.
+    func switchStore(to key: String) {
         guard key != WorkoutStore.shared.accountKey else { return }
         flushActiveWorkout()
         saveSessionsNow()

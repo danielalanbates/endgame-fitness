@@ -2,16 +2,18 @@
 //  AccountView.swift
 //  Endgame Fitness
 //
-//  The player's own profile and membership: hero name, bio, earned title and
-//  aura, avatar, public/private, blocked players, help, sign out and account
-//  deletion. Titles and auras can only be picked from what the server says
-//  was earned (API_V2 §2.2, §7).
+//  The local player's own profile: hero name, bio, earned title and aura,
+//  avatar, blocked players, backup (export/import), switching player and
+//  deleting the player. Titles and auras can only be picked from what the
+//  local game says was earned. (The batesai.org membership version of this
+//  screen is in _archive/batesai-account-2026-11-16.)
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AccountView: View {
-    @ObservedObject var auth = BatesAIAuth.shared
+    @ObservedObject var players = LocalPlayerStore.shared
     @ObservedObject var game = GameProfileService.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -35,19 +37,21 @@ struct AccountView: View {
     @State private var avatarError: String?
     @State private var showTalents = false
 
-    @State private var showSignOutConfirm = false
     @State private var showDeleteConfirm = false
-    @State private var isDeleting = false
     @State private var deleteError: String?
+    @State private var exportDocument: PlayerBackupDocument?
+    @State private var showExporter = false
+    @State private var showImporter = false
+    @State private var backupMessage: String?
+    @State private var showPlayerEditor = false
 
     var body: some View {
         Form {
-            membershipSection
+            playerSection
             if let profile = game.profile {
                 heroSection(profile)
                 profileSection(profile)
                 avatarSection(profile)
-                privacySection(profile)
             } else {
                 Section {
                     if case .failed(let message) = game.profileState {
@@ -59,28 +63,33 @@ struct AccountView: View {
                 }
             }
             safetySection
+            backupSection
             accountSection
         }
         .formStyle(.grouped)
-        .navigationTitle("Account")
+        .navigationTitle("Player")
         .desktopMinFrame(minWidth: 460, minHeight: 560)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .onAppear(perform: loadFields)
         .onChange(of: game.profile?.userID) { _, _ in loadFields() }
         .task { await game.loadProfile() }
-        .confirmationDialog("Sign out of Endgame Fitness?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
-            Button("Sign out", role: .destructive) {
-                Task { await auth.signOut(); game.reset(); dismiss() }
-            }
+        .confirmationDialog("Delete this player?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete permanently", role: .destructive) { deletePlayer() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Workouts that haven't synced yet stay on this device and upload the next time you sign in to this account.")
+            Text("\(players.current?.name ?? "This player")'s progress is erased from this device and their workout log is set aside. Export a backup first if you might want it back.")
         }
-        .confirmationDialog("Delete your account?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete permanently", role: .destructive) { Task { await deleteAccount() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Everything tied to \(auth.user?.email ?? "this account") is erased. There is no recovery.")
+        .fileExporter(isPresented: $showExporter, document: exportDocument, contentType: .json,
+                      defaultFilename: "\(players.current?.name ?? "player") - Endgame Fitness backup") { result in
+            if case .failure(let error) = result { backupMessage = error.localizedDescription } else { backupMessage = "Backup saved." }
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+            importBackup(result)
+        }
+        .sheet(isPresented: $showPlayerEditor) {
+            if let current = players.current {
+                LocalPlayerEditor(player: current) { showPlayerEditor = false }
+            }
         }
         .sheet(isPresented: $showTalents) { TalentTreeView() }
         .sheet(isPresented: $showAvatarEditor) {
@@ -97,14 +106,36 @@ struct AccountView: View {
 
     // MARK: Sections
 
-    private var membershipSection: some View {
-        Section("Membership") {
-            LabeledContent("Email", value: auth.user?.email ?? "—")
-            LabeledContent("Tier") {
-                Text((auth.user?.membership ?? "free").capitalized)
-                    .foregroundStyle(auth.user?.isPremium == true ? Color.brandYellow : .secondary)
+    private var playerSection: some View {
+        Section("Player") {
+            if let current = players.current {
+                HStack(spacing: 12) {
+                    LocalPlayerBadge(player: current, size: 40)
+                    Text(current.name).font(.headline)
+                    Spacer()
+                    Button("Edit") { showPlayerEditor = true }
+                }
+                LabeledContent("PIN", value: current.hasPIN ? "On" : "Off")
             }
-            Link("Manage membership on batesai.org", destination: BatesAIAuth.membershipURL)
+            Button("Switch player") {
+                game.reset()
+                players.select(nil)
+                dismiss()
+            }
+        }
+    }
+
+    private var backupSection: some View {
+        Section {
+            Button("Export backup…") { exportBackup() }
+            Button("Import a player from a backup…") { showImporter = true }
+            if let backupMessage {
+                Text(backupMessage).font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Backup")
+        } footer: {
+            Text("A backup is one JSON file with this player's progress and workout log. Importing adds it as a new player on this device.")
         }
     }
 
@@ -243,21 +274,17 @@ struct AccountView: View {
             HelpContactLink(subject: "Endgame Fitness help")
         } header: {
             Text("Safety and help")
-        } footer: {
-            Text("To report a player, post, comment or guild, use the … menu next to it or the Report button on their profile. Reports go to the Endgame Fitness team.")
         }
     }
 
     private var accountSection: some View {
         Section {
-            Button("Sign out", role: .destructive) { showSignOutConfirm = true }
-            Button(isDeleting ? "Deleting…" : "Delete account…", role: .destructive) { showDeleteConfirm = true }
-                .disabled(isDeleting)
+            Button("Delete player…", role: .destructive) { showDeleteConfirm = true }
             if let deleteError {
                 Text(deleteError).font(.caption).foregroundStyle(.red)
             }
         } footer: {
-            Text("Deleting your account permanently removes your BatesAI membership, profile, workouts, XP, friends and guild membership across all BatesAI apps. This cannot be undone.")
+            Text("Players live only on this device. Nothing is sent anywhere.")
                 .font(.caption)
         }
     }
@@ -337,16 +364,32 @@ struct AccountView: View {
         avatarError = await game.saveProfile(["avatar_config": object])
     }
 
-    private func deleteAccount() async {
-        isDeleting = true
-        deleteError = nil
-        defer { isDeleting = false }
+    private func deletePlayer() {
+        guard let id = players.currentID else { return }
+        game.reset()
+        players.delete(id)
+        dismiss()
+    }
+
+    private func exportBackup() {
+        guard let id = players.currentID else { return }
         do {
-            try await auth.deleteAccount()
-            game.reset()
-            dismiss()
+            exportDocument = PlayerBackupDocument(data: try players.exportBackup(id))
+            showExporter = true
         } catch {
-            deleteError = error.localizedDescription
+            backupMessage = error.localizedDescription
+        }
+    }
+
+    private func importBackup(_ result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let player = try players.importBackup(try Data(contentsOf: url))
+            backupMessage = "Imported \(player.name). Switch player to play as them."
+        } catch {
+            backupMessage = error.localizedDescription
         }
     }
 }
