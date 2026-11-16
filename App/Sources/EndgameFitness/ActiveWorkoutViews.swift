@@ -150,11 +150,14 @@ struct ActiveWorkoutView: View {
     private func finish() {
         guard let workout = workoutManager.currentWorkout else { return }
         let draft = SessionSummary.make(from: workout, streak: 1) // SessionGameLayer hook
+        let before = workoutManager.loggedSessions
         guard workoutManager.completeWorkout() else {
             nothingToSave = true
             return
         }
-        summary = draft.withStreak(max(workoutManager.currentStreak, 1))
+        let review = SessionReview.make(workout: workout, before: before, after: workoutManager.loggedSessions,
+                                        context: .current(profile: workoutManager.userProfile))
+        summary = draft.withStreak(max(workoutManager.currentStreak, 1)).withReview(review)
     }
 
     private func discardMessage(_ workout: WorkoutSession) -> String {
@@ -282,12 +285,14 @@ struct ExerciseLogCard: View {
     var body: some View {
         let last = ProgressionEngine.lastPerformance(of: exercise, in: history, excluding: excludingSession)
         let suggestion = live ? ProgressionEngine.suggestion(for: exercise, history: history, excluding: excludingSession, unit: unit) : nil
+        let prescription = live ? SmartCoach.prescribe(exercise: exercise, history: history, excluding: excludingSession,
+                                                       context: CoachContext.current()) : nil
 
         VStack(alignment: .leading, spacing: 8) {
             header
             if live {
-                ProgressionHintView(exercise: exercise, suggestion: suggestion, hasHistory: last != nil,
-                                    unit: unit, onEditRange: tracking == .timed ? nil : { showRange = true })
+                ProgressionHintView(exercise: exercise, suggestion: suggestion, prescription: prescription,
+                                    hasHistory: last != nil, unit: unit, onEditRange: tracking == .timed ? nil : { showRange = true })
             }
             SetColumnHeader(tracking: tracking, unit: unit)
             ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
@@ -463,6 +468,7 @@ struct ExerciseLogCard: View {
 struct ProgressionHintView: View {
     let exercise: Exercise
     let suggestion: ProgressionSuggestion?
+    var prescription: SmartCoach.Prescription? = nil
     let hasHistory: Bool
     let unit: WeightUnit
     var onEditRange: (() -> Void)?
@@ -493,6 +499,14 @@ struct ProgressionHintView: View {
     private var rangeText: String { "\(range.lowerBound)–\(range.upperBound)" }
 
     private var icon: String {
+        if let prescription {
+            switch prescription.kind {
+            case .increase: return "arrow.up.right.circle.fill"
+            case .deload, .reset: return "arrow.down.right.circle"
+            case .hold: return "equal.circle"
+            default: return "target"
+            }
+        }
         switch suggestion?.kind {
         case .increaseLoad: return "arrow.up.right.circle.fill"
         case .topOfRangeBodyweight: return "arrow.up.right.circle"
@@ -501,12 +515,24 @@ struct ProgressionHintView: View {
         }
     }
 
-    private var tint: Color { suggestion?.kind == .increaseLoad ? .brandGreen : .brandBlue }
+    private var tint: Color {
+        if let prescription {
+            switch prescription.kind {
+            case .increase: return .brandGreen
+            case .deload, .reset: return .orange
+            default: return .brandBlue
+            }
+        }
+        return suggestion?.kind == .increaseLoad ? .brandGreen : .brandBlue
+    }
 
     private var text: String? {
         let plan = PlannedExercise(name: exercise.name, sets: exercise.targetSets, repMin: exercise.targetRepMin,
                                    repMax: exercise.targetRepMax, seconds: exercise.targetSeconds)
         let target = plan.hasTarget ? "Target \(plan.schemeText). " : ""
+        if let prescription {
+            return "\(prescription.model.shortLabel): " + prescription.reason
+        }
         guard let suggestion else {
             if exercise.resolvedTracking == .timed { return plan.hasTarget ? "Target \(plan.schemeText)." : nil }
             if hasHistory { return target.isEmpty ? nil : target }

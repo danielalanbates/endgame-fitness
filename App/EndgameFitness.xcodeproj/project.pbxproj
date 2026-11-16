@@ -18,6 +18,7 @@
 		2F5A3BD85D3A48178F19089D /* GameCenterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D61C68FC4C823D56D304DB /* GameCenterService.swift */; };
 		38A84A2CA63CD3B743710F1F /* TrainingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11ABE76069CCE2BDF91312C5 /* TrainingModels.swift */; };
 		426152B504F7980CBFEB1665 /* AvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */; };
+		4341949350DDB253A5BF4C06 /* SmartCoachViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1516D27BC706E957A14514 /* SmartCoachViews.swift */; };
 		4BF3B831790ED0BCAE75480B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5D63D8872DD09A9EE0982E4 /* Assets.xcassets */; };
 		4C2F363CBAB44F664FC37DC0 /* ActiveWorkoutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D01CBD884905DA9095FD305 /* ActiveWorkoutViews.swift */; };
 		50FC4855FC6E5084EFE49DAC /* ChallengeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A00FF687D610286E92EF090 /* ChallengeViews.swift */; };
@@ -30,6 +31,7 @@
 		766DD7499E8F3D86B1B660B5 /* QuestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC59F06D0943992C800DD58 /* QuestViews.swift */; };
 		7EC430933E958A5E1D9B068B /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF72E2066BCBAE1BE4C35A24 /* CommentsView.swift */; };
 		8195A5C92DF6554EE927DBD1 /* LocalPlayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31453536801AEDFAA9354FAF /* LocalPlayers.swift */; };
+		82CA8057B3D6D69550A858F0 /* SmartCoach.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4ABDB9AF97FAF369BE5633 /* SmartCoach.swift */; };
 		845F52A6C213CC831F64A0F8 /* GuildViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9024759EE2A27226B5C8D2C /* GuildViews.swift */; };
 		868B88FBCE26A9FBB7CE0E20 /* SocialCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F210ACDFAD421FCE9744559A /* SocialCore.swift */; };
 		93E40F0D8D2266BC0AF067BE /* TrainingUnits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FA59F3F324232FDE94BC8A5 /* TrainingUnits.swift */; };
@@ -67,6 +69,7 @@
 		1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTabView.swift; sourceTree = "<group>"; };
 		1FA59F3F324232FDE94BC8A5 /* TrainingUnits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingUnits.swift; sourceTree = "<group>"; };
 		26D61C68FC4C823D56D304DB /* GameCenterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameCenterService.swift; sourceTree = "<group>"; };
+		2C1516D27BC706E957A14514 /* SmartCoachViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCoachViews.swift; sourceTree = "<group>"; };
 		2CD61E68761B022E3F91ADE5 /* SessionGameLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionGameLayer.swift; sourceTree = "<group>"; };
 		2D932D3664326F5EB14E1BE7 /* TrainingSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSync.swift; sourceTree = "<group>"; };
 		2DD85BA9625E7BD26DF9BACD /* GameProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProfileService.swift; sourceTree = "<group>"; };
@@ -87,6 +90,7 @@
 		80E6D0F3A37C36D923BC4BA9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		82031AC26C4C08D12D1F190E /* TalentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalentViews.swift; sourceTree = "<group>"; };
 		8B3C89FBDBCE00C73430F9A7 /* GameRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRules.swift; sourceTree = "<group>"; };
+		8B4ABDB9AF97FAF369BE5633 /* SmartCoach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCoach.swift; sourceTree = "<group>"; };
 		8FEFE8651C24567E1E364D07 /* CelebrationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelebrationViews.swift; sourceTree = "<group>"; };
 		961638BC59C4AB9DB7B3BCAB /* EndgameFitness-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "EndgameFitness-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9821287317E68F40835358AF /* GameProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProfile.swift; sourceTree = "<group>"; };
@@ -151,6 +155,8 @@
 				CF7B384F0700E4DFD5161F6B /* SeasonViews.swift */,
 				2CD61E68761B022E3F91ADE5 /* SessionGameLayer.swift */,
 				57618C28AFF851EEA3215FB1 /* ShareCards.swift */,
+				8B4ABDB9AF97FAF369BE5633 /* SmartCoach.swift */,
+				2C1516D27BC706E957A14514 /* SmartCoachViews.swift */,
 				F210ACDFAD421FCE9744559A /* SocialCore.swift */,
 				1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */,
 				5D8B46915952B7C6D49E4C37 /* SocialViews.swift */,
@@ -309,6 +315,8 @@
 				F3C01BEF4F574A42E20462FD /* SeasonViews.swift in Sources */,
 				C59E8A06DA2502DF0A3FC8D0 /* SessionGameLayer.swift in Sources */,
 				C480866273430FC91866CE62 /* ShareCards.swift in Sources */,
+				82CA8057B3D6D69550A858F0 /* SmartCoach.swift in Sources */,
+				4341949350DDB253A5BF4C06 /* SmartCoachViews.swift in Sources */,
 				868B88FBCE26A9FBB7CE0E20 /* SocialCore.swift in Sources */,
 				A683BD3EA032633C5E5D7F68 /* SocialTabView.swift in Sources */,
 				A87CBB0C6A479E1C686EFBDD /* SocialViews.swift in Sources */,

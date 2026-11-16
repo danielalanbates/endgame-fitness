@@ -25,10 +25,19 @@ enum ProgressionStyle: String, CaseIterable, Identifiable {
     case auto = "Auto"
     case linear = "Linear"
     case double = "Double Progression"
+    case rpe = "RPE / RIR"
+    case waves = "Percentage Waves"
     var id: String { rawValue }
 
-    /// "Double Progression" clips in a three-segment control at 390pt.
-    var shortLabel: String { self == .double ? "Double" : rawValue }
+    /// Short labels: five segments have to fit at 390pt.
+    var shortLabel: String {
+        switch self {
+        case .double: return "Double"
+        case .rpe: return "RPE"
+        case .waves: return "Waves"
+        default: return rawValue
+        }
+    }
 }
 
 /// Weekly = fixed weekdays. Rolling = X days on, Y days off, repeating
@@ -385,9 +394,11 @@ struct ProgramWizardView: View {
                 }
                 .compactSegmentedPicker()
                 .labelsHidden()
-                Text("Auto picks linear for newer lifters and double progression once loads stall.")
+                Text(config.progression.explanation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

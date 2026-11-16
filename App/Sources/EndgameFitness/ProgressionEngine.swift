@@ -190,12 +190,18 @@ enum ProgressionEngine {
                                      targetReps: min(bestReps + 1, range.upperBound), range: range, lastSets: last.sets)
     }
 
-    /// The planned (unticked) rows for an exercise added to a workout: from
-    /// history, else from the program target, else empty fields.
-    static func plannedSets(for exercise: Exercise, history: [WorkoutSession], excluding: UUID? = nil) -> [ExerciseSet] {
+    /// The planned (unticked) rows for an exercise added to a workout: the
+    /// smart coach's prescription when it has one, else history, else the
+    /// program target, else empty fields.
+    static func plannedSets(for exercise: Exercise, history: [WorkoutSession], excluding: UUID? = nil,
+                            context: CoachContext? = nil) -> [ExerciseSet] {
         let tracking = exercise.resolvedTracking
         let last = lastPerformance(of: exercise, in: history, excluding: excluding)?.sets ?? []
-        let suggestion = self.suggestion(for: exercise, history: history, excluding: excluding)
+        if tracking != .timed,
+           let p = SmartCoach.prescribe(exercise: exercise, history: history, excluding: excluding,
+                                        context: context ?? .current()), !p.sets.isEmpty {
+            return p.sets.map { ExerciseSet(reps: $0.reps, weight: $0.weightLb) }
+        }
         let defaultCount = tracking == .timed ? 1 : 3
         let count = max(1, min(exercise.targetSets ?? (last.isEmpty ? defaultCount : last.count), 10))
 
@@ -205,9 +211,6 @@ enum ProgressionEngine {
             case .timed:
                 return ExerciseSet(durationSecs: previous?.durationSecs ?? exercise.targetSeconds)
             case .weighted, .bodyweight:
-                if let suggestion, suggestion.kind == .increaseLoad, let w = suggestion.weightLb {
-                    return ExerciseSet(reps: suggestion.targetReps, weight: w)
-                }
                 if let previous {
                     return ExerciseSet(reps: previous.reps, weight: previous.weight)
                 }

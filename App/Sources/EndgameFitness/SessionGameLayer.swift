@@ -333,6 +333,8 @@ struct SessionSummary: Identifiable {
     let estimatedXP: Int
     let prExercises: [String]
     let streakDays: Int
+    /// New best e1RMs and what the coach prescribes next time.
+    var review: SessionReview = .empty
 
     /// Built at finish time, before `WorkoutManager` clears `currentWorkout`.
     static func make(from workout: WorkoutSession, streak: Int) -> SessionSummary {
@@ -363,7 +365,13 @@ struct SessionSummary: Identifiable {
     func withStreak(_ days: Int) -> SessionSummary {
         SessionSummary(name: name, date: date, durationSecs: durationSecs, totalVolume: totalVolume,
                        totalReps: totalReps, sets: sets, exercises: exercises, estimatedXP: estimatedXP,
-                       prExercises: prExercises, streakDays: days)
+                       prExercises: prExercises, streakDays: days, review: review)
+    }
+
+    func withReview(_ review: SessionReview) -> SessionSummary {
+        var copy = self
+        copy.review = review
+        return copy
     }
 }
 
@@ -501,6 +509,10 @@ struct SessionSummaryView: View {
 
             ShareCardView(summary: summary)
 
+            if !summary.review.records.isEmpty || !summary.review.nextTime.isEmpty {
+                SessionReviewView(review: summary.review)
+            }
+
             HStack(spacing: 12) {
                 #if os(macOS)
                 Button(copied ? "Copied" : "Copy Share Card") {
@@ -547,6 +559,47 @@ struct SessionSummaryView: View {
         #else
         return renderer.uiImage
         #endif
+    }
+}
+
+/// PRs by estimated max and what changes next session.
+struct SessionReviewView: View {
+    let review: SessionReview
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                if !review.records.isEmpty {
+                    Label("New best estimated max", systemImage: "trophy.fill")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Color.brandGreen)
+                    ForEach(review.records) { line in
+                        row(line)
+                    }
+                }
+                if !review.nextTime.isEmpty {
+                    Label("Next time", systemImage: "arrow.forward.circle")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Color.brandBlue)
+                    ForEach(review.nextTime) { line in
+                        row(line)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 220)
+    }
+
+    private func row(_ line: SessionReview.Line) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(line.name).font(.caption.bold())
+            Text(line.text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

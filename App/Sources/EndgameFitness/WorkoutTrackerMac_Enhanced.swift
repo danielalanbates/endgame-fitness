@@ -609,6 +609,8 @@ class WorkoutManager: ObservableObject {
         d.set(config.mesocycleWeeks, forKey: "mesocycleWeeks")
         d.set(config.includeDeload, forKey: "deloadEnabled")
         d.set(config.progression.rawValue, forKey: "progressionStyle")
+        d.set(config.experienceLevel.rawValue, forKey: "progressionExperience")
+        d.set(config.primaryGoal.rawValue, forKey: "progressionGoal")
         d.set(Date().timeIntervalSince1970, forKey: "programStartDate")
         d.set(config.scheduleMode.rawValue, forKey: "scheduleMode")
         d.set(config.daysOn, forKey: "cycleDaysOn")
@@ -1967,6 +1969,9 @@ struct DashboardView: View {
                     },
                     onOpenCommunity: { workoutManager.selectedTab = 7 }
                 )
+
+                // Today's prescribed loads, missed-day nudge and weekly volume
+                SmartTodayCard(workoutManager: workoutManager, todaysWorkout: todaysScheduledWorkout)
 
                 // Training insight from your own logged history
                 TrainingInsightCard(workoutManager: workoutManager)

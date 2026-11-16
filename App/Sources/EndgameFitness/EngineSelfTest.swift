@@ -310,6 +310,167 @@ enum EngineSelfTest {
         }
         check("phase templates sum to cycle length", true)
 
+        // MARK: Smart coach (SmartCoach.swift): deterministic, no defaults read.
+        do {
+            let cal = Calendar(identifier: .gregorian)
+            let base = cal.date(from: DateComponents(year: 2026, month: 10, day: 1, hour: 9))!
+            func day(_ n: Int) -> Date { cal.date(byAdding: .day, value: n, to: base)! }
+            func ex(_ name: String, _ lo: Int, _ hi: Int, lower: Bool = false, sets: [(Double, Int, Int?)] = []) -> Exercise {
+                var e = Exercise(name: name, primaryMuscles: [lower ? "quadriceps" : "chest"], tracking: .weighted,
+                                 targetRepMin: lo, targetRepMax: hi)
+                e.sets = sets.map { ExerciseSet(reps: $0.1, weight: $0.0, completed: true, rir: $0.2) }
+                return e
+            }
+            func sess(_ d: Int, _ e: Exercise) -> WorkoutSession {
+                WorkoutSession(date: day(d), exercises: [e], completed: true)
+            }
+            func near(_ a: Double, _ b: Double, _ tol: Double = 0.01) -> Bool { abs(a - b) <= tol }
+            var ctx = CoachContext(); ctx.unit = .lb; ctx.deloadEnabled = false
+            let now = day(40)
+
+            // e1RM formulas and RPE chart
+            check("coach brzycki/epley", near(SmartCoach.brzycki(weight: 100, reps: 5), 112.5)
+                  && near(SmartCoach.epley(weight: 100, reps: 5), 116.667, 0.01))
+            check("coach e1RM blend", near(SmartCoach.e1RM(weight: 100, reps: 5), 114.583, 0.01)
+                  && SmartCoach.e1RM(weight: 100, reps: 1) == 100 && near(SmartCoach.e1RM(weight: 100, reps: 12), 140))
+            check("coach e1RM from RIR", near(SmartCoach.e1RM(weight: 100, reps: 5, rir: 0), 100 / 0.863, 0.01))
+            check("coach RPE chart", SmartCoach.percentOf1RM(reps: 1, rpe: 10) == 1.0
+                  && near(SmartCoach.percentOf1RM(reps: 5, rpe: 8), 0.811)
+                  && near(SmartCoach.percentOf1RM(reps: 3, rpe: 8.5), 0.8775, 0.0001))
+            check("coach RPE load", near(SmartCoach.load(e1RM: 200, reps: 5, rpe: 8), 162.2, 0.01))
+
+            // Plate rounding
+            check("coach plate round lb", SmartCoach.roundToLoadable(187, unit: .lb) == 185
+                  && SmartCoach.roundToLoadable(188, unit: .lb) == 190
+                  && SmartCoach.roundToLoadable(52, unit: .lb, equipment: "dumbbell") == 50)
+            check("coach plate round kg", near(TrainingUnits.toDisplay(SmartCoach.roundToLoadable(101, unit: .kg), .kg), 45))
+
+            // Linear
+            ctx.model = .linear
+            let bench = ex("Coach Bench", 5, 5, sets: [(135, 5, nil), (135, 5, nil), (135, 5, nil)])
+            let pLin = SmartCoach.prescribe(exercise: bench, history: [sess(0, bench)], context: ctx, now: now)
+            check("coach linear upper +5", pLin?.kind == .increase && pLin?.topLoad == 140 && pLin?.topReps == 5
+                  && (pLin?.reason.hasPrefix("+5 lb: hit 3×5") ?? false), "\(String(describing: pLin))")
+            let squat = ex("Coach Squat", 5, 5, lower: true, sets: [(135, 5, nil), (135, 5, nil), (135, 5, nil)])
+            check("coach linear lower +10", SmartCoach.prescribe(exercise: squat, history: [sess(0, squat)], context: ctx, now: now)?.topLoad == 145)
+            var kctx = ctx; kctx.unit = .kg
+            let kgTop = TrainingUnits.toPounds(60, from: .kg)
+            let benchKg = ex("Coach Bench", 5, 5, sets: [(kgTop, 5, nil), (kgTop, 5, nil)])
+            let pKg = SmartCoach.prescribe(exercise: benchKg, history: [sess(0, benchKg)], context: kctx, now: now)
+            check("coach linear kg +2.5", near(TrainingUnits.toDisplay(pKg?.topLoad ?? 0, .kg), 62.5), "\(String(describing: pKg))")
+            let benchMiss = ex("Coach Bench", 5, 5, sets: [(135, 5, nil), (135, 4, nil)])
+            let pHold = SmartCoach.prescribe(exercise: benchMiss, history: [sess(0, benchMiss)], context: ctx, now: now)
+            check("coach linear hold on miss", pHold?.kind == .hold && pHold?.topLoad == 135)
+
+            // Double progression
+            ctx.model = .double
+            let curlTop = ex("Coach Curl", 8, 12, sets: [(100, 12, nil), (100, 12, nil), (100, 12, nil)])
+            let pRoll = SmartCoach.prescribe(exercise: curlTop, history: [sess(0, curlTop)], context: ctx, now: now)
+            check("coach double rollover", pRoll?.kind == .increase && pRoll?.topLoad == 105 && pRoll?.topReps == 8, "\(String(describing: pRoll))")
+            let curlMid = ex("Coach Curl", 8, 12, sets: [(100, 10, nil), (100, 9, nil), (100, 9, nil)])
+            let pAdd = SmartCoach.prescribe(exercise: curlMid, history: [sess(0, curlMid)], context: ctx, now: now)
+            check("coach double add reps", pAdd?.kind == .addReps && pAdd?.topReps == 11 && pAdd?.topLoad == 100)
+            let curlRIR0 = ex("Coach Curl", 8, 12, sets: [(100, 12, 0), (100, 12, 0)])
+            check("coach double needs RIR 1+", SmartCoach.prescribe(exercise: curlRIR0, history: [sess(0, curlRIR0)], context: ctx, now: now)?.kind == .addReps)
+
+            // Stall -> reset
+            let flat = ex("Coach Row", 8, 12, sets: [(100, 10, nil), (100, 10, nil), (100, 10, nil)])
+            let flatHist = (0..<5).map { sess($0 * 3, flat) }
+            let stState = SmartCoach.state(key: flat.identityKey, history: flatHist, repRange: 8...12, now: now)
+            check("coach stall detected", stState?.isStalled == true && stState?.needsDeload == false)
+            let pReset = SmartCoach.prescribe(exercise: flat, history: flatHist, context: ctx, now: now)
+            check("coach stall reset -10%", pReset?.kind == .reset && pReset?.topLoad == 90, "\(String(describing: pReset))")
+            check("coach no stall with 3 exposures", SmartCoach.state(key: flat.identityKey, history: Array(flatHist.prefix(3)), now: now)?.isStalled == false)
+
+            // Fatigue deload triggers
+            let ok = ex("Coach Press", 8, 12, sets: [(100, 9, nil), (100, 9, nil)])
+            let miss = ex("Coach Press", 8, 12, sets: [(100, 8, nil), (100, 6, nil)])
+            let pMiss = SmartCoach.prescribe(exercise: miss, history: [sess(0, ok), sess(3, miss), sess(6, miss)], context: ctx, now: now)
+            check("coach deload on missed reps x2", pMiss?.kind == .deload && pMiss?.topLoad == 90, "\(String(describing: pMiss))")
+            let pOne = SmartCoach.prescribe(exercise: miss, history: [sess(0, ok), sess(3, miss)], context: ctx, now: now)
+            check("coach one miss is not a deload", pOne?.kind != .deload)
+            let r3 = ex("Coach Press", 8, 12, sets: [(100, 9, 3)]), r2 = ex("Coach Press", 8, 12, sets: [(100, 9, 2)]),
+                r1 = ex("Coach Press", 8, 12, sets: [(100, 9, 1)])
+            let creepState = SmartCoach.state(key: r3.identityKey, history: [sess(0, r3), sess(3, r2), sess(6, r1)], repRange: 8...12, now: now)
+            check("coach effort creep", creepState?.effortCreep == true && (creepState?.readiness ?? 100) < 100)
+            var dctx = ctx; dctx.deloadEnabled = true; dctx.cycleWeeks = 4; dctx.weekInCycle = 4
+            let pWeek = SmartCoach.prescribe(exercise: curlMid, history: [sess(0, curlMid)], context: dctx, now: now)
+            check("coach planned deload week", pWeek?.kind == .deload && pWeek?.sets.count == 2 && pWeek?.topLoad == 90, "\(String(describing: pWeek))")
+            dctx.weekInCycle = 3
+            check("coach no deload before last week", SmartCoach.prescribe(exercise: curlMid, history: [sess(0, curlMid)], context: dctx, now: now)?.kind != .deload)
+
+            // RPE / RIR autoregulation
+            ctx.model = .rpe; ctx.goal = .getStronger
+            let dl = ex("Coach Pull", 3, 6, sets: [(200, 5, 2)])
+            let pRPE = SmartCoach.prescribe(exercise: dl, history: [sess(0, dl), sess(3, dl)], context: ctx, now: now)
+            // e1RM = 200 / 0.811 = 246.6; 3 reps @ 8.5 = 0.8775 -> 216.4 -> 215
+            check("coach RPE prescription", pRPE?.kind == .autoregulated && pRPE?.topLoad == 215 && pRPE?.topReps == 3
+                  && pRPE?.targetRPE == 8.5, "\(String(describing: pRPE))")
+
+            // Percentage waves and blocks
+            ctx.model = .waves; ctx.cycleWeeks = 6; ctx.weekInCycle = 0
+            let one = ex("Coach Pull", 1, 1, sets: [(200, 1, nil)])
+            let pW1 = SmartCoach.prescribe(exercise: one, history: [sess(0, one)], context: ctx, now: now)
+            // TM = 180: 117 -> 115, 135, 153 -> 155
+            check("coach wave week 1", pW1?.sets.map(\.weightLb) == [115, 135, 155] && pW1?.sets.map(\.reps) == [5, 5, 5],
+                  "\(String(describing: pW1?.sets))")
+            ctx.weekInCycle = 2
+            let pW3 = SmartCoach.prescribe(exercise: one, history: [sess(0, one)], context: ctx, now: now)
+            check("coach wave week 3 top single", pW3?.sets.last?.reps == 1 && pW3?.topLoad == 170)
+            check("coach blocks 10wk", SmartCoach.block(week: 0, cycleWeeks: 10) == .accumulation
+                  && SmartCoach.block(week: 5, cycleWeeks: 10) == .intensification
+                  && SmartCoach.block(week: 9, cycleWeeks: 10) == .realization)
+            ctx.cycleWeeks = 10; ctx.weekInCycle = 9
+            let pReal = SmartCoach.prescribe(exercise: one, history: [sess(0, one)], context: ctx, now: now)
+            check("coach realization block", pReal?.sets.count == 3 && pReal?.topReps == 2 && pReal?.topLoad == 160)
+
+            // Volume landmarks
+            check("coach volume under", SmartCoach.volumeStatus(group: "Back", sets: 4)?.level == .under
+                  && SmartCoach.volumeStatus(group: "Back", sets: 4)?.advice == "Back under target: add 6 sets this week.")
+            check("coach volume productive/over", SmartCoach.volumeStatus(group: "Chest", sets: 16)?.level == .productive
+                  && SmartCoach.volumeStatus(group: "Chest", sets: 30)?.advice.contains("cut 8 sets") == true)
+            check("coach muscle groups", SmartCoach.group(forMuscle: "quadriceps") == "Quads" && SmartCoach.group(forMuscle: "lats") == "Back")
+            let vol = SmartCoach.weeklyVolume(from: [sess(38, bench), sess(39, squat)], now: now)
+            check("coach weekly volume counts", vol.first { $0.landmark.group == "Chest" }?.sets == 3
+                  && vol.first { $0.landmark.group == "Quads" }?.sets == 3 && vol.count == SmartCoach.landmarks.count)
+
+            // Auto model choice
+            var actx = CoachContext(); actx.model = .auto
+            let noHist: ExerciseState? = nil
+            check("coach auto beginner linear", SmartCoach.resolvedModel(actx, state: noHist) == .linear)
+            check("coach auto beginner stalled double", SmartCoach.resolvedModel(actx, state: stState) == .double)
+            actx.experience = .intermediate; actx.goal = .getStronger
+            check("coach auto intermediate strength waves", SmartCoach.resolvedModel(actx, state: noHist) == .waves)
+            actx.goal = .buildMuscle
+            check("coach auto intermediate muscle double", SmartCoach.resolvedModel(actx, state: noHist) == .double)
+            actx.experience = .advanced
+            check("coach auto advanced no RIR double", SmartCoach.resolvedModel(actx, state: stState) == .double)
+            check("coach auto advanced RIR rpe", SmartCoach.resolvedModel(actx, state: creepState) == .rpe)
+            actx.model = .linear
+            check("coach explicit model kept", SmartCoach.resolvedModel(actx, state: creepState) == .linear)
+
+            // Trend, cycle week, adherence
+            let trendHist = (0..<4).map { i in sess(i * 7, ex("Coach Trend", 5, 5, sets: [(100 + Double(i) * 10, 5, nil)])) }
+            let tr = SmartCoach.state(key: ex("Coach Trend", 5, 5).identityKey, history: trendHist, now: now)?.trendPerWeek ?? 0
+            check("coach trend slope", near(tr, SmartCoach.e1RM(weight: 110, reps: 5) - SmartCoach.e1RM(weight: 100, reps: 5), 0.01), "\(tr)")
+            check("coach week in cycle", CoachContext.weekInCycle(start: day(0), now: day(15), totalWeeks: 7) == 2
+                  && CoachContext.weekInCycle(start: day(0), now: day(50), totalWeeks: 7) == 0)
+            check("coach missed rolling days", SmartCoach.missedRollingDays(start: day(0), daysOn: 3, daysOff: 1, logged: [day(0)],
+                                                                            now: day(3), calendar: cal) == 2)
+            check("coach rolling on track", SmartCoach.missedRollingDays(start: day(0), daysOn: 3, daysOff: 1, logged: [day(2)],
+                                                                         now: day(3), calendar: cal) == 0)
+            let wed = cal.date(from: DateComponents(year: 2026, month: 11, day: 18, hour: 9))!
+            check("coach missed weekly day", SmartCoach.missedWeeklyDays(weekdays: ["Monday"], logged: [], now: wed, calendar: cal) == ["Monday"])
+
+            // Post-workout review
+            let heavier = ex("Coach Bench", 5, 5, sets: [(140, 5, nil), (140, 5, nil), (140, 5, nil)])
+            let w2 = sess(2, heavier)
+            ctx = CoachContext(); ctx.model = .linear; ctx.deloadEnabled = false
+            let review = SessionReview.make(workout: w2, before: [sess(0, bench)], after: [sess(0, bench), w2], context: ctx)
+            check("coach review PR + next", review.records.count == 1 && review.nextTime.first?.text.hasPrefix("145 lb × 5") == true,
+                  "\(review)")
+        }
+
         print(failures == 0 ? "SELFTEST PASS \(count)/\(count)" : "SELFTEST FAIL \(failures) of \(count)")
         return failures == 0 ? 0 : 1
     }
