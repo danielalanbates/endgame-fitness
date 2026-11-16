@@ -22,6 +22,10 @@
 //  5. Each candidate is scored (frequency, volume, recovery, goal
 //     coverage, balance) and the best one wins. The same score is used by
 //     the selftest to compare against hand-built splits.
+//  6. One week (or one or two rolling cycles) is planned and repeated, so
+//     every week has the same sessions and set counts. Session length is a
+//     ceiling; when sessions miss the aerobic target, brisk walks outside
+//     the sessions make up the gap.
 //
 
 import Foundation
@@ -58,17 +62,21 @@ enum SmartPlanner {
         var reps: String? = nil
         /// Only sensible as a heavy, low-rep lift (weighted pull-ups, dips).
         var heavyOnly = false
+        /// Injuries this move is the preferred swap for (goblet squat for a low back).
+        var safeFor: Set<String> = []
     }
 
     // MARK: - Catalog (names follow the existing generateExercises pools)
 
     static let catalog: [Move] = [
         // Squat
-        Move(name: "Back Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Knee"]),
-        Move(name: "Barbell Box Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true),
-        Move(name: "Front Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee"]),
-        Move(name: "Leg Press", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5]),
-        Move(name: "Goblet Squats", pattern: .squat, gear: [.dumbbell, .kettlebell], muscles: ["Quads": 1, "Glutes": 0.5]),
+        Move(name: "Back Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Knee", "Low back"]),
+        Move(name: "Barbell Box Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Low back"]),
+        Move(name: "Front Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee", "Low back"]),
+        Move(name: "Belt Squats", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Knee"], safeFor: ["Low back"]),
+        Move(name: "Leg Press", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5], safeFor: ["Low back"]),
+        Move(name: "Goblet Squats", pattern: .squat, gear: [.dumbbell, .kettlebell], muscles: ["Quads": 1, "Glutes": 0.5], safeFor: ["Low back"]),
+        Move(name: "Pistol Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee"], reps: "3-6", heavyOnly: true),
         Move(name: "Bodyweight Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], reps: "15-20"),
         Move(name: "Box Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], reps: "12-15"),
         // Hinge
@@ -84,18 +92,23 @@ enum SmartPlanner {
         Move(name: "Reverse Lunges", pattern: .lunge, gear: [.dumbbell, .kettlebell, .bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], flags: ["Knee"]),
         Move(name: "Step-ups", pattern: .lunge, gear: [.dumbbell, .bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], flags: ["Knee"]),
         // Horizontal push
-        Move(name: "Barbell Bench Press", pattern: .hPush, gear: [.barbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true),
+        Move(name: "Barbell Bench Press", pattern: .hPush, gear: [.barbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true, flags: ["Shoulder"]),
         Move(name: "Dumbbell Bench Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5]),
         Move(name: "Incline Dumbbell Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Shoulders": 0.5, "Triceps": 0.5]),
         Move(name: "Machine Chest Press", pattern: .hPush, gear: [.machine], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5]),
+        Move(name: "Neutral-Grip Dumbbell Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], safeFor: ["Shoulder"]),
+        Move(name: "Dumbbell Floor Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5], safeFor: ["Shoulder"]),
         Move(name: "Weighted Dips", pattern: .hPush, gear: [.machine], muscles: ["Chest": 1, "Triceps": 1, "Shoulders": 0.5], heavy: true, beginner: false, flags: ["Shoulder"], heavyOnly: true),
         Move(name: "Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], reps: "8-15"),
         Move(name: "Incline Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], reps: "10-15"),
+        Move(name: "Archer Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true, beginner: false, reps: "4-8", heavyOnly: true),
         // Vertical push
         Move(name: "Overhead Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Triceps": 0.5], heavy: true, flags: ["Shoulder"]),
         Move(name: "Dumbbell Shoulder Press", pattern: .vPush, gear: [.dumbbell, .kettlebell], muscles: ["Shoulders": 1, "Triceps": 0.5], flags: ["Shoulder"]),
-        Move(name: "Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Chest": 0.5, "Triceps": 0.5]),
+        Move(name: "Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Chest": 0.5, "Triceps": 0.5], safeFor: ["Shoulder"]),
+        Move(name: "Half-Kneeling Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Triceps": 0.5], safeFor: ["Shoulder"]),
         Move(name: "Pike Push-ups", pattern: .vPush, gear: [.bodyweight], muscles: ["Shoulders": 1, "Triceps": 0.5], beginner: false, flags: ["Shoulder"], reps: "6-12"),
+        Move(name: "Incline Pike Push-ups", pattern: .vPush, gear: [.bodyweight], muscles: ["Shoulders": 1, "Triceps": 0.5], flags: ["Shoulder"], reps: "6-10"),
         // Horizontal pull
         Move(name: "Barbell Rows", pattern: .hPull, gear: [.barbell], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, flags: ["Low back"]),
         Move(name: "Chest-Supported Rows", pattern: .hPull, gear: [.dumbbell, .machine], muscles: ["Back": 1, "Biceps": 0.5]),
@@ -186,7 +199,7 @@ enum SmartPlanner {
     // MARK: - Plan model
 
     struct Item {
-        enum Kind { case lift, cardio, intervals, mobility, balance, stability, walk }
+        enum Kind { case lift, cardio, intervals, mobility, balance, stability, walk, restDay }
         var kind: Kind
         var name: String
         var sets = 1
@@ -198,11 +211,21 @@ enum SmartPlanner {
         var heavyLoad = false
         var aerobic = 0.0      // moderate-equivalent aerobic minutes
         var gear: Set<Gear> = []
-        var duration: Double { kind == .lift ? Double(sets) * perSet + 1 : minutes }
+        /// One of a session's guaranteed push / pull / lower lifts.
+        var essential = false
+        /// Done as an antagonist superset: rest is shared, so each set costs less time.
+        var superset = false
+        var duration: Double {
+            switch kind {
+            case .lift: return superset ? Double(sets) * perSet * 0.65 + 0.5 : Double(sets) * perSet + 1
+            case .restDay: return 0
+            default: return minutes
+            }
+        }
         var text: String {
             switch kind {
             case .lift: return "\(name) \(sets)x\(reps)"
-            case .cardio, .walk: return "\(name) \(Int(minutes)) min"
+            case .cardio, .walk, .restDay: return "\(name) \(Int(minutes)) min"
             case .intervals, .mobility, .balance, .stability: return "\(name) \(reps)"
             }
         }
@@ -224,7 +247,13 @@ enum SmartPlanner {
                 var f = [0, 0, 0]
                 for t in ts { let tf = SmartPlanner.fatigue(of: t); for r in 0..<3 { f[r] = max(f[r], tf[r]) } }
                 return f
-            case .mixed: return [1, 2, 2]
+            // Strength + Zone 2 is hard for every region its lifts load.
+            case .mixed:
+                switch template ?? .fullBody {
+                case .upper: return [3, 1, 2]
+                case .lower: return [0, 3, 2]
+                default: return [2, 3, 2]
+                }
             case .zone2: return [0, 1, 1]
             case .intervals: return [0, 2, 3]
             case .gentleIntervals: return [0, 2, 2]
@@ -252,19 +281,24 @@ enum SmartPlanner {
         }
     }
 
-    struct Slot { let label: String; let day: Int; let restBefore: Int }
+    struct Slot { let label: String; let day: Int; let restBefore: Int; var cycle = 0 }
 
     struct Plan {
         let config: ProgramConfig
         let slots: [Slot]
         var sessions: [Session]
         let blockDays: Int
+        /// Brisk-walk minutes prescribed outside the sessions (0 = none), on
+        /// `walkDaysPerWeek` days (the rest days, or every day).
+        var restDayWalk = 0.0
+        var walkDaysPerWeek = 0.0
         var weeks: Double { Double(blockDays) / 7 }
 
+        /// Session length is a ceiling: each entry carries its own time.
         var scheduledWorkouts: [ScheduledWorkout] {
             zip(slots, sessions).map { slot, s in
-                ScheduledWorkout(dayOfWeek: slot.label, workoutType: s.label,
-                                 exercises: s.items.map(\.text), estimatedDuration: config.sessionLength)
+                ScheduledWorkout(dayOfWeek: slot.label, workoutType: s.label, exercises: s.items.map(\.text),
+                                 estimatedDuration: max(10, min(config.sessionLength, Int(s.minutes.rounded()))))
             }
         }
     }
@@ -311,7 +345,7 @@ enum SmartPlanner {
         switch t {
         case .fullBody:
             switch variant % 3 {
-            case 0: return [.squat, .hPush, .hPull, .glute, .core, .vPull, .lateral, .calf, .biceps, .triceps]
+            case 0: return [.squat, .hPush, .hPull, .hamIso, .core, .vPull, .lateral, .glute, .calf, .biceps, .triceps]
             case 1: return [.hinge, .vPush, .vPull, .lunge, .carry, .hPush, .hamIso, .rearDelt, .triceps, .biceps]
             default: return [.squat, .hPush, .hPull, .hinge, .core, .vPush, .lateral, .rearDelt, .biceps, .triceps]
             }
@@ -344,22 +378,59 @@ enum SmartPlanner {
         }
     }
 
-    static func pick(_ p: Pattern, variant: Int, ctx: Ctx, intensity: Intensity, used: Set<String>) -> Move? {
-        for q in [p] + fallback(p) {
-            var c = catalog.filter { $0.pattern == q && !$0.gear.isDisjoint(with: ctx.gear) && $0.flags.isDisjoint(with: ctx.injuries) }
-            if ctx.beginner { let b = c.filter(\.beginner); if !b.isEmpty { c = b } }
-            if intensity == .heavy { let h = c.filter(\.heavy); if !h.isEmpty { c = h } }
-            else { let l = c.filter { !$0.heavyOnly }; if !l.isEmpty { c = l } }
-            // Circuits and strength-endurance: dumbbells/machines over max-effort barbell lifts.
-            if intensity == .endurance || intensity == .circuit { let l = c.filter { !$0.heavy }; if !l.isEmpty { c = l } }
-            c = c.filter { !used.contains($0.name) }
-            // With weights available, bodyweight/band versions are the fallback,
-            // and variety rotates through the best few options only.
-            if !ctx.gear.isDisjoint(with: [.barbell, .dumbbell, .kettlebell, .machine]) {
-                let basic: Set<Gear> = [.bodyweight, .band]
-                c = c.filter { !$0.gear.isSubset(of: basic) } + c.filter { $0.gear.isSubset(of: basic) }
+    /// How well a move can be loaded with this gear: 0 barbell/machine,
+    /// 1 dumbbell/kettlebell/cable/bar, 2 band, 3 bodyweight only.
+    static func gearRank(_ m: Move, ctx: Ctx) -> Int {
+        let g = m.gear.intersection(ctx.gear)
+        if !g.isDisjoint(with: [.barbell, .machine]) { return 0 }
+        if !g.isDisjoint(with: [.dumbbell, .kettlebell, .cable, .pullupBar]) { return 1 }
+        return g.contains(.band) ? 2 : 3
+    }
+
+    /// Candidates for one pattern, best first: loadable gear before band
+    /// before bodyweight (a lower tier only when the higher one is missing or
+    /// blocked), injury-preferred swaps first within the tier.
+    static func ranked(_ q: Pattern, ctx: Ctx, intensity: Intensity, used: Set<String>) -> [Move] {
+        var c = catalog.filter { $0.pattern == q && !$0.gear.isDisjoint(with: ctx.gear) && $0.flags.isDisjoint(with: ctx.injuries) }
+        // Beginners never fall back to a move marked not for beginners.
+        if ctx.beginner { c = c.filter(\.beginner) }
+        if intensity == .heavy { let h = c.filter(\.heavy); if !h.isEmpty { c = h } }
+        else { let l = c.filter { !$0.heavyOnly }; if !l.isEmpty { c = l } }
+        // Circuits and strength-endurance: dumbbells/machines over max-effort barbell lifts.
+        if intensity == .endurance || intensity == .circuit { let l = c.filter { !$0.heavy }; if !l.isEmpty { c = l } }
+        c = c.filter { !used.contains($0.name) }
+        guard !c.isEmpty else { return [] }
+        if q != .core && q != .carry {
+            func tier(_ m: Move) -> Int { min(2, max(0, gearRank(m, ctx: ctx) - 1)) }
+            let best = c.map(tier).min()!
+            c = c.filter { tier($0) == best }
+        }
+        let order = Dictionary(uniqueKeysWithValues: catalog.enumerated().map { ($1.name, $0) })
+        return c.sorted { a, b in
+            let sa = a.safeFor.isDisjoint(with: ctx.injuries) ? 1 : 0, sb = b.safeFor.isDisjoint(with: ctx.injuries) ? 1 : 0
+            if sa != sb { return sa < sb }
+            let ra = gearRank(a, ctx: ctx), rb = gearRank(b, ctx: ctx)
+            if ra != rb { return ra < rb }
+            return order[a.name, default: 0] < order[b.name, default: 0]
+        }
+    }
+
+    /// `present`: patterns the session already has; a fallback pattern is
+    /// never used to add a second variant of one of them.
+    static func pick(_ p: Pattern, variant: Int, ctx: Ctx, intensity: Intensity, used: Set<String>,
+                     present: Set<Pattern> = []) -> Move? {
+        let chain = [p] + fallback(p).filter { !present.contains($0) }
+        for (qi, q) in chain.enumerated() {
+            let c = ranked(q, ctx: ctx, intensity: intensity, used: used)
+            guard !c.isEmpty else { continue }
+            // Heavy work with only bodyweight options in this pattern (a hinge
+            // with a bad back): a heavy-capable fallback lift goes first.
+            if qi == 0 && intensity == .heavy && !c.contains(where: \.heavy) && gearRank(c[0], ctx: ctx) >= 2 {
+                for f in chain.dropFirst() {
+                    if let h = ranked(f, ctx: ctx, intensity: .heavy, used: used).first(where: \.heavy) { return h }
+                }
             }
-            if !c.isEmpty { return c[variant % min(c.count, 3)] }
+            return c[variant % min(c.count, 3)]
         }
         return nil
     }
@@ -388,37 +459,84 @@ enum SmartPlanner {
 
     // MARK: - Session builders
 
-    /// Lifts for one strength block, filling `budget` minutes (warm-up included).
-    static func strengthItems(patterns: [Pattern], variant: Int, intensity: Intensity, budget: Double,
+    /// 0 push, 1 pull, 2 lower: the three movements every strength session keeps.
+    static func region(_ p: Pattern?) -> Int? {
+        switch p {
+        case .hPush?, .vPush?: return 0
+        case .hPull?, .vPull?: return 1
+        case .squat?, .hinge?, .lunge?: return 2
+        default: return nil
+        }
+    }
+
+    static func makeItem(_ m: Move, sets: Int, intensity: Intensity, ctx: Ctx) -> Item {
+        let compound = m.pattern.isCompound
+        let r = m.reps ?? (intensity == .heavy && compound && !m.heavy ? "6-8" : reps(intensity, compound: compound, ctx: ctx))
+        return Item(kind: .lift, name: m.name, sets: sets, reps: r, pattern: m.pattern, muscles: m.muscles,
+                    perSet: perSet(intensity, compound: compound), heavyLoad: intensity == .heavy && compound && m.heavy, gear: m.gear)
+    }
+
+    /// Lifts for one strength block within `budget` minutes (warm-up included).
+    /// One push, one pull and one lower movement always stay; when time is
+    /// short the push and pull become an antagonist superset, then extra sets
+    /// and extra lifts go before any of those three movements.
+    static func strengthItems(patterns input: [Pattern], variant: Int, intensity: Intensity, budget: Double,
                               ctx: Ctx, used: inout Set<String>) -> [Item] {
+        var pats = input
+        // Size: core and carries only after the muscles that need the time.
+        if ctx.goal == .buildMuscle {
+            pats = pats.filter { $0 != .core && $0 != .carry } + pats.filter { $0 == .core || $0 == .carry }
+        }
+        // The first pattern of each region that yields a lift of that region
+        // (a blocked overhead press falls to the bench press, not to raises).
+        var ess: [Int] = []
+        for r in 0..<3 {
+            if let i = pats.indices.first(where: { region(pats[$0]) == r
+                && region(pick(pats[$0], variant: variant, ctx: ctx, intensity: intensity, used: used)?.pattern) == r }) { ess.append(i) }
+        }
+        ess.sort()
+        pats = ess.map { pats[$0] } + pats.enumerated().filter { !ess.contains($0.offset) }.map(\.element)
         var items: [Item] = []
-        var spent = 5.0
-        for p in patterns where items.count < ctx.maxExercises {
-            guard let m = pick(p, variant: variant, ctx: ctx, intensity: intensity, used: used) else { continue }
+        var present = Set<Pattern>()
+        for (k, p) in pats.enumerated() where items.count < ctx.maxExercises {
+            guard let m = pick(p, variant: variant, ctx: ctx, intensity: intensity, used: used, present: present) else { continue }
+            if m.pattern != p && present.contains(m.pattern) { continue }
             let compound = m.pattern.isCompound
-            let ps = perSet(intensity, compound: compound)
-            // Heavy work starts with more sets per lift; volume work spreads
-            // the same time over more exercises.
             var sets = compound ? (intensity == .heavy ? ctx.compoundSets : min(3, ctx.compoundSets)) : ctx.isoSets
             if intensity == .heavy && compound && !ctx.beginner { sets += 1 }
-            while sets > 2 && spent + Double(sets) * ps + 1 > budget { sets -= 1 }
-            if spent + Double(sets) * ps + 1 > budget && !items.isEmpty { continue }
-            used.insert(m.name)
-            let r = m.reps ?? (intensity == .heavy && compound && !m.heavy ? "6-8" : reps(intensity, compound: compound, ctx: ctx))
-            items.append(Item(kind: .lift, name: m.name, sets: sets, reps: r, pattern: m.pattern, muscles: m.muscles,
-                              perSet: ps, heavyLoad: intensity == .heavy && compound && m.heavy, gear: m.gear))
-            spent += Double(sets) * ps + 1
+            used.insert(m.name); present.insert(m.pattern)
+            var it = makeItem(m, sets: sets, intensity: intensity, ctx: ctx)
+            it.essential = k < ess.count && region(m.pattern) != nil
+            items.append(it)
         }
-        // Time left after the pool: add sets to compounds first, then a
-        // single extra set to accessories.
+        func time() -> Double { 5 + items.reduce(0) { $0 + $1.duration } }
+        func superset() {
+            guard let pu = items.firstIndex(where: { $0.essential && region($0.pattern) == 0 }),
+                  let pl = items.firstIndex(where: { $0.essential && region($0.pattern) == 1 }), !items[pu].superset else { return }
+            items[pu].superset = true; items[pl].superset = true
+            if pl != pu + 1 { let pull = items.remove(at: pl); items.insert(pull, at: pl > pu ? pu + 1 : pu) }
+        }
+        // Short sessions superset straight away, so a fourth lift still fits.
+        if ctx.length <= 40 && time() > budget { superset() }
+        while time() > budget, let i = items.lastIndex(where: { !$0.essential && $0.sets > 2 }) { items[i].sets -= 1 }
+        while time() > budget, let i = items.lastIndex(where: { $0.essential && $0.sets > 3 }) { items[i].sets -= 1 }
+        while time() > budget && items.count > 4, let i = items.lastIndex(where: { !$0.essential }) { items.remove(at: i) }
+        if time() > budget { superset() }
+        while time() > budget, let i = items.lastIndex(where: { !$0.essential }) { items.remove(at: i) }
+        while time() > budget, let i = items.lastIndex(where: { $0.sets > 2 }) { items[i].sets -= 1 }
+        while time() > budget, let i = items.lastIndex(where: { $0.sets > 1 }) { items[i].sets -= 1 }
+        while time() > budget && items.count > 1 { items.removeLast() }
+        // Time left: add sets to compounds first, then one extra set to
+        // accessories. The volume check later trims anything over the range.
         for compoundPass in [true, false] {
             var grew = true
             while grew {
                 grew = false
                 for i in items.indices where (items[i].pattern?.isCompound ?? false) == compoundPass {
                     let cap = compoundPass ? ctx.maxSets : ctx.isoSets + 1
-                    if items[i].sets < cap && spent + items[i].perSet <= budget {
-                        items[i].sets += 1; spent += items[i].perSet; grew = true
+                    let step = items[i].superset ? items[i].perSet * 0.65 : items[i].perSet
+                    if items[i].sets < cap && time() + step <= budget {
+                        items[i].sets += 1; grew = true
                     }
                 }
             }
@@ -474,24 +592,50 @@ enum SmartPlanner {
         case .circuit: tag = "Strength Circuit"
         default: tag = "Strength"
         }
+        // Every distinct workout has its own name, so its lifts and set
+        // counts can be tracked from one week to the next.
+        let letter = ["A", "B", "C", "D", "E", "F"][variant % 6]
         switch t {
-        case .fullBody: return "Full Body \(tag) \(["A", "B", "C"][variant % 3])"
-        case .upper: return "Upper Body \(tag)"
-        case .lower: return "Lower Body \(tag)"
-        case .push: return "Push \(tag)"
-        case .pull: return "Pull \(tag)"
-        case .legs: return "Legs \(tag)"
-        default: return "\(t.rawValue.capitalized) \(tag)"
+        case .fullBody: return "Full Body \(tag) \(letter)"
+        case .upper: return "Upper Body \(tag) \(letter)"
+        case .lower: return "Lower Body \(tag) \(letter)"
+        case .push: return "Push \(tag) \(letter)"
+        case .pull: return "Pull \(tag) \(letter)"
+        case .legs: return "Legs \(tag) \(letter)"
+        default: return "\(t.rawValue.capitalized) \(tag) \(letter)"
         }
     }
 
-    static func build(_ spec: Spec, ctx: Ctx) -> Session {
+    /// Longest a session of this type runs. The chosen session length is a
+    /// ceiling, not a target: cardio and recovery days are not padded with
+    /// drills, and strength/size plans keep Zone 2 short (interference).
+    static func sessionCap(_ kind: Kind, ctx: Ctx) -> Double {
         let len = ctx.length
-        var used = Set<String>()
+        switch kind {
+        case .strength, .mixed: return len
+        case .intervals: return min(len, ctx.goal == .longevity ? 55 : 50)
+        case .gentleIntervals: return min(len, ctx.goal == .longevity ? 50 : 45)
+        case .mobility: return min(len, ctx.goal == .increaseFlexibility ? 45 : 40)
+        case .recovery: return min(len, 40)
+        case .zone2: return ctx.healthGoal ? len : min(len, 45)
+        }
+    }
+
+    static func intervalMode(_ ctx: Ctx) -> String {
+        if ctx.gear.contains(.machine) { return "bike or rower" }
+        if ctx.injuries.contains("Knee") { return "bike or uphill walk" }
+        return "hill run or fast uphill walk"
+    }
+
+    /// `avoid`: drills (and lifts) from the neighbouring day, not repeated.
+    static func build(_ spec: Spec, ctx: Ctx, avoid: Set<String> = []) -> Session {
+        let len = sessionCap(spec.kind, ctx: ctx)
+        var used = avoid
         var items: [Item] = []
-        let label: String
+        var label: String
         let mobFinisher: Double = ctx.goal == .longevity || ctx.goal == .increaseFlexibility
             ? (len >= 45 ? 10 : 5) : (len >= 45 ? 5 : 0)
+        var budget = len
         switch spec.kind {
         case .strength:
             let groups = spec.groups.isEmpty ? [spec.template ?? .fullBody] : spec.groups
@@ -503,66 +647,75 @@ enum SmartPlanner {
                 for i in 0..<(lists.map(\.count).max() ?? 0) { for l in lists where i < l.count { pats.append(l[i]) } }
             }
             let finisher = spec.groups.isEmpty ? mobFinisher : 0
+            budget = len - finisher
             items = strengthItems(patterns: pats, variant: spec.variant, intensity: spec.intensity,
-                                  budget: len - finisher, ctx: ctx, used: &used)
+                                  budget: budget, ctx: ctx, used: &used)
             items += drills(minutes: finisher, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 3, ctx: ctx, used: &used)
-            label = spec.label ?? strengthLabel(groups[0], spec.intensity, variant: spec.variant)
+            // "Heavy" only when a heavy-capable lift is actually in the session.
+            let shown = spec.intensity == .heavy && !items.contains(where: \.heavyLoad) ? Intensity.endurance : spec.intensity
+            label = spec.label ?? strengthLabel(groups[0], shown, variant: spec.variant)
+            if spec.label == nil && items.contains(where: \.superset) { label += " (Push/Pull Superset)" }
         case .mixed:
-            let sBudget = (len * 0.55).rounded()
-            items = strengthItems(patterns: patterns(.fullBody, variant: spec.variant), variant: spec.variant,
-                                  intensity: spec.intensity, budget: sBudget, ctx: ctx, used: &used)
+            let t = spec.template ?? .fullBody
+            budget = max((len * 0.55).rounded(), min(len, 20))
+            items = strengthItems(patterns: patterns(t, variant: spec.variant), variant: spec.variant,
+                                  intensity: spec.intensity, budget: budget, ctx: ctx, used: &used)
+            let lifted = items.isEmpty ? 0 : 5 + items.reduce(0) { $0 + $1.duration }
             let fin = len >= 45 ? min(mobFinisher, 8) : 0
-            let rest = len - sBudget - fin
+            let rest = max(10, len - lifted - fin)
             if ctx.goal == .increaseFlexibility {
                 items += drills(minutes: rest + fin, balance: true, stability: true, offset: spec.variant * 2, ctx: ctx, used: &used)
-                label = "Strength + Mobility"
+                label = "Strength + Mobility \(["A", "B", "C", "D", "E", "F"][spec.variant % 6])"
             } else {
                 items.append(zone2(rest, ctx: ctx))
                 items += drills(minutes: fin, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 2 + 5, ctx: ctx, used: &used)
-                label = "Strength + Zone 2"
+                label = "Strength + Zone 2 \(["A", "B", "C", "D", "E", "F"][spec.variant % 6])"
             }
         case .zone2:
-            let mob = len >= 40 ? (ctx.goal == .longevity && len >= 60 ? 15.0 : 10.0) : 0
+            let mob: Double = len >= 40 ? (ctx.healthGoal ? 10 : 5) : 0
             items = [zone2(len - mob, ctx: ctx)]
             items += drills(minutes: mob, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 4 + 1, ctx: ctx, used: &used)
-            label = ctx.goal == .longevity && len >= 60 ? "Zone 2 + Mobility & Balance" : (mob > 0 ? "Zone 2 + Mobility" : "Zone 2 Cardio")
+            label = ctx.goal == .longevity && mob > 0 ? "Zone 2 + Mobility & Balance" : (mob > 0 ? "Zone 2 + Mobility" : "Zone 2 Cardio")
         case .intervals:
-            let acc = len >= 45 ? 10.0 : 0
-            let reps = min(6, max(2, Int((len - 15 - acc) / 7)))
-            let spare = max(0, len - 15 - Double(reps * 7))
-            let mod: String
-            if ctx.gear.contains(.machine) { mod = "bike or rower" }
-            else if ctx.injuries.contains("Knee") { mod = "bike or uphill walk" }
-            else { mod = "hill run or fast uphill walk" }
-            items = [Item(kind: .cardio, name: "Easy Warm-up Cardio", minutes: 10, aerobic: 10),
-                     Item(kind: .intervals, name: "VO2max Intervals: 4 min hard / 3 min easy (\(mod))", sets: reps,
-                          reps: "\(reps)x240s", minutes: Double(reps * 7), aerobic: Double(reps * 4 * 2 + reps * 3)),
-                     Item(kind: .cardio, name: "Easy Cool-down", minutes: 5, aerobic: 5)]
-            items += drills(minutes: spare, balance: true, stability: true, offset: spec.variant * 2 + 3, ctx: ctx, used: &used)
-            label = ctx.goal == .longevity ? "VO2max Intervals + Balance" : "VO2max Intervals"
+            // Short sessions: a shorter warm-up and 3-min efforts keep at
+            // least 12 minutes at high intensity.
+            let short = len < 45
+            let warm: Double = short ? 6 : 10, cool: Double = short ? 4 : 5
+            let bal: Double = ctx.goal == .longevity && len >= 45 ? 5 : 0
+            let hard = short ? 3 : 4, easy = short ? 2 : 3
+            let reps = short ? min(5, max(3, Int((len - warm - cool) / 5))) : min(6, max(4, Int((len - warm - cool - bal) / 7)))
+            let block = Double(reps * (hard + easy))
+            items = [Item(kind: .cardio, name: "Easy Warm-up Cardio", minutes: warm, aerobic: warm),
+                     Item(kind: .intervals, name: "VO2max Intervals: \(hard) min hard / \(easy) min easy (\(intervalMode(ctx)))", sets: reps,
+                          reps: "\(reps)x\(hard * 60)s", minutes: block, aerobic: Double(reps * hard * 2 + reps * easy)),
+                     Item(kind: .cardio, name: "Easy Cool-down", minutes: cool, aerobic: cool)]
+            items += drills(minutes: min(bal, max(0, len - warm - cool - block)), balance: true, stability: false,
+                            offset: spec.variant * 2 + 3, ctx: ctx, used: &used)
+            label = ctx.goal == .longevity && items.contains(where: { $0.kind == .balance }) ? "VO2max Intervals + Balance" : "VO2max Intervals"
         case .gentleIntervals:
-            let acc = len >= 45 ? 10.0 : 0
-            let reps = min(10, max(4, Int((len - 13 - acc) / 3)))
-            let spare = max(0, len - 13 - Double(reps * 3))
-            items = [Item(kind: .cardio, name: "Brisk Walk Warm-up", minutes: 8, aerobic: 8),
+            let short = len < 40
+            let warm: Double = short ? 5 : 8, cool: Double = short ? 3 : 5
+            let bal: Double = ctx.goal == .longevity && !short ? 5 : 0
+            let reps = min(10, max(4, Int((len - warm - cool - bal) / 3)))
+            let block = Double(reps * 3)
+            items = [Item(kind: .cardio, name: "Brisk Walk Warm-up", minutes: warm, aerobic: warm),
                      Item(kind: .intervals, name: "Uphill Walk Intervals: 1 min brisk / 2 min easy", sets: reps,
-                          reps: "\(reps)x60s", minutes: Double(reps * 3), aerobic: Double(reps * 4)),
-                     Item(kind: .cardio, name: "Easy Cool-down", minutes: 5, aerobic: 5)]
-            items += drills(minutes: spare, balance: true, stability: true, offset: spec.variant * 2 + 3, ctx: ctx, used: &used)
-            label = "Gentle Intervals + Balance"
+                          reps: "\(reps)x60s", minutes: block, aerobic: Double(reps * 4)),
+                     Item(kind: .cardio, name: "Easy Cool-down", minutes: cool, aerobic: cool)]
+            items += drills(minutes: min(max(bal, 2.5), max(0, len - warm - cool - block)), balance: true, stability: false,
+                            offset: spec.variant * 2 + 3, ctx: ctx, used: &used)
+            label = items.contains(where: { $0.kind == .balance }) ? "Gentle Intervals + Balance" : "Gentle Intervals"
         case .mobility:
-            let walk = len >= 45 ? (len * 0.33).rounded() : 0
+            let walk: Double = len >= 40 && ctx.goal != .increaseFlexibility ? 15 : 0
             if walk > 0 { items.append(Item(kind: .walk, name: "Easy Walk", minutes: walk, aerobic: walk * 0.5)) }
             items += drills(minutes: len - walk, balance: true, stability: true, offset: spec.variant * 5, ctx: ctx, used: &used)
             label = "Mobility, Balance & Core"
         case .recovery:
-            let walk = (len * 0.5).rounded()
+            let walk = (len * 0.6).rounded()
             items = [Item(kind: .walk, name: "Easy Walk", minutes: walk, aerobic: walk * 0.5)]
             items += drills(minutes: len - walk, balance: false, stability: false, offset: spec.variant * 5 + 2, ctx: ctx, used: &used)
             label = "Recovery: Easy Walk + Mobility"
         }
-        let budget = spec.kind == .mixed ? (len * 0.55).rounded()
-            : spec.kind == .strength ? len - (spec.groups.isEmpty ? mobFinisher : 0) : len
         return Session(spec: spec, label: label, items: items, budget: budget)
     }
 
@@ -581,15 +734,19 @@ enum SmartPlanner {
     /// One block of training slots: 2 weeks (weekly) or enough rolling cycles
     /// to cover ~2 weeks (max 42 entries). `start` aligns weekly slot 0 with
     /// the first training day on/after the program start.
-    static func slots(for config: ProgramConfig, start: Date?, calendar: Calendar = .current) -> (slots: [Slot], blockDays: Int) {
+    /// `cycleMultiple`: rolling blocks hold a whole number of planning units.
+    static func slots(for config: ProgramConfig, start: Date?, calendar: Calendar = .current,
+                      cycleMultiple: Int = 1) -> (slots: [Slot], blockDays: Int) {
         if config.scheduleMode == .rolling {
             let on = max(1, config.daysOn), off = max(0, config.daysOff), cycle = on + off
+            let k = max(1, cycleMultiple)
             var c = max(1, Int((14.0 / Double(cycle)).rounded(.up)))
-            while c > 1 && c * on > 42 { c -= 1 }
+            c = Int((Double(c) / Double(k)).rounded(.up)) * k
+            while c > k && c * on > 42 { c -= k }
             var out: [Slot] = []
             for ci in 0..<c {
                 for d in 0..<on {
-                    out.append(Slot(label: "Day \(d + 1) · Cycle \(ci + 1)", day: ci * cycle + d, restBefore: d == 0 ? off : 0))
+                    out.append(Slot(label: "Day \(d + 1) · Cycle \(ci + 1)", day: ci * cycle + d, restBefore: d == 0 ? off : 0, cycle: ci))
                 }
             }
             return (out, c * cycle)
@@ -605,13 +762,13 @@ enum SmartPlanner {
         var out: [Slot] = []
         for w in 0..<2 {
             for (name, o) in order {
-                out.append(Slot(label: "\(name) · Wk \(w + 1)", day: w * 7 + o, restBefore: 0))
+                out.append(Slot(label: "\(name) · Wk \(w + 1)", day: w * 7 + o, restBefore: 0, cycle: w))
             }
         }
         var fixed: [Slot] = []
         for (i, s) in out.enumerated() {
             let prev = i == 0 ? out[out.count - 1].day - 14 : out[i - 1].day
-            fixed.append(Slot(label: s.label, day: s.day, restBefore: max(0, s.day - prev - 1)))
+            fixed.append(Slot(label: s.label, day: s.day, restBefore: max(0, s.day - prev - 1), cycle: s.cycle))
         }
         return (fixed, 14)
     }
@@ -636,6 +793,9 @@ enum SmartPlanner {
 
     static func decay(_ rest: Int) -> Double { rest == 0 ? 1 : rest == 1 ? 0.35 : 0.1 }
 
+    /// Both sessions load the same body region (upper or lower) hard.
+    static func overlap(_ a: [Int], _ b: [Int]) -> Bool { (a[0] >= 2 && b[0] >= 2) || (a[1] >= 2 && b[1] >= 2) }
+
     /// Recovery cost of a sequence. Lower is better.
     static func cost(_ specs: [Spec], slots: [Slot], health: Bool, blockDays: Int) -> Double {
         let n = specs.count
@@ -649,11 +809,19 @@ enum SmartPlanner {
             c += Double(max(0, a[0] - 1) * max(0, b[0] - 1)) * 3 * d
             c += Double(max(0, a[1] - 1) * max(0, b[1] - 1)) * 3 * d
             c += Double(max(0, a[2] - 1) * max(0, b[2] - 1)) * (health ? 4 : 1) * d
-            if specs[i].isHard && specs[j].isHard { c += (health ? 50 : 3) * d }
+            // Two hard days in a row: barred when they load the same region;
+            // tolerated (VO2max after an upper-only day) when they do not.
+            if specs[i].isHard && specs[j].isHard { c += (overlap(a, b) ? (health ? 50 : 3) : (health ? 6 : 1)) * d }
             if specs[i].kind == specs[j].kind && specs[i].kind != .strength && slots[j].restBefore == 0 { c += 1 }
+            // Intervals sit just before a rest day when they can.
+            if (specs[i].kind == .intervals || specs[i].kind == .gentleIntervals) && slots[j].restBefore > 0 { c -= 10 }
             // Hardest sessions straight after rest.
             c -= 0.4 * Double(specs[j].load) * Double(min(2, slots[j].restBefore))
         }
+        // Every cycle gets the same number of strength days.
+        var perCycle: [Int: Int] = [:]
+        for (i, s) in specs.enumerated() { perCycle[slots[i].cycle, default: 0] += s.kind == .strength || s.kind == .mixed ? 1 : 0 }
+        if perCycle.count > 1 { c += 4 * Double(perCycle.values.max()! - perCycle.values.min()!) }
         // Spread repeats of a session type evenly over the block.
         var byKey: [String: [Int]] = [:]
         for (i, s) in specs.enumerated() where s.kind != .mobility && s.kind != .recovery {
@@ -722,12 +890,15 @@ enum SmartPlanner {
         return seq
     }
 
-    /// Variants in order of appearance: Full Body A, B, C, A...
+    /// Variants in order of appearance: Full Body A, B, C, A... A Strength +
+    /// Zone 2 day shares the counter with strength days of the same template,
+    /// so it never repeats the lifts of the strength day next to it.
     static func assignVariants(_ specs: [Spec]) -> [Spec] {
         var counts: [String: Int] = [:]
         return specs.map { s in
             var s = s
-            let key = "\(s.kind.rawValue)|\(s.template?.rawValue ?? s.groups.map(\.rawValue).joined())|\(s.label ?? "")"
+            let kind = s.kind == .mixed && s.groups.isEmpty ? Kind.strength.rawValue : s.kind.rawValue
+            let key = "\(kind)|\(s.template?.rawValue ?? (s.kind == .mixed ? Template.fullBody.rawValue : s.groups.map(\.rawValue).joined()))|\(s.label ?? "")"
             s.variant = counts[key, default: 0]
             counts[key, default: 0] += 1
             return s
@@ -771,7 +942,10 @@ enum SmartPlanner {
                 var templates: [[Spec]] = []
                 let i = intensity
                 templates.append((0..<s).map { _ in Spec(kind: .strength, template: .fullBody, intensity: i) })
-                if s >= 2 {
+                // Size at 2-3 sessions a week: full body only, so every muscle
+                // is trained each session (upper/lower would give 1.5x a week).
+                let fullBodyOnly = ctx.goal == .buildMuscle && pw < 3.5
+                if s >= 2 && !fullBodyOnly {
                     if ctx.goal == .getStronger {
                         let cyc: [Spec] = [Spec(kind: .strength, template: .upper, intensity: .heavy), Spec(kind: .strength, template: .lower, intensity: .heavy),
                                            Spec(kind: .strength, template: .upper, intensity: .hypertrophy), Spec(kind: .strength, template: .lower, intensity: .hypertrophy)]
@@ -798,8 +972,14 @@ enum SmartPlanner {
         }
 
         // Health goals: strength, VO2 work, aerobic and mobility as weekly targets.
+        // Longevity on two days a week: both are Strength + Zone 2 (walks on
+        // rest days cover the rest of the aerobic target).
+        if ctx.goal == .longevity && f <= 2.5 {
+            return [(0..<n).map { _ in Spec(kind: .mixed, template: .fullBody, intensity: intensity) }]
+        }
         let strengthOpts: [Double]
         var intervalOpts: [Double]
+        var mixedOpts: [Double] = [0, 1, 2]
         let restKinds: [[Kind]]
         switch ctx.goal {
         case .longevity:
@@ -809,8 +989,12 @@ enum SmartPlanner {
             strengthOpts = f >= 3 ? [3] : [2]; intervalOpts = f >= 6 && !ctx.beginner ? [1, 2] : f >= 4 ? [1] : [0]
             restKinds = [[.zone2], [.zone2, .recovery]]
         case .improveEndurance:
-            strengthOpts = [2]; intervalOpts = f >= 5 && !ctx.beginner ? [1, 2] : f >= 3 ? [1] : [0]
-            restKinds = [[.zone2], [.zone2, .zone2, .recovery]]
+            // Mostly aerobic: a long Zone 2 day and an interval day come
+            // first; strength is 1 session at 3 days a week, 2 from 4 days.
+            strengthOpts = f <= 2.5 ? [0] : f <= 3.5 ? [1] : [2]
+            intervalOpts = f >= 5 && !ctx.beginner ? [1, 2] : [1]
+            mixedOpts = [0]
+            restKinds = f >= 5 ? [[.zone2], [.zone2, .zone2, .recovery]] : [[.zone2]]
         case .increaseFlexibility:
             strengthOpts = [2]; intervalOpts = [0]
             restKinds = [[.mobility], [.mobility, .mobility, .zone2]]
@@ -823,26 +1007,37 @@ enum SmartPlanner {
         let intervalKind: Kind = ctx.beginner ? .gentleIntervals : .intervals
         for so in strengthOpts {
             for io in intervalOpts {
-                for mo in [0.0, 1, 2] {
-                    var s = blk(so), i = blk(io), m = blk(mo)
+                for mo in mixedOpts {
+                    var s = blk(so), i = max(io > 0 ? 1 : 0, blk(io)), m = blk(mo)
                     if f <= 2.5 { s = min(s, n); m = 0 }
+                    if ctx.goal == .improveEndurance { i = min(i, max(0, n - 1)) }
                     while s + i + m > n && m > 0 { m -= 1 }
                     while s + i + m > n && i > 0 { i -= 1 }
                     while s + i + m > n && s > 1 { s -= 1 }
+                    // Strength + Zone 2 counts as hard, like any loaded day.
                     let hardI = intervalKind == .intervals ? i : 0
-                    var excess = s + hardI - cap
-                    while excess > 0 && s > 1 { s -= 1; m += 1; excess -= 1 }
-                    while excess > 0 && i > 0 { i -= 1; excess -= 1 }
-                    var base: [Spec] = []
-                    base += (0..<s).map { _ in Spec(kind: .strength, template: .fullBody, intensity: intensity) }
-                    base += (0..<i).map { _ in Spec(kind: intervalKind) }
-                    base += (0..<m).map { _ in Spec(kind: .mixed, intensity: intensity) }
-                    for rk in restKinds { out.append(fill(base, restKinds: rk)) }
+                    var excess = s + hardI + m - cap
+                    while excess > 0 && m > 0 { m -= 1; excess -= 1 }
+                    // VO2max may follow an upper-only strength day (legs rested):
+                    // tried both with that pairing and with one strength day fewer.
+                    for pair in excess > 0 && hardI > 0 && s >= 2 ? [true, false] : [false] {
+                        var s = s, i = i, excess = excess
+                        var upper = 0
+                        if pair { upper = 1; excess -= 1 }
+                        while excess > 0 && s > 1 { s -= 1; excess -= 1 }
+                        while excess > 0 && i > 0 { i -= 1; excess -= 1 }
+                        if i == 0 || s < 2 { upper = 0 }
+                        var base: [Spec] = []
+                        base += (0..<s).map { k in Spec(kind: .strength, template: k < upper ? .upper : .fullBody, intensity: intensity) }
+                        base += (0..<i).map { _ in Spec(kind: intervalKind) }
+                        base += (0..<m).map { _ in Spec(kind: .mixed, template: .fullBody, intensity: intensity) }
+                        for rk in restKinds { out.append(fill(base, restKinds: rk)) }
+                    }
                 }
             }
         }
-        if f <= 2.5 {
-            out.append((0..<n).map { _ in Spec(kind: .mixed, intensity: intensity) })
+        if f <= 2.5 && ctx.goal != .improveEndurance {
+            out.append((0..<n).map { _ in Spec(kind: .mixed, template: .fullBody, intensity: intensity) })
         }
         return out
     }
@@ -906,107 +1101,205 @@ enum SmartPlanner {
         }
     }
 
-    /// Moves weekly sets into each group's range: trims overs, adds where
-    /// time allows, shifts sets from groups with room, adds accessories.
+    /// Moves weekly sets into each group's range. The top of the range is a
+    /// hard cap: sets and accessories come off (sessions end early) rather
+    /// than run over. Glute work over range with hamstrings short is swapped
+    /// for a hamstring move. Size fills the largest shortfall first and keeps
+    /// core/carries out until every major muscle has its minimum. Added sets
+    /// go on the exercise already there for a pattern, not on a second variant.
     static func adjustVolume(_ plan: inout Plan, ctx: Ctx) {
-        var stuck = Set<String>()
-        for _ in 0..<400 {
+        let size = ctx.goal == .buildMuscle
+        let weeks = plan.weeks
+        func lo(_ l: VolumeLine) -> Double { Double(l.target.lowerBound) }
+        func hi(_ l: VolumeLine) -> Double { Double(min(l.mrv, l.target.upperBound)) }
+        func majorsUnder(_ r: [VolumeLine]) -> Bool { r.contains { majorGroups.contains($0.group) && $0.sets < lo($0) - 0.01 } }
+        func liftCount(_ si: Int) -> Int { plan.sessions[si].items.filter { $0.kind == .lift }.count }
+        func step(_ it: Item) -> Double { it.superset ? it.perSet * 0.65 : it.perSet }
+        func setCap(_ it: Item) -> Int { (it.pattern?.isCompound ?? false) || size ? ctx.maxSets : ctx.isoSets + 1 }
+        func patternsIn(_ si: Int) -> Set<Pattern> { Set(plan.sessions[si].items.compactMap { $0.kind == .lift ? $0.pattern : nil }) }
+        /// Lift names in this session and on the days right before and after it
+        /// (no lift is added that repeats a neighbouring day's lift).
+        func taken(_ si: Int) -> Set<String> {
+            let n = plan.sessions.count
+            var out = Set(plan.sessions[si].items.map(\.name))
+            if n > 1 {
+                if plan.slots[si].restBefore == 0 { out.formUnion(plan.sessions[(si - 1 + n) % n].items.filter { $0.kind == .lift }.map(\.name)) }
+                let nx = (si + 1) % n
+                if plan.slots[nx].restBefore == 0 { out.formUnion(plan.sessions[nx].items.filter { $0.kind == .lift }.map(\.name)) }
+            }
+            return out
+        }
+
+        if size && majorsUnder(volumeReport(plan)) {
+            for si in plan.sessions.indices {
+                plan.sessions[si].items.removeAll { $0.kind == .lift && !$0.essential && ($0.pattern == .core || $0.pattern == .carry) }
+            }
+        }
+        var stuck = Set<String>(), stuckOver = Set<String>()
+        for _ in 0..<600 {
             let report = volumeReport(plan)
-            var changed = false
-            // Over the range: drop a set from the biggest contributor.
-            if let over = report.filter({ $0.sets > Double($0.target.upperBound) + 0.01 })
-                .max(by: { $0.sets - Double($0.target.upperBound) < $1.sets - Double($1.target.upperBound) }) {
-                // Trim where the group is the lift's main target; a main lift is
-                // never cut for a group it only assists (glutes on squats).
-                var bestIdx: (Int, Int)? = nil, bestW = 0.0
-                for (si, s) in plan.sessions.enumerated() {
-                    for (ii, it) in s.items.enumerated() where it.kind == .lift && it.sets > 2 {
-                        let wgt = it.muscles[over.group] ?? 0
-                        let primary = wgt > 0 && wgt >= (it.muscles.values.max() ?? 0)
-                        let isolation = !(it.pattern?.isCompound ?? false)
-                        guard primary || (isolation && wgt > 0) else { continue }
-                        let rank = wgt + (primary ? 1 : 0)
-                        if rank > bestW { bestW = rank; bestIdx = (si, ii) }
+            let by = Dictionary(uniqueKeysWithValues: report.map { ($0.group, $0) })
+            // Removing `delta` sets of `it` keeps every other group at or above its floor.
+            func safeToCut(_ it: Item, _ delta: Int, except g: String) -> Bool {
+                it.muscles.allSatisfy { mg, wgt in
+                    guard mg != g, let l = by[mg], l.sets >= lo(l) - 0.01 else { return true }
+                    return l.sets - wgt * Double(delta) / weeks >= lo(l) - 0.01
+                }
+            }
+            // 1) Glutes over while hamstrings are short: glute accessory -> hamstring move.
+            if let gl = by["Glutes"], let hm = by["Hamstrings"], gl.sets > hi(gl) + 0.01, hm.sets < hi(hm) - 0.5 {
+                var swapped = false
+                outer: for si in plan.sessions.indices {
+                    for ii in plan.sessions[si].items.indices where plan.sessions[si].items[ii].kind == .lift && plan.sessions[si].items[ii].pattern == .glute {
+                        let it = plan.sessions[si].items[ii]
+                        let used = taken(si)
+                        var present = patternsIn(si); present.remove(.glute)
+                        for p in [Pattern.hamIso, .hinge] where !present.contains(p) {
+                            guard let m = ranked(p, ctx: ctx, intensity: plan.sessions[si].spec.intensity, used: used)
+                                .first(where: { ($0.muscles["Hamstrings"] ?? 0) >= 1 }) else { continue }
+                            if hm.sets + Double(it.sets) * 0.5 / weeks > hi(hm) + 0.01 { continue }
+                            var n = makeItem(m, sets: it.sets, intensity: plan.sessions[si].spec.intensity, ctx: ctx)
+                            n.superset = false
+                            plan.sessions[si].items[ii] = n
+                            swapped = true; break outer
+                        }
                     }
                 }
-                if let (si, ii) = bestIdx { plan.sessions[si].items[ii].sets -= 1; changed = true; continue }
+                if swapped { continue }
             }
-            let byGroup = Dictionary(uniqueKeysWithValues: report.map { ($0.group, $0) })
-            let unders = report.filter { $0.sets < Double($0.target.lowerBound) - 0.01 && !stuck.contains($0.group) }
-                .sorted { $0.sets / Double(max(1, $0.target.lowerBound)) < $1.sets / Double(max(1, $1.target.lowerBound)) }
+            // 2) Over the cap: trim. Isolation for the group first, then its
+            //    main lifts, then lifts it only assists; extras are removed
+            //    once at 2 sets. Essential push/pull/lower lifts are never removed.
+            if let over = report.filter({ $0.sets > hi($0) + 0.01 && !stuckOver.contains($0.group) })
+                .max(by: { $0.sets - hi($0) < $1.sets - hi($1) }) {
+                let g = over.group
+                var best: (si: Int, ii: Int, remove: Bool, key: (Int, Double, Int))? = nil
+                for si in plan.sessions.indices {
+                    for (ii, it) in plan.sessions[si].items.enumerated() where it.kind == .lift {
+                        let w = it.muscles[g] ?? 0
+                        guard w > 0 else { continue }
+                        let primary = w >= (it.muscles.values.max() ?? 0)
+                        let iso = !(it.pattern?.isCompound ?? false)
+                        let tier = iso && primary ? 0 : primary ? 1 : iso ? 2 : 3
+                        var remove = false
+                        if it.sets > 2 {
+                            guard safeToCut(it, 1, except: g) else { continue }
+                        } else if !it.essential && liftCount(si) > 3 {
+                            guard safeToCut(it, it.sets, except: g) else { continue }
+                            remove = true
+                        } else { continue }
+                        let key = (tier, -w, -it.sets)
+                        if best == nil || key < best!.key { best = (si, ii, remove, key) }
+                    }
+                }
+                if let b = best {
+                    if b.remove { plan.sessions[b.si].items.remove(at: b.ii) } else { plan.sessions[b.si].items[b.ii].sets -= 1 }
+                    continue
+                }
+                stuckOver.insert(g)
+                continue
+            }
+            // 3) Under the floor: add, largest shortfall first for size.
+            let holdCore = size && majorsUnder(report)
+            var unders = report.filter { $0.sets < lo($0) - 0.01 && !stuck.contains($0.group) && !(holdCore && $0.group == "Core") }
+            if size { unders.sort { lo($0) - $0.sets > lo($1) - $1.sets } }
+            else { unders.sort { $0.sets / max(1, lo($0)) < $1.sets / max(1, lo($1)) } }
             guard let under = unders.first else { break }
             let g = under.group
-            // Room a group has to give a set without dropping under its floor.
-            // Main lifts only give sets to other main lifts.
+            func wouldExceed(_ it: Item, _ delta: Int = 1) -> Bool {
+                it.muscles.contains { mg, wgt in
+                    guard let l = by[mg] else { return false }
+                    return l.sets + wgt * Double(delta) / weeks > hi(l) + 0.01
+                }
+            }
             func canGive(_ it: Item, to receiver: Item?) -> Bool {
                 guard it.kind == .lift, it.sets > 2, (it.muscles[g] ?? 0) == 0 else { return false }
                 if it.pattern?.isCompound ?? false {
                     guard let rc = receiver, rc.pattern?.isCompound ?? false, it.sets > ctx.compoundSets else { return false }
                 }
                 return it.muscles.allSatisfy { mg, wgt in
-                    guard let l = byGroup[mg] else { return true }
-                    return l.sets - wgt / plan.weeks >= Double(l.target.lowerBound) + 1
+                    guard let l = by[mg] else { return true }
+                    return l.sets - wgt / weeks >= lo(l) + 1
                 }
             }
-            // a) add a set where there is time
             var done = false
+            // a) a set on an existing lift where there is time; b) or shifted from a lift with room
             for si in plan.sessions.indices.sorted(by: { plan.sessions[$0].budget - plan.sessions[$0].strengthMinutes > plan.sessions[$1].budget - plan.sessions[$1].strengthMinutes }) {
                 let s = plan.sessions[si]
                 guard let ii = s.items.indices.filter({ i in
                     let it = s.items[i]
-                    let cap = (it.pattern?.isCompound ?? false) ? ctx.maxSets : ctx.isoSets + 1
-                    return it.kind == .lift && (it.muscles[g] ?? 0) >= 1 && it.sets < cap })
+                    return it.kind == .lift && (it.muscles[g] ?? 0) >= 1 && it.sets < setCap(it) && !wouldExceed(it) })
                     .first else { continue }
                 let it = s.items[ii]
-                let wouldExceed = it.muscles.contains { mg, wgt in
-                    guard let l = byGroup[mg] else { return false }
-                    return l.sets + wgt / plan.weeks > Double(min(l.mrv, l.target.upperBound)) + 0.01
-                }
-                if wouldExceed { continue }
-                if s.strengthMinutes + it.perSet <= s.budget + 0.01 {
+                if s.strengthMinutes + step(it) <= s.budget + 0.01 {
                     plan.sessions[si].items[ii].sets += 1; done = true; break
                 }
-                // b) shift a set from a lift whose groups have room
                 if let di = s.items.indices.first(where: { canGive(s.items[$0], to: it) }),
-                   s.strengthMinutes - s.items[di].perSet + it.perSet <= s.budget + 0.01 {
+                   s.strengthMinutes - step(s.items[di]) + step(it) <= s.budget + 0.01 {
                     plan.sessions[si].items[di].sets -= 1
                     plan.sessions[si].items[ii].sets += 1
                     done = true; break
                 }
             }
-            // c) add an accessory to a strength session with room
+            // c) an accessory on a strength day that already trains that region
             if !done {
-                // Only on a day that already trains that region (no curls on leg day).
                 let region = ["Chest", "Back", "Shoulders", "Biceps", "Triceps"].contains(g) ? 0 : g == "Core" ? -1 : 1
                 for si in plan.sessions.indices where plan.sessions[si].spec.kind == .strength
                     && (region < 0 || plan.sessions[si].fatigue[region] >= 2) {
                     let s = plan.sessions[si]
-                    guard s.items.filter({ $0.kind == .lift }).count < ctx.maxExercises else { continue }
-                    var used = Set(s.items.map(\.name))
+                    let present = patternsIn(si)
+                    // The pattern is already in the session: no second variant of it.
+                    if isoPattern(for: g).contains(where: { present.contains($0) }) { continue }
+                    guard liftCount(si) < ctx.maxExercises else { continue }
                     var mv: Move? = nil
                     for p in isoPattern(for: g) {
-                        if let m = pick(p, variant: 0, ctx: ctx, intensity: s.spec.intensity, used: used), (m.muscles[g] ?? 0) >= 1 { mv = m; break }
+                        if let m = pick(p, variant: 0, ctx: ctx, intensity: s.spec.intensity, used: taken(si), present: present),
+                           (m.muscles[g] ?? 0) >= 1, !present.contains(m.pattern) { mv = m; break }
                     }
                     guard let m = mv else { continue }
-                    let ps = perSet(s.spec.intensity, compound: m.pattern.isCompound)
-                    let need = 2 * ps + 1
+                    let n = makeItem(m, sets: 2, intensity: s.spec.intensity, ctx: ctx)
+                    if wouldExceed(n, 2) { continue }
+                    let need = 2 * n.perSet + 1
                     var freed: [Int] = []
                     var room = s.budget - s.strengthMinutes
                     for di in s.items.indices where room < need && canGive(s.items[di], to: nil) {
-                        freed.append(di); room += s.items[di].perSet
+                        freed.append(di); room += step(s.items[di])
                     }
                     guard room >= need else { continue }
                     for di in freed { plan.sessions[si].items[di].sets -= 1 }
-                    used.insert(m.name)
-                    let r = m.reps ?? reps(s.spec.intensity, compound: m.pattern.isCompound, ctx: ctx)
-                    let lifts = plan.sessions[si].items.lastIndex { $0.kind == .lift }.map { $0 + 1 } ?? 0
-                    plan.sessions[si].items.insert(Item(kind: .lift, name: m.name, sets: 2, reps: r, pattern: m.pattern, muscles: m.muscles,
-                                                        perSet: ps, gear: m.gear), at: lifts)
+                    let at = plan.sessions[si].items.lastIndex { $0.kind == .lift }.map { $0 + 1 } ?? 0
+                    plan.sessions[si].items.insert(n, at: at)
                     done = true; break
                 }
             }
-            if done { changed = true } else { stuck.insert(g) }
-            if !changed && stuck.count >= muscleGroups.count { break }
+            // d) size: an accessory for a muscle already at its minimum makes
+            //    way for one that is short (largest shortfall first).
+            if !done && size {
+                let region = ["Chest", "Back", "Shoulders", "Biceps", "Triceps"].contains(g) ? 0 : g == "Core" ? -1 : 1
+                search: for si in plan.sessions.indices where plan.sessions[si].spec.kind == .strength
+                    && (region < 0 || plan.sessions[si].fatigue[region] >= 2) {
+                    let present = patternsIn(si)
+                    guard !isoPattern(for: g).contains(where: { present.contains($0) }) else { continue }
+                    for ii in plan.sessions[si].items.indices {
+                        let it = plan.sessions[si].items[ii]
+                        guard it.kind == .lift, !it.essential, !(it.pattern?.isCompound ?? false),
+                              (it.muscles[g] ?? 0) == 0,
+                              it.muscles.allSatisfy({ mg, w in by[mg].map { $0.sets - w * Double(it.sets) / weeks >= lo($0) - 0.01 } ?? true })
+                        else { continue }
+                        for p in isoPattern(for: g) where !(p.isCompound) {
+                            guard let m = ranked(p, ctx: ctx, intensity: plan.sessions[si].spec.intensity, used: taken(si)).first,
+                                  (m.muscles[g] ?? 0) >= 1 else { continue }
+                            var n = makeItem(m, sets: it.sets, intensity: plan.sessions[si].spec.intensity, ctx: ctx)
+                            if wouldExceed(n, it.sets) { continue }
+                            if plan.sessions[si].strengthMinutes - it.duration + n.duration > plan.sessions[si].budget + 0.01 { continue }
+                            n.superset = false
+                            plan.sessions[si].items[ii] = n
+                            done = true; break search
+                        }
+                    }
+                }
+            }
+            if !done { stuck.insert(g) }
         }
     }
 
@@ -1034,6 +1327,7 @@ enum SmartPlanner {
             if x.items.contains(where: { $0.heavyLoad && ($0.pattern == .hPush || $0.pattern == .vPush) }) { s.upperHeavy += 1 }
         }
         let w = plan.weeks
+        s.aerobic += plan.restDayWalk * plan.walkDaysPerWeek * w
         s.strengthSessions /= w; s.aerobic /= w; s.vo2 /= w; s.mobility /= w; s.balanceSessions /= w
         s.lowerHeavy /= w; s.upperHeavy /= w; s.sessions = Double(plan.sessions.count) / w
         return s
@@ -1051,7 +1345,7 @@ enum SmartPlanner {
             let d = decay(plan.slots[j].restBefore)
             let a = plan.sessions[i].fatigue, b = plan.sessions[j].fatigue
             for r in 0..<3 { p += Double(max(0, a[r] - 1) * max(0, b[r] - 1)) * d }
-            if health && plan.sessions[i].isHard && plan.sessions[j].isHard && plan.slots[j].restBefore == 0 { p += 4 }
+            if health && plan.sessions[i].isHard && plan.sessions[j].isHard && plan.slots[j].restBefore == 0 { p += overlap(a, b) ? 4 : 1 }
             if a[1] >= 3 && b[1] >= 3 && plan.slots[j].restBefore == 0 { p += 2 }
         }
         return p
@@ -1086,14 +1380,14 @@ enum SmartPlanner {
         var parts: [Double] = []
         switch plan.config.primaryGoal {
         case .longevity:
-            parts = [ratio(st.strengthSessions, min(2, f), 3), ratio(st.aerobic, 150), ratio(st.vo2, f >= 3 ? 1 : 0, 2),
+            parts = [ratio(st.strengthSessions, min(2, f), 3), ratio(st.aerobic, 150), ratio(st.vo2, f >= 3 ? 0.6 : 0, 1.2),
                      ratio(st.mobility, 60), ratio(st.balanceSessions, min(2, f))]
         case .generalFitness:
             parts = [ratio(st.strengthSessions, min(2, f), 4), ratio(st.aerobic, 120), ratio(st.mobility, 30)]
         case .increaseFlexibility:
             parts = [ratio(st.strengthSessions, min(2, f), 3), ratio(st.mobility, 120)]
         case .improveEndurance:
-            parts = [ratio(st.aerobic, 200), ratio(st.strengthSessions, min(2, f), 3), ratio(st.vo2, f >= 3 ? 1 : 0, 2)]
+            parts = [ratio(st.aerobic, 200), ratio(st.strengthSessions, f <= 2.5 ? 0 : f <= 3.5 ? 1 : 2, 3), ratio(st.vo2, f >= 2 ? 1 : 0, 2)]
         case .loseWeight:
             parts = [ratio(st.strengthSessions, min(3, f), 4), ratio(st.aerobic, 150), ratio(st.vo2, f >= 4 ? 1 : 0, 2)]
         case .buildMuscle:
@@ -1123,25 +1417,110 @@ enum SmartPlanner {
 
     // MARK: - Entry points
 
+    static func drillNames(_ s: Session) -> Set<String> {
+        Set(s.items.filter { [.lift, .mobility, .balance, .stability].contains($0.kind) }.map(\.name))
+    }
+
+    /// Builds the sessions in order; a day's lifts and drills are not repeated
+    /// from the day before (the block repeats, so the first day also checks the last).
     static func realize(_ specs: [Spec], ctx: Ctx, slots: [Slot], blockDays: Int, adjust: Bool) -> Plan {
-        var plan = Plan(config: ctx.config, slots: slots, sessions: specs.map { build($0, ctx: ctx) }, blockDays: blockDays)
+        var sessions: [Session] = []
+        for (i, sp) in specs.enumerated() {
+            let avoid = i > 0 && slots[i].restBefore == 0 ? drillNames(sessions[i - 1]) : []
+            sessions.append(build(sp, ctx: ctx, avoid: avoid))
+        }
+        if sessions.count > 2 && slots[0].restBefore == 0 {
+            var avoid = drillNames(sessions[sessions.count - 1])
+            if slots[1].restBefore == 0 { avoid.formUnion(drillNames(sessions[1])) }
+            sessions[0] = build(specs[0], ctx: ctx, avoid: avoid)
+        }
+        var plan = Plan(config: ctx.config, slots: slots, sessions: sessions, blockDays: blockDays)
         if adjust { adjustVolume(&plan, ctx: ctx) }
         return plan
+    }
+
+    static func restDaysPerWeek(_ c: ProgramConfig) -> Double {
+        if c.scheduleMode == .rolling { return Double(max(0, c.daysOff)) * 7 / Double(max(1, c.daysOn + max(0, c.daysOff))) }
+        return Double(max(0, 7 - weekdays(for: c).count))
+    }
+
+    /// When the sessions alone miss the goal's weekly aerobic minutes, a
+    /// brisk walk outside the sessions makes up the gap: on each rest day
+    /// (20-45 min), or every day when the rest days cannot hold it.
+    static func addRestDayWalks(_ p: inout Plan, ctx: Ctx) {
+        let target: Double
+        switch ctx.goal {
+        case .longevity, .loseWeight: target = 150
+        case .generalFitness: target = 120
+        default: return
+        }
+        let rd = restDaysPerWeek(ctx.config)
+        let have = p.sessions.reduce(0) { $0 + $1.aerobic } / p.weeks
+        let gap = target - have
+        guard gap > 0.5 else { return }
+        let restOnly = rd > 0.01 && gap / rd <= 45
+        let days = restOnly ? rd : 7
+        let per = min(45, max(restOnly ? 20 : 15, (gap / days / 5).rounded(.up) * 5))
+        p.restDayWalk = per
+        p.walkDaysPerWeek = days
+        let name = restOnly ? "Brisk Walk on rest days" : "Brisk Walk every day (outside the session)"
+        for i in p.sessions.indices {
+            p.sessions[i].items.append(Item(kind: .restDay, name: name, minutes: per))
+        }
+    }
+
+    /// Planning units: a week (weekly) or 1-2 whole cycles (rolling). The
+    /// unit is planned once and repeated, so every week/cycle of the block
+    /// has the same sessions and set counts and progression can be tracked.
+    static func units(for config: ProgramConfig, start: Date?, calendar: Calendar) -> [(unit: [Slot], unitDays: Int, block: [Slot], blockDays: Int)] {
+        if config.scheduleMode == .rolling {
+            let on = max(1, config.daysOn), cycle = on + max(0, config.daysOff)
+            let k1 = on >= 3 ? 1 : on == 2 ? 2 : 3
+            var out: [(unit: [Slot], unitDays: Int, block: [Slot], blockDays: Int)] = []
+            // Two-cycle units only where a weekly dose needs alternating
+            // (VO2max every other cycle); otherwise every cycle is identical.
+            let healthGoal = ![.buildMuscle, .getStronger].contains(config.primaryGoal)
+            for k in [k1, 2 * k1] where k == k1 || (healthGoal && k * on <= 42) {
+                let b = slots(for: config, start: start, calendar: calendar, cycleMultiple: k)
+                out.append((Array(b.slots.prefix(k * on)), k * cycle, b.slots, b.blockDays))
+            }
+            return out
+        }
+        let b = slots(for: config, start: start, calendar: calendar)
+        return [(Array(b.slots.prefix(b.slots.count / 2)), 7, b.slots, b.blockDays)]
     }
 
     /// The Smart Advisor program: best-scoring candidate for this config.
     static func plan(for config: ProgramConfig, start: Date? = nil, calendar: Calendar = .current) -> Plan {
         let ctx = Ctx(config: config)
-        let (slots, blockDays) = self.slots(for: config, start: start, calendar: calendar)
-        var best: Plan? = nil
-        var bestScore = -Double.infinity
-        for cand in candidates(ctx: ctx, slots: slots, blockDays: blockDays) where cand.count == slots.count {
-            let placed = assignVariants(place(cand, slots: slots, health: ctx.healthGoal, blockDays: blockDays))
-            let p = realize(placed, ctx: ctx, slots: slots, blockDays: blockDays, adjust: true)
-            let sc = qualityScore(p).total
-            if sc > bestScore + 1e-9 { bestScore = sc; best = p }
+        var best: Plan? = nil, bestScore = -Double.infinity
+        var fallbackPlan: Plan? = nil, fallbackScore = -Double.infinity
+        for u in units(for: config, start: start, calendar: calendar) {
+            for cand in candidates(ctx: ctx, slots: u.unit, blockDays: u.unitDays) where cand.count == u.unit.count {
+                let placed = assignVariants(place(cand, slots: u.unit, health: ctx.healthGoal, blockDays: u.unitDays))
+                var up = realize(placed, ctx: ctx, slots: u.unit, blockDays: u.unitDays, adjust: true)
+                addRestDayWalks(&up, ctx: ctx)
+                var p = Plan(config: config, slots: u.block, sessions: u.block.indices.map { up.sessions[$0 % up.sessions.count] },
+                             blockDays: u.blockDays)
+                p.restDayWalk = up.restDayWalk
+                p.walkDaysPerWeek = up.walkDaysPerWeek
+                let sc = qualityScore(p).total
+                // Size: no cardio or walk days while a major muscle is under its
+                // minimum. Rolling: every cycle gets the same strength days.
+                var perCycle: [Int: Int] = [:]
+                for (sl, s) in zip(u.unit, up.sessions) { perCycle[sl.cycle, default: 0] += s.hasStrength ? 1 : 0 }
+                if (ctx.goal == .buildMuscle && p.sessions.contains(where: { $0.spec.kind != .strength })
+                    && volumeReport(p).contains(where: { majorGroups.contains($0.group) && $0.sets < Double($0.target.lowerBound) - 0.01 }))
+                    || (perCycle.values.max() ?? 0) - (perCycle.values.min() ?? 0) > (config.daysOn >= 4 ? 0 : 1) {
+                    if sc > fallbackScore + 1e-9 { fallbackScore = sc; fallbackPlan = p }
+                    continue
+                }
+                if sc > bestScore + 1e-9 { bestScore = sc; best = p }
+            }
         }
-        return best ?? Plan(config: config, slots: slots, sessions: [], blockDays: blockDays)
+        if let b = best ?? fallbackPlan { return b }
+        let (slots, blockDays) = self.slots(for: config, start: start, calendar: calendar)
+        return Plan(config: config, slots: slots, sessions: [], blockDays: blockDays)
     }
 
     /// A hand-built split over the same days, run through the same exercise

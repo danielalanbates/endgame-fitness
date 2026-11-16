@@ -498,11 +498,14 @@ enum EngineSelfTest {
                    len: Int = 60, eq: EquipmentLevel = .fullGym, inj: Set<String> = [], days: [String]? = nil) -> ProgramConfig {
                 cfg(g, e, r, pw, len, eq, inj, days)
             }
+            // Hard days back to back that load the same region (VO2max after an
+            // upper-only day is allowed: the legs are fresh).
             func backToBackHard(_ p: SP.Plan) -> Int {
                 var n = 0
                 for i in p.sessions.indices {
                     let j = (i + 1) % p.sessions.count
-                    if j != i && p.slots[j].restBefore == 0 && p.sessions[i].isHard && p.sessions[j].isHard { n += 1 }
+                    if j != i && p.slots[j].restBefore == 0 && p.sessions[i].isHard && p.sessions[j].isHard
+                        && SP.overlap(p.sessions[i].fatigue, p.sessions[j].fatigue) { n += 1 }
                 }
                 return n
             }
@@ -513,7 +516,17 @@ enum EngineSelfTest {
             // The complaint: longevity, 4 on / 1 off.
             let lon = SP.plan(for: c(.longevity, rolling: (4, 1)))
             let lonLabels = lon.sessions.map(\.label)
-            check("planner longevity 4on/1off no Upper/Lower", !lonLabels.contains { $0.contains("Upper") || $0.contains("Lower") }, "\(lonLabels)")
+            // The complaint: no upper/lower split before the rest day. At most an
+            // upper-only day that sets up VO2max; never a lower day, never two
+            // strength days in a row.
+            var lonSplit: [String] = []
+            for i in lon.sessions.indices {
+                let j = (i + 1) % lon.sessions.count
+                if lon.sessions[i].label.contains("Lower") { lonSplit.append(lon.sessions[i].label) }
+                if lon.slots[j].restBefore == 0 && lon.sessions[i].hasStrength && lon.sessions[j].hasStrength { lonSplit.append("\(lon.slots[i].label)+next") }
+                if lon.sessions[i].label.hasPrefix("Upper") && lon.sessions[j].spec.kind != .intervals { lonSplit.append("upper not before VO2max") }
+            }
+            check("planner longevity 4on/1off no upper/lower split", lonSplit.isEmpty, "\(lonSplit) \(lonLabels)")
             check("planner longevity has Zone 2", lon.sessions.contains { $0.items.contains { $0.name.hasPrefix("Zone 2") } }, "\(lonLabels)")
             check("planner longevity mobility every day", lon.sessions.allSatisfy { $0.mobilityMinutes > 0 })
             check("planner longevity has VO2max", lon.sessions.contains { $0.spec.kind == .intervals })
@@ -619,6 +632,231 @@ enum EngineSelfTest {
                 }
             }
             check("planner sweep (fit, no stacked hard days)", sweepBad.isEmpty, "\(sweepBad.prefix(8))")
+
+            // Coach audit (2026-11-16): the 22 audit configs plus sweeps.
+            let audit: [(String, ProgramConfig)] = [
+                ("01", c(.longevity, rolling: (4, 1))),
+                ("02", c(.longevity, .beginner, perWeek: 2, len: 30, eq: .bodyweight)),
+                ("03", c(.longevity, .advanced, perWeek: 6, len: 120, inj: ["Low back"])),
+                ("04", c(.buildMuscle, .advanced, rolling: (5, 2))),
+                ("05", c(.buildMuscle, .beginner, perWeek: 3, len: 30)),
+                ("06", c(.buildMuscle, perWeek: 6, len: 120, inj: ["Shoulder"])),
+                ("07", c(.getStronger, .beginner, perWeek: 2)),
+                ("08", c(.getStronger, .advanced, rolling: (2, 1), len: 120, inj: ["Knee"])),
+                ("09", c(.getStronger, perWeek: 4, eq: .bodyweight)),
+                ("10", c(.loseWeight, .beginner, perWeek: 5, len: 30, eq: .bodyweight, inj: ["Knee"])),
+                ("11", c(.loseWeight, .advanced, rolling: (3, 1))),
+                ("12", c(.improveEndurance, .beginner, perWeek: 3)),
+                ("13", c(.improveEndurance, .advanced, rolling: (5, 2), len: 120, eq: .bodyweight)),
+                ("14", c(.increaseFlexibility, .beginner, rolling: (4, 1), len: 30, eq: .bodyweight, inj: ["Shoulder"])),
+                ("15", c(.increaseFlexibility, .advanced, perWeek: 5)),
+                ("16", c(.generalFitness, .beginner, inj: ["Low back"])),
+                ("17", c(.generalFitness, .advanced, rolling: (2, 1), len: 30)),
+                ("18", c(.generalFitness, perWeek: 6, len: 120, eq: .bodyweight)),
+                ("19", c(.longevity, .beginner, rolling: (3, 1), inj: ["Knee", "Shoulder"])),
+                ("20", c(.buildMuscle, perWeek: 2, eq: .homeGym)),
+                ("21", c(.longevity, rolling: (5, 2), eq: .minimal)),
+                ("22", c(.getStronger, perWeek: 3, len: 30, inj: ["Low back"])),
+            ]
+            var pool: [(String, ProgramConfig)] = audit
+            for g in TrainingGoal.allCases {
+                for e in [ExperienceLevel.beginner, .intermediate, .advanced] {
+                    for eq in [EquipmentLevel.fullGym, .bodyweight] {
+                        pool.append(("\(g.rawValue)/\(e.rawValue)/\(eq)/3wk/30", c(g, e, perWeek: 3, len: 30, eq: eq)))
+                        pool.append(("\(g.rawValue)/\(e.rawValue)/\(eq)/4on1off/120", c(g, e, rolling: (4, 1), len: 120, eq: eq)))
+                    }
+                }
+            }
+            let plans = pool.map { ($0.0, $0.1, SP.plan(for: $0.1)) }
+            let catalogByName = Dictionary(uniqueKeysWithValues: SP.catalog.map { ($0.name, $0) })
+            func lifts(_ s: SP.Session) -> [SP.Item] { s.items.filter { $0.kind == .lift } }
+
+            // 1. Endurance at 2-3 days: Zone 2 + intervals, 90+ aerobic min, strength cut to 1 at 3 days.
+            for pw in [2, 3] {
+                for e in [ExperienceLevel.beginner, .intermediate] {
+                    let p = SP.plan(for: c(.improveEndurance, e, perWeek: pw))
+                    let st = SP.stats(p)
+                    let z2 = Double(p.sessions.filter { $0.spec.kind == .zone2 }.count) / p.weeks
+                    let iv = Double(p.sessions.filter { $0.spec.kind == .intervals || $0.spec.kind == .gentleIntervals }.count) / p.weeks
+                    check("audit 1 endurance \(pw)/wk \(e.rawValue) aerobic >= 90, Z2 + intervals, strength <= 1",
+                          st.aerobic >= 90 && z2 >= 1 && iv >= 1 && st.strengthSessions <= 1.01,
+                          "aerobic \(st.aerobic) z2 \(z2) iv \(iv) strength \(st.strengthSessions) \(p.sessions.map(\.label))")
+                }
+            }
+            // 2. Every longevity schedule reaches 150 aerobic min a week (rest-day walks count).
+            var lonShort: [String] = []
+            for len in [30, 60] {
+                for e in [ExperienceLevel.beginner, .intermediate] {
+                    for pw in [2, 3, 4, 5, 6] {
+                        let p = SP.plan(for: c(.longevity, e, perWeek: pw, len: len))
+                        if SP.stats(p).aerobic < 150 { lonShort.append("\(pw)/wk \(len) \(e.rawValue): \(Int(SP.stats(p).aerobic))") }
+                    }
+                    for r in [(4, 1), (3, 1), (2, 1), (5, 2), (6, 1), (3, 2)] {
+                        let p = SP.plan(for: c(.longevity, e, rolling: r, len: len))
+                        if SP.stats(p).aerobic < 150 { lonShort.append("\(r) \(len) \(e.rawValue): \(Int(SP.stats(p).aerobic))") }
+                    }
+                }
+            }
+            check("audit 2 longevity >= 150 aerobic min/wk on every schedule", lonShort.isEmpty, "\(lonShort)")
+            let lon2 = SP.plan(for: audit[1].1)
+            check("audit 2 longevity 2/wk = Strength + Zone 2", lon2.sessions.allSatisfy { $0.spec.kind == .mixed && $0.aerobic > 0 },
+                  "\(lon2.sessions.map(\.label))")
+            // 3. Longevity 4 on / 1 off: strength on Day 1 and Day 3 of every cycle; VO2max only after a legs-free day.
+            let lonC = Dictionary(grouping: lon.sessions.indices, by: { lon.slots[$0].cycle })
+            let d13 = lonC.values.allSatisfy { idx in idx.count == 4 && lon.sessions[idx[0]].hasStrength && lon.sessions[idx[2]].hasStrength }
+            let vo2Ok = lon.sessions.indices.filter { lon.sessions[$0].spec.kind == .intervals }
+                .allSatisfy { i in i > 0 && lon.slots[i].restBefore == 0 ? lon.sessions[i - 1].fatigue[1] < 2 : true }
+            check("audit 3 longevity 4on/1off strength D1+D3 every cycle, VO2max after upper-only",
+                  d13 && vo2Ok && lonStats.strengthSessions >= 2 && lonStats.vo2 >= 0.6, "\(lonLabels)")
+            // 4. Strength + Zone 2 is hard where it loads; no lift repeated on back-to-back days.
+            var repeats: [String] = []
+            for (n, _, p) in plans {
+                for i in p.sessions.indices where i > 0 && p.slots[i].restBefore == 0 {
+                    let shared = Set(lifts(p.sessions[i]).map(\.name)).intersection(lifts(p.sessions[i - 1]).map(\.name))
+                    if !shared.isEmpty { repeats.append("\(n) \(p.slots[i].label) \(shared)") }
+                }
+                for s in p.sessions where s.spec.kind == .mixed && !s.isHard { repeats.append("\(n) mixed not hard") }
+            }
+            check("audit 4 Strength + Zone 2 hard, no same lifts on back-to-back days", repeats.isEmpty, "\(repeats.prefix(5))")
+            // 5. Every full-body strength / Strength + Zone 2 session has a push, a pull and a lower lift.
+            var thin: [String] = []
+            for (n, _, p) in plans {
+                for s in p.sessions where s.hasStrength && (s.spec.template ?? .fullBody) == .fullBody {
+                    let regions = Set(lifts(s).compactMap { SP.region($0.pattern) })
+                    if regions.count < 3 || lifts(s).count < 3 { thin.append("\(n) \(s.label): \(lifts(s).map(\.name))") }
+                }
+            }
+            check("audit 5 full-body sessions keep push + pull + lower", thin.isEmpty, "\(thin.prefix(4))")
+            let a22 = SP.plan(for: audit[21].1)
+            check("audit 5 strength 30 min: every session has a pull", a22.sessions.allSatisfy { s in
+                s.label.contains("Lower") || lifts(s).contains { SP.region($0.pattern) == 1 } }, "\(a22.sessions.map { lifts($0).map(\.name) })")
+            // 6. The top of each muscle's range is a hard cap (size 120 min, 6/wk and every audit config).
+            var overCap: [String] = []
+            for (n, cf) in audit + [("size 120 6/wk", c(.buildMuscle, perWeek: 6, len: 120)), ("size 120 6/wk adv", c(.buildMuscle, .advanced, perWeek: 6, len: 120))] {
+                for l in SP.volumeReport(SP.plan(for: cf)) where l.sets > Double(l.target.upperBound) + 0.01 {
+                    overCap.append("\(n) \(l.group) \(l.sets)>\(l.target.upperBound)")
+                }
+            }
+            check("audit 6 weekly sets never over the top of the range", overCap.isEmpty, "\(overCap)")
+            // 7. Each session type has its own ceiling; drills are not repeated from the day before.
+            var long7: [String] = [], drillRep: [String] = []
+            for (n, cf, p) in plans {
+                let strengthGoal = cf.primaryGoal == .buildMuscle || cf.primaryGoal == .getStronger
+                for (k, s) in p.sessions.enumerated() {
+                    let cap: Double
+                    switch s.spec.kind {
+                    case .intervals: cap = 55
+                    case .gentleIntervals: cap = 50
+                    case .mobility: cap = 45
+                    case .recovery: cap = 40
+                    case .zone2: cap = strengthGoal ? 45 : 120
+                    default: cap = 120
+                    }
+                    if s.minutes > cap + 0.5 || s.minutes > Double(cf.sessionLength) + 0.5 { long7.append("\(n) \(s.label) \(Int(s.minutes))") }
+                    if k > 0 && p.slots[k].restBefore == 0 {
+                        let shared = SP.drillNames(s).intersection(SP.drillNames(p.sessions[k - 1]))
+                        if !shared.isEmpty { drillRep.append("\(n) \(p.slots[k].label) \(shared)") }
+                    }
+                }
+            }
+            check("audit 7 session-type ceilings (VO2max 55, mobility 45, Zone 2 45 for strength/size)", long7.isEmpty, "\(long7.prefix(5))")
+            check("audit 7 no drills repeated from the day before", drillRep.isEmpty, "\(drillRep.prefix(5))")
+            // 8. Never glutes over the range while hamstrings are under it.
+            let gh = plans.filter { _, _, p in
+                let v = SP.volumeReport(p)
+                let gl = v.first { $0.group == "Glutes" }!, hm = v.first { $0.group == "Hamstrings" }!
+                return gl.sets > Double(gl.target.upperBound) + 0.01 && hm.sets < Double(hm.target.lowerBound) - 0.01
+            }.map(\.0)
+            check("audit 8 no glutes-over / hamstrings-under", gh.isEmpty, "\(gh)")
+            // 9. Size: no core, carries or cardio days while a major muscle is under its minimum.
+            var sizeWaste: [String] = []
+            for (n, cf, p) in plans where cf.primaryGoal == .buildMuscle {
+                let under = SP.volumeReport(p).contains { SP.majorGroups.contains($0.group) && $0.sets < Double($0.target.lowerBound) - 0.01 }
+                if under && p.sessions.contains(where: { s in s.spec.kind != .strength || lifts(s).contains { $0.pattern == .core || $0.pattern == .carry } }) {
+                    sizeWaste.append(n)
+                }
+            }
+            check("audit 9 size fills short muscles before core/carries/cardio", sizeWaste.isEmpty, "\(sizeWaste)")
+            check("audit 9 size 5on/2off trains biceps directly", SP.plan(for: audit[3].1).sessions.contains { lifts($0).contains { $0.pattern == .biceps } })
+            // 10. Size at 2-3 days is full body; every major muscle 2x a week at 2, 3, 5 and 6 days.
+            for pw in [2, 3] {
+                let p = SP.plan(for: c(.buildMuscle, .beginner, perWeek: pw))
+                check("audit 10 size \(pw)/wk is full body", p.sessions.allSatisfy { $0.label.hasPrefix("Full Body") }, "\(p.sessions.map(\.label))")
+            }
+            for pw in [2, 3, 5, 6] {
+                let p = SP.plan(for: c(.buildMuscle, perWeek: pw))
+                let low = SP.majorGroups.filter { g in Double(p.sessions.filter { $0.sets(of: g) >= 1 }.count) / p.weeks < 2 }
+                check("audit 10 size \(pw)/wk every major muscle >= 2x/wk", low.isEmpty, "\(low)")
+            }
+            // 11. Beginners never get a move the catalog marks as not for beginners.
+            let notBeg = plans.filter { $0.1.experienceLevel == .beginner }.flatMap { n, _, p in
+                p.sessions.flatMap(lifts).filter { catalogByName[$0.name]?.beginner == false }.map { "\(n) \($0.name)" } }
+            check("audit 11 beginners only beginner moves", notBeg.isEmpty, "\(Set(notBeg))")
+            // 12. Injury swaps: no barbell squats with a low back, no barbell bench with a shoulder; overhead swaps rotate.
+            let lbBad = plans.filter { $0.1.injuries.contains("Low back") }.flatMap { n, _, p in
+                p.sessions.flatMap(lifts).filter { ["Back Squats", "Front Squats", "Barbell Box Squats"].contains($0.name) }.map { "\(n) \($0.name)" } }
+            var shPool = plans.filter { $0.1.injuries.contains("Shoulder") }.map { $0.2 }
+            shPool.append(SP.plan(for: c(.buildMuscle, perWeek: 4, inj: ["Shoulder"])))
+            let shBad = shPool.flatMap { $0.sessions.flatMap(lifts) }.filter { $0.name == "Barbell Bench Press" }
+            check("audit 12 low back: no barbell squats", lbBad.isEmpty, "\(lbBad)")
+            check("audit 12 shoulder: no barbell bench", shBad.isEmpty)
+            let a06 = SP.plan(for: audit[5].1)
+            var perLift: [String: Double] = [:]
+            for it in a06.sessions.flatMap(lifts) { perLift[it.name, default: 0] += Double(it.sets) / a06.weeks }
+            let vPushNames = Set(a06.sessions.flatMap(lifts).filter { $0.pattern == .vPush }.map(\.name))
+            check("audit 12 shoulder size: overhead swaps rotate, no lift > 12 sets/wk",
+                  vPushNames.count >= 2 && (perLift.values.max() ?? 0) <= 12, "\(vPushNames) \(perLift.filter { $0.value > 12 })")
+            // 13. With loadable gear, no band or bodyweight version unless the loaded ones are missing or blocked.
+            var lowGear: [String] = []
+            for (n, cf, p) in plans where cf.equipment == .fullGym || cf.equipment == .homeGym {
+                let ctx = SP.Ctx(config: cf)
+                for it in p.sessions.flatMap(lifts) {
+                    guard let m = catalogByName[it.name], let pat = it.pattern, pat != .core && pat != .carry,
+                          SP.gearRank(m, ctx: ctx) >= 2 else { continue }
+                    let better = SP.catalog.contains { o in o.pattern == pat && SP.gearRank(o, ctx: ctx) <= 1 && !o.gear.isDisjoint(with: ctx.gear)
+                        && o.flags.isDisjoint(with: cf.injuries) && (!ctx.beginner || o.beginner) && !o.heavyOnly }
+                    if better { lowGear.append("\(n) \(it.name)") }
+                }
+            }
+            check("audit 13 loadable gear ranks first", lowGear.isEmpty, "\(Set(lowGear))")
+            // 14. One exercise per pattern in a session (sets go on the lift already there).
+            var dupPat: [String] = []
+            for (n, _, p) in plans {
+                for s in p.sessions where [nil, .fullBody, .upper, .lower].contains(s.spec.template) && s.spec.groups.isEmpty {
+                    let pats = lifts(s).compactMap(\.pattern)
+                    if Set(pats).count != pats.count { dupPat.append("\(n) \(s.label) \(lifts(s).map(\.name))") }
+                }
+            }
+            check("audit 14 no pattern twice in a session", dupPat.isEmpty, "\(dupPat.prefix(3))")
+            // 15. "Heavy" only with a heavy-capable lift; bodyweight strength uses harder progressions.
+            let fakeHeavy = plans.flatMap { n, _, p in p.sessions.filter { $0.label.contains("Heavy") && !$0.items.contains(where: \.heavyLoad) }.map { "\(n) \($0.label)" } }
+            check("audit 15 Heavy sessions have a heavy lift", fakeHeavy.isEmpty, "\(fakeHeavy.prefix(4))")
+            let a09 = SP.plan(for: audit[8].1)
+            check("audit 15 bodyweight strength: low-rep progressions", a09.sessions.flatMap(lifts).contains { ["Pistol Squats", "Archer Push-ups"].contains($0.name) }
+                  && !a09.sessions.flatMap(lifts).contains { $0.name == "Bodyweight Squats" })
+            // 16. 30-minute VO2max: short warm-up, 10+ minutes hard.
+            let vo30 = SP.build(SP.Spec(kind: .intervals), ctx: SP.Ctx(config: c(.generalFitness, .advanced, len: 30)))
+            let warm = vo30.items.first { $0.name.contains("Warm-up") }?.minutes ?? 99
+            let iv = vo30.items.first { $0.kind == .intervals }
+            let hardMin = Double(iv?.sets ?? 0) * (Double(iv?.reps.split(separator: "x").last?.dropLast() ?? "0") ?? 0) / 60
+            check("audit 16 30-min VO2max: warm-up <= 6, >= 10 min hard", warm <= 6 && hardMin >= 10 && vo30.minutes <= 30.5, "\(vo30.items.map(\.text))")
+            // 17. Fixed microcycle: week 2 = week 1; a named workout is the same every time it appears.
+            var drift: [String] = []
+            for (n, cf, p) in plans {
+                if cf.scheduleMode == .weekly {
+                    let h = p.sessions.count / 2
+                    for i in 0..<h where p.sessions[i].items.map(\.text) != p.sessions[i + h].items.map(\.text) { drift.append("\(n) \(p.slots[i].label)") }
+                }
+                var byLabel: [String: [String]] = [:]
+                for s in p.sessions where s.hasStrength {
+                    let t = s.items.filter { [.lift, .cardio, .intervals, .walk].contains($0.kind) }.map(\.text)
+                    if let prev = byLabel[s.label], prev != t { drift.append("\(n) \(s.label)") }
+                    byLabel[s.label] = t
+                }
+            }
+            check("audit 17 same week to week, same sets per named workout", drift.isEmpty, "\(Set(drift).prefix(5))")
+            let a06Kinds = a06.sessions.map(\.spec.kind)
+            check("audit 17 size 6/wk: both weeks have the same lifting days", Array(a06Kinds.prefix(6)) == Array(a06Kinds.suffix(6)))
 
             // Smart Advisor vs every hand-built split, same inputs and exercise engine.
             let reps: [(String, ProgramConfig)] = [
