@@ -587,7 +587,7 @@ class WorkoutManager: ObservableObject {
                 group = ["Push", "Pull", "Legs"][i % 3]
             }
 
-            var exercises = generateExercises(for: group, duration: config.sessionLength, focus: focus)
+            var exercises = Self.generateExercises(for: group, duration: config.sessionLength, focus: focus)
             exercises = injurySafe(exercises, injuries: config.injuries)
             if config.primaryGoal == .longevity {
                 exercises.append("Mobility Flow 10 min")
@@ -1337,90 +1337,7 @@ class WorkoutManager: ObservableObject {
         saveData()
     }
 
-    // AI Generate Workout - Creates personalized program based on user profile
-    func generateAIWorkout() {
-        guard let profile = userProfile else {
-            // If no profile, use a default beginner program
-            setFullBodyProgram()
-            selectedTab = 1
-            return
-        }
-
-        // Generate program based on user goals and experience
-        let primaryGoal = profile.primaryGoals.first ?? .buildMuscle
-
-        switch (profile.experienceLevel, primaryGoal) {
-        case (.beginner, _):
-            // Beginners get full body 3x per week
-            weeklySchedule = [
-                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI Full Body Strength",
-                                exercises: ["Goblet Squats", "Push-ups", "Dumbbell Rows", "Plank"],
-                                estimatedDuration: 45),
-                ScheduledWorkout(dayOfWeek: "Wednesday", workoutType: "AI Full Body Power",
-                                exercises: ["Leg Press", "Dumbbell Bench Press", "Lat Pulldowns", "Leg Raises"],
-                                estimatedDuration: 45),
-                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Full Body Hypertrophy",
-                                exercises: ["Lunges", "Incline Dumbbell Press", "Cable Rows", "Russian Twists"],
-                                estimatedDuration: 45)
-            ]
-
-        case (.intermediate, .buildMuscle):
-            // Intermediate muscle building - Push/Pull/Legs
-            weeklySchedule = [
-                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI Push (Chest/Shoulders/Triceps)",
-                                exercises: ["Bench Press 4x8", "Overhead Press 3x10", "Dumbbell Flyes 3x12", "Tricep Dips 3x10"],
-                                estimatedDuration: 60),
-                ScheduledWorkout(dayOfWeek: "Wednesday", workoutType: "AI Pull (Back/Biceps)",
-                                exercises: ["Deadlifts 4x6", "Pull-ups 3x8", "Barbell Rows 4x8", "Hammer Curls 3x12"],
-                                estimatedDuration: 60),
-                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Legs (Quads/Hamstrings/Calves)",
-                                exercises: ["Squats 4x8", "Romanian Deadlifts 3x10", "Leg Press 3x12", "Calf Raises 4x15"],
-                                estimatedDuration: 60)
-            ]
-
-        case (.intermediate, .loseWeight):
-            // Fat loss with circuits
-            weeklySchedule = [
-                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI HIIT Circuit",
-                                exercises: ["Jump Squats 4x15", "Burpees 4x12", "Mountain Climbers 4x20", "Plank 4x45s"],
-                                estimatedDuration: 35),
-                ScheduledWorkout(dayOfWeek: "Wednesday", workoutType: "AI Strength Circuit",
-                                exercises: ["Kettlebell Swings 4x15", "Push-ups 4x12", "Goblet Squats 4x12", "Russian Twists 4x20"],
-                                estimatedDuration: 35),
-                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Cardio Circuit",
-                                exercises: ["Box Jumps 4x10", "Battle Ropes 4x30s", "High Knees 4x30s", "Bicycle Crunches 4x20"],
-                                estimatedDuration: 35)
-            ]
-
-        case (.advanced, .buildMuscle), (.expert, .buildMuscle):
-            // Advanced muscle building - Upper/Lower 4x per week
-            weeklySchedule = [
-                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI Upper Power",
-                                exercises: ["Bench Press 5x5", "Barbell Rows 5x5", "Overhead Press 4x6", "Weighted Pull-ups 4x6"],
-                                estimatedDuration: 75),
-                ScheduledWorkout(dayOfWeek: "Tuesday", workoutType: "AI Lower Power",
-                                exercises: ["Squats 5x5", "Deadlifts 5x5", "Front Squats 3x8", "Leg Curls 4x10"],
-                                estimatedDuration: 75),
-                ScheduledWorkout(dayOfWeek: "Thursday", workoutType: "AI Upper Hypertrophy",
-                                exercises: ["Incline Bench 4x10", "Cable Rows 4x12", "Dumbbell Press 3x12", "Face Pulls 4x15"],
-                                estimatedDuration: 75),
-                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Lower Hypertrophy",
-                                exercises: ["Leg Press 4x15", "Romanian Deadlifts 4x12", "Lunges 3x12", "Calf Raises 5x15"],
-                                estimatedDuration: 75)
-            ]
-
-        default:
-            // Default to push/pull/legs
-            setPushPullLegsProgram()
-            selectedTab = 1
-            return
-        }
-
-        saveData()
-        selectedTab = 1 // Navigate to workouts tab
-    }
-
-    // Generate custom AI workout based on questionnaire responses
+    // Build a weekly plan from the quick-builder answers (fixed templates).
     func generateCustomWorkout(daysPerWeek: Int, sessionDuration: Int, primaryFocus: String) {
         let dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -1436,99 +1353,99 @@ class WorkoutManager: ObservableObject {
         case (2, _):
             // 2 days = Full body
             baseWorkouts = [
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Full Body A",
-                                exercises: generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Full Body A",
+                                exercises: Self.generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Full Body B",
-                                exercises: generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Full Body B",
+                                exercises: Self.generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration)
             ]
 
         case (3, "Strength"), (3, "Muscle Building"):
             // 3 days = Push/Pull/Legs
             baseWorkouts = [
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Push Day",
-                                exercises: generateExercises(for: "Push", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Push Day",
+                                exercises: Self.generateExercises(for: "Push", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Pull Day",
-                                exercises: generateExercises(for: "Pull", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Pull Day",
+                                exercises: Self.generateExercises(for: "Pull", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Leg Day",
-                                exercises: generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Leg Day",
+                                exercises: Self.generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration)
             ]
 
         case (3, _):
             // 3 days fat loss/fitness = Full body
             baseWorkouts = [
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Full Body Strength",
-                                exercises: generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Full Body Strength",
+                                exercises: Self.generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Full Body Power",
-                                exercises: generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Full Body Power",
+                                exercises: Self.generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Full Body Conditioning",
-                                exercises: generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Full Body Conditioning",
+                                exercises: Self.generateExercises(for: "Full Body", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration)
             ]
 
         case (4, _):
             // 4 days = Upper/Lower split
             baseWorkouts = [
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Upper Body A",
-                                exercises: generateExercises(for: "Upper", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Upper Body A",
+                                exercises: Self.generateExercises(for: "Upper", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Lower Body A",
-                                exercises: generateExercises(for: "Lower", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Lower Body A",
+                                exercises: Self.generateExercises(for: "Lower", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Upper Body B",
-                                exercises: generateExercises(for: "Upper", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Upper Body B",
+                                exercises: Self.generateExercises(for: "Upper", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Lower Body B",
-                                exercises: generateExercises(for: "Lower", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Lower Body B",
+                                exercises: Self.generateExercises(for: "Lower", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration)
             ]
 
         case (5, _):
             // 5 days = Bro split (body part per day)
             baseWorkouts = [
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Chest Day",
-                                exercises: generateExercises(for: "Chest", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Chest Day",
+                                exercises: Self.generateExercises(for: "Chest", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Back Day",
-                                exercises: generateExercises(for: "Back", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Back Day",
+                                exercises: Self.generateExercises(for: "Back", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Leg Day",
-                                exercises: generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Leg Day",
+                                exercises: Self.generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Shoulders Day",
-                                exercises: generateExercises(for: "Shoulders", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Shoulders Day",
+                                exercises: Self.generateExercises(for: "Shoulders", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Arms Day",
-                                exercises: generateExercises(for: "Arms", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Arms Day",
+                                exercises: Self.generateExercises(for: "Arms", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration)
             ]
 
         case (6, _):
             // 6 days = PPL x2
             baseWorkouts = [
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Push Day 1",
-                                exercises: generateExercises(for: "Push", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Push Day 1",
+                                exercises: Self.generateExercises(for: "Push", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Pull Day 1",
-                                exercises: generateExercises(for: "Pull", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Pull Day 1",
+                                exercises: Self.generateExercises(for: "Pull", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Leg Day 1",
-                                exercises: generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Leg Day 1",
+                                exercises: Self.generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Push Day 2",
-                                exercises: generateExercises(for: "Push", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Push Day 2",
+                                exercises: Self.generateExercises(for: "Push", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Pull Day 2",
-                                exercises: generateExercises(for: "Pull", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Pull Day 2",
+                                exercises: Self.generateExercises(for: "Pull", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration),
-                ScheduledWorkout(dayOfWeek: "", workoutType: "AI Leg Day 2",
-                                exercises: generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
+                ScheduledWorkout(dayOfWeek: "", workoutType: "Leg Day 2",
+                                exercises: Self.generateExercises(for: "Legs", duration: sessionDuration, focus: primaryFocus),
                                 estimatedDuration: sessionDuration)
             ]
 
@@ -1562,24 +1479,32 @@ class WorkoutManager: ObservableObject {
         selectedTab = 1
     }
 
-    private func generateExercises(for muscleGroup: String, duration: Int, focus: String) -> [String] {
-        // AI-like exercise selection based on muscle group, duration, and focus
-        let exerciseCount = duration <= 30 ? 3 : duration <= 60 ? 4 : 5
-        
-        // Define set/rep schemes based on focus
-        let setRepScheme: String
+    /// Template exercise selection by muscle group, session length and focus.
+    /// Scales from 15 to 120 minutes: more exercises, then extra sets, then
+    /// finishers once the pool for that group runs out.
+    static func generateExercises(for muscleGroup: String, duration: Int, focus: String) -> [String] {
+        let minutes = min(120, max(15, duration))
+        // ~15 min per exercise including warm-up sets and rest.
+        let exerciseCount = max(2, (minutes + 15) / 15)
+
+        // Base set/rep scheme by focus.
+        var (sets, reps): (Int, String)
         switch focus.lowercased() {
         case "strength":
-            setRepScheme = " 5x5"  // Heavy weight, low reps
+            (sets, reps) = (5, "5")    // Heavy weight, low reps
         case "muscle building", "hypertrophy":
-            setRepScheme = " 4x10"  // Moderate weight, moderate reps
+            (sets, reps) = (4, "10")   // Moderate weight, moderate reps
         case "fat loss":
-            setRepScheme = " 3x15"  // Circuit-style, higher reps
+            (sets, reps) = (3, "15")   // Circuit-style, higher reps
         case "endurance":
-            setRepScheme = " 3x20"  // Light weight, high reps
+            (sets, reps) = (3, "20")   // Light weight, high reps
         default:
-            setRepScheme = " 3x12"  // Default
+            (sets, reps) = (3, "12")
         }
+        // Long sessions add a set per 30 min past an hour; very short ones drop one.
+        if minutes > 60 { sets += (minutes - 60) / 30 }
+        if minutes < 30 { sets = max(2, sets - 1) }
+        let setRepScheme = " \(sets)x\(reps)"
         
         // Define exercise pools for each muscle group and focus
         var exercises: [String]
@@ -1681,8 +1606,11 @@ class WorkoutManager: ObservableObject {
             exercises = ["Squats", "Push-ups", "Pull-ups", "Plank"]
         }
         
-        // Apply set/rep scheme to each exercise and limit to exerciseCount
-        return Array(exercises.prefix(exerciseCount)).map { $0 + setRepScheme }
+        var result = Array(exercises.prefix(exerciseCount)).map { $0 + setRepScheme }
+        // Pool ran out on a long session: fill with finishers.
+        let finishers = ["Core Circuit 3x45s", "Farmer's Carry 3x40m", "Mobility Flow 10 min", "Zone 2 Cardio 15 min"]
+        for f in finishers where result.count < exerciseCount { result.append(f) }
+        return result
     }
 
 
@@ -1737,7 +1665,7 @@ class WorkoutManager: ObservableObject {
         }
     }
 
-    // AI Coaching - Mesocycle Phase
+    // Mesocycle phase from logged sessions
     var currentMesocyclePhase: String {
         // Determine phase based on workout count in current cycle
         let cycleLength = 12 // 12-week mesocycle
@@ -2040,8 +1968,8 @@ struct DashboardView: View {
                     onOpenCommunity: { workoutManager.selectedTab = 7 }
                 )
 
-                // AI Coach Insight - Inspiring Message
-                AICoachInsightCard(workoutManager: workoutManager)
+                // Training insight from your own logged history
+                TrainingInsightCard(workoutManager: workoutManager)
 
                 // Workout Schedule Overview
                 if let profile = workoutManager.userProfile, !workoutManager.weeklySchedule.isEmpty {
@@ -2343,7 +2271,7 @@ struct ScheduledWorkoutBrowser: View {
     }
 }
 
-struct AIWorkoutQuestionnaireView: View {
+struct QuickProgramQuestionnaireView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
     @Environment(\.dismiss) var dismiss
 
@@ -2353,14 +2281,14 @@ struct AIWorkoutQuestionnaireView: View {
     @State private var primaryFocus = "Muscle Building"
 
     let daysOptions = [2, 3, 4, 5, 6]
-    let durationOptions = [30, 45, 60, 75, 90]
+    let durationOptions = SessionLength.presets
     let focusOptions = ["Muscle Building", "Strength", "Fat Loss", "General Fitness", "Athletic Performance"]
 
     var body: some View {
         VStack(spacing: 30) {
             // Header
             HStack {
-                Text("AI Workout Generator")
+                Text("Quick Program Builder")
                     .font(.screenTitle)
                     .bold()
 
@@ -2422,7 +2350,7 @@ struct AIWorkoutQuestionnaireView: View {
                         LazyVGrid(columns: adaptiveColumns(desktop: 3, phone: 2), spacing: 16) {
                             ForEach(durationOptions, id: \.self) { duration in
                                 BubbleOption(
-                                    text: "\(duration) min",
+                                    text: duration == 120 ? "2 hours" : "\(duration) min",
                                     isSelected: sessionDuration == duration
                                 ) {
                                     sessionDuration = duration
@@ -2430,6 +2358,9 @@ struct AIWorkoutQuestionnaireView: View {
                             }
                         }
                         .padding(.horizontal, 40)
+                        Stepper("Custom: \(sessionDuration) min", value: $sessionDuration,
+                                in: SessionLength.range, step: SessionLength.step)
+                            .padding(.horizontal, 40)
                     }
                 } else if currentStep == 3 {
                     VStack(spacing: 20) {
@@ -2489,13 +2420,13 @@ struct AIWorkoutQuestionnaireView: View {
                         }
                     } else {
                         // Generate workout
-                        generateCustomAIWorkout()
+                        generateQuickProgram()
                         dismiss()
                     }
                 }) {
                     HStack {
                         Text(currentStep < 3 ? "Next" : "Generate Workout")
-                        Image(systemName: currentStep < 3 ? "chevron.right" : "sparkles")
+                        Image(systemName: currentStep < 3 ? "chevron.right" : "checkmark")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -2516,8 +2447,8 @@ struct AIWorkoutQuestionnaireView: View {
         .desktopSheetFrame(width: 700, height: 680)
     }
 
-    func generateCustomAIWorkout() {
-        // Generate workout based on user inputs using AI-like logic
+    func generateQuickProgram() {
+        // Fixed templates scaled to the answers.
         workoutManager.generateCustomWorkout(
             daysPerWeek: daysPerWeek,
             sessionDuration: sessionDuration,
@@ -3755,7 +3686,7 @@ struct MicrocycleProgressCard: View {
     }
 }
 
-struct AICoachInsightCard: View {
+struct TrainingInsightCard: View {
     let workoutManager: WorkoutManager
     @State private var currentInsightIndex = 0
 
@@ -3822,14 +3753,14 @@ struct AICoachInsightCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Image(systemName: "sparkles")
+                Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(Color.brandPurple)
                     .frame(width: 44, height: 44)
                     .background(Color.brandPurple.opacity(0.12), in: Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("AI Coach")
+                    Text("Your Training")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Text(insights[currentInsightIndex].title)
@@ -4023,13 +3954,13 @@ struct WorkoutScheduleCard: View {
                         .foregroundColor(.secondary)
                 }
             } else {
-                // No workouts scheduled - prompt to use AI
+                // No workouts scheduled - point to the Programs tab
                 Button(action: {
                     workoutManager.selectedTab = 2 // Go to Programs tab
                 }) {
                     VStack(spacing: 16) {
                         HStack {
-                            Image(systemName: "sparkles")
+                            Image(systemName: "list.bullet.clipboard")
                                 .font(.system(size: 50))
                                 .foregroundColor(.yellow)
 
@@ -4038,7 +3969,7 @@ struct WorkoutScheduleCard: View {
                                     .font(.title.bold())
                                     .foregroundColor(.primary)
 
-                                Text("Have AI make you a program in the Program tab!")
+                                Text("Pick a ready-made program or build your own in the Programs tab.")
                                     .font(.title3)
                                     .foregroundColor(.secondary)
                             }
@@ -4680,7 +4611,7 @@ struct WelcomeStep: View {
                 FeatureRow(
                     icon: "brain.head.profile",
                     title: "Smart Progression",
-                    description: "Next-session targets from your own sets, plus an AI program reviewer",
+                    description: "Next-session targets worked out from your own logged sets",
                     color: .brandPurple
                 )
 

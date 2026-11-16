@@ -276,6 +276,40 @@ enum EngineSelfTest {
         check("week: PRs counted", totalPRs >= 1, "\(totalPRs)")
         check("week: solo raid took damage", (prog.currentRaid("carol").damage["carol"] ?? 0) > 0, "\(prog.currentRaid("carol"))")
 
+        // Session length: presets reach 2 hours and generated work scales with time.
+        func work(_ ex: [String]) -> Int {
+            ex.reduce(0) { total, e in
+                if let r = e.range(of: #"(\d+)x"#, options: .regularExpression) {
+                    return total + (Int(e[r].dropLast()) ?? 1)
+                }
+                return total + 1
+            }
+        }
+        check("session presets reach 120", SessionLength.presets.last == 120 && SessionLength.range == 15...120)
+        check("session clamp", SessionLength.clamp(7) == 15 && SessionLength.clamp(200) == 120 && SessionLength.clamp(62) == 60)
+        for group in ["Full Body", "Push", "Pull", "Legs", "Upper", "Lower", "Chest", "Back", "Shoulders", "Arms", "Other"] {
+            for focus in ["Strength", "Muscle Building", "Fat Loss", "Endurance", "General Fitness"] {
+                let short = WorkoutManager.generateExercises(for: group, duration: 45, focus: focus)
+                let long = WorkoutManager.generateExercises(for: group, duration: 120, focus: focus)
+                let tiny = WorkoutManager.generateExercises(for: group, duration: 15, focus: focus)
+                if !(work(long) > work(short) && !tiny.isEmpty && long.count >= short.count) {
+                    check("session scales \(group)/\(focus)", false, "45:\(short) 120:\(long)")
+                }
+            }
+        }
+        let fb120 = WorkoutManager.generateExercises(for: "Full Body", duration: 120, focus: "Strength")
+        check("120-min session has more work than 45", work(fb120) > work(WorkoutManager.generateExercises(for: "Full Body", duration: 45, focus: "Strength")), "\(fb120)")
+        check("15-min session is short", (2...3).contains(WorkoutManager.generateExercises(for: "Push", duration: 15, focus: "Strength").count))
+        for g in MesoPhase.TemplateGoal.allCases {
+            for w in [4, 6, 12, 24] {
+                let ph = MesoPhase.template(goal: g, weeks: w)
+                if ph.reduce(0, { $0 + $1.weeks }) != w || ph.contains(where: { $0.weeks < 1 }) {
+                    check("phase template \(g)/\(w)", false, "\(ph.map(\.weeks))")
+                }
+            }
+        }
+        check("phase templates sum to cycle length", true)
+
         print(failures == 0 ? "SELFTEST PASS \(count)/\(count)" : "SELFTEST FAIL \(failures) of \(count)")
         return failures == 0 ? 0 : 1
     }

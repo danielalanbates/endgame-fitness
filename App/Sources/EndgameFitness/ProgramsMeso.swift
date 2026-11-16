@@ -3,9 +3,8 @@
 //  Endgame Fitness
 //
 //  The Programs page (pre-made catalog + custom workout builder) and the
-//  Mesocycle page (hand-editable phase builder + AI builder). AI calls go
-//  through the old online backend (`POST /api/fitness/ai`), which holds the
-//  Cerebras key server-side — no AI key ever ships in the app.
+//  Mesocycle page (hand-editable phase builder + fixed phase templates).
+//  The old AI features live in _archive/ai-features-2026-11-16/.
 //
 
 import SwiftUI
@@ -28,6 +27,62 @@ struct MesoPhase: Identifiable, Codable, Equatable {
         MesoPhase(name: "Endurance", weeks: 4, repRange: "15+",
                   focus: "High reps to build muscular endurance and recovery capacity.", emoji: "🏃"),
     ]
+
+    enum TemplateGoal: String, CaseIterable, Identifiable {
+        case muscle, strength, fatLoss, athletic, general, longevity
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .muscle: return "Muscle"
+            case .strength: return "Strength"
+            case .fatLoss: return "Fat loss"
+            case .athletic: return "Athletic"
+            case .general: return "General"
+            case .longevity: return "Longevity"
+            }
+        }
+    }
+
+    /// Fixed phase recipes per goal. Each recipe's weights are shares of the
+    /// cycle; weeks are split proportionally (min 1 each) and always sum to
+    /// `weeks`. Deterministic, so the selftest can check it.
+    static func template(goal: TemplateGoal, weeks: Int) -> [MesoPhase] {
+        typealias R = (name: String, share: Int, reps: String, focus: String, emoji: String)
+        let recipe: [R]
+        switch goal {
+        case .muscle:
+            recipe = [("Accumulation", 2, "10-15", "Higher volume, moderate weight, controlled tempo.", "💎"),
+                      ("Hypertrophy", 2, "8-12", "Add load each week while keeping reps clean.", "📈"),
+                      ("Intensification", 1, "6-8", "Heavier sets to lift the ceiling for the next cycle.", "⚔️")]
+        case .strength:
+            recipe = [("Base", 1, "6-8", "Build work capacity on the main lifts.", "🧱"),
+                      ("Strength", 2, "3-5", "Heavy compound lifts, long rests.", "⚔️"),
+                      ("Peak", 1, "1-3", "Low volume, top singles and doubles.", "🏔️")]
+        case .fatLoss:
+            recipe = [("Circuit", 1, "12-15", "Short rests, full-body circuits.", "🔥"),
+                      ("Strength Retention", 1, "6-8", "Keep the heavy lifts while in a calorie deficit.", "🛡️"),
+                      ("Conditioning", 1, "15+", "Higher reps and extra conditioning work.", "🏃")]
+        case .athletic:
+            recipe = [("General Prep", 1, "8-12", "Movement quality and base strength.", "🧱"),
+                      ("Strength", 1, "3-5", "Heavy compound lifts.", "⚔️"),
+                      ("Power", 1, "3-5", "Fast, explosive reps and jumps.", "⚡")]
+        case .general:
+            recipe = MesoPhase.classic12Week.map { ($0.name, 1, $0.repRange, $0.focus, $0.emoji) }
+        case .longevity:
+            recipe = [("Foundation", 1, "10-15", "Joint-friendly volume and mobility.", "🌱"),
+                      ("Strength", 1, "6-10", "Moderate-heavy lifts for bone and muscle health.", "💪"),
+                      ("Capacity", 1, "12-20", "Endurance, balance and zone 2 work.", "🫀")]
+        }
+        let total = max(recipe.count, weeks)
+        let shareSum = recipe.reduce(0) { $0 + $1.share }
+        var split = recipe.map { max(1, total * $0.share / shareSum) }
+        var i = 0
+        while split.reduce(0, +) < total { split[i % split.count] += 1; i += 1 }
+        while split.reduce(0, +) > total, let j = split.indices.last(where: { split[$0] > 1 }) { split[j] -= 1 }
+        return zip(recipe, split).map {
+            MesoPhase(name: $0.name, weeks: $1, repRange: $0.reps, focus: $0.focus, emoji: $0.emoji)
+        }
+    }
 }
 
 // MARK: - Schedule / program state persistence
@@ -107,69 +162,6 @@ extension WorkoutManager {
     }
 }
 
-// MARK: - AI service
-
-@MainActor
-enum FitnessAI {
-    struct Failure: LocalizedError {
-        let message: String
-        var errorDescription: String? { message }
-    }
-
-    private struct AIResponse: Decodable { let text: String }
-
-    static func complete(task: String, payload: [String: Any]) async throws -> String {
-        var body = payload
-        body["task"] = task
-        // The AI coach ran on the old online account backend, which this
-        // local-players build no longer signs in to (see
-        // _archive/online-account-2026-11-16/WHY_ARCHIVED.md).
-        _ = body
-        _ = AIResponse.self
-        throw Failure(message: "AI coaching isn't available in the offline, local-players version yet.")
-    }
-
-    static func improveWorkout(days: [ScheduledWorkout], profile: UserProfile?) async throws -> String {
-        let workout = days.map { day -> [String: Any] in
-            ["day": day.dayOfWeek, "name": day.workoutType,
-             "exercises": day.exercises, "minutes": day.estimatedDuration]
-        }
-        var payload: [String: Any] = ["workout": workout]
-        if let p = profile {
-            payload["profile"] = ["experience": p.experienceLevel.rawValue,
-                                  "goals": p.primaryGoals.map(\.rawValue)]
-        }
-        return try await complete(task: "improve_workout", payload: payload)
-    }
-
-    static func buildMesocycle(goal: String, experience: String, weeks: Int, notes: String) async throws -> [MesoPhase] {
-        let text = try await complete(task: "build_mesocycle", payload: [
-            "goal": goal, "experience": experience, "weeks": weeks, "notes": notes,
-        ])
-        // The model is instructed to return a bare JSON array; tolerate prose
-        // around it by slicing to the outermost brackets.
-        guard let start = text.firstIndex(of: "["), let end = text.lastIndex(of: "]"),
-              start < end else {
-            throw Failure(message: "AI did not return a plan. Try again.")
-        }
-        let jsonText = String(text[start...end])
-        struct RawPhase: Decodable {
-            let name: String; let weeks: Int; let repRange: String?
-            let focus: String?; let emoji: String?
-        }
-        guard let raw = try? JSONDecoder().decode([RawPhase].self, from: Data(jsonText.utf8)),
-              !raw.isEmpty else {
-            throw Failure(message: "Could not read the AI plan. Try again.")
-        }
-        return raw.map {
-            MesoPhase(name: $0.name, weeks: max(1, $0.weeks),
-                      repRange: $0.repRange ?? "8-12",
-                      focus: $0.focus ?? "", emoji: $0.emoji ?? "📈")
-        }
-    }
-}
-
-// MARK: - Program catalog
 
 struct CatalogProgram: Identifiable {
     var id: String { name }
@@ -317,7 +309,7 @@ struct ProgramsView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
     @State private var showProgramConfirmation = false
     @State private var pendingProgram: CatalogProgram?
-    @State private var showAIQuestionnaire = false
+    @State private var showQuickBuilder = false
     @State private var showCustomBuilder = false
 
     private var hasActiveProgram: Bool { !workoutManager.weeklySchedule.isEmpty }
@@ -350,8 +342,8 @@ struct ProgramsView: View {
         } message: { program in
             Text("Are you sure you want to quit your current program? Replace overwrites your schedule with \(program.name). Append adds its workouts after your current program.")
         }
-        .sheet(isPresented: $showAIQuestionnaire) {
-            AIWorkoutQuestionnaireView()
+        .sheet(isPresented: $showQuickBuilder) {
+            QuickProgramQuestionnaireView()
                 .environmentObject(workoutManager)
         }
         .sheet(isPresented: $showCustomBuilder) {
@@ -381,10 +373,10 @@ struct ProgramsView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
-            Button(action: { showAIQuestionnaire = true }) {
-                bigActionLabel(icon: "sparkles", iconColor: .yellow,
-                               title: "AI Generate Workout",
-                               subtitle: "Let AI create a personalized workout based on your goals",
+            Button(action: { showQuickBuilder = true }) {
+                bigActionLabel(icon: "list.bullet.clipboard", iconColor: .white,
+                               title: "Quick Program Builder",
+                               subtitle: "Answer three questions and get a ready-made weekly plan",
                                colors: [.brandPurple, .brandBlue])
             }
             .buttonStyle(.plain)
@@ -393,7 +385,7 @@ struct ProgramsView: View {
             Button(action: { showCustomBuilder = true }) {
                 bigActionLabel(icon: "square.and.pencil", iconColor: .white,
                                title: "Create Your Own Workout",
-                               subtitle: "Build your week from scratch — then let AI suggest improvements",
+                               subtitle: "Build your week from scratch, day by day",
                                colors: [.brandOrange, .brandPurple])
             }
             .buttonStyle(.plain)
@@ -616,9 +608,6 @@ struct CustomWorkoutBuilderView: View {
 
     @State private var programName = "My Custom Program"
     @State private var days: [DraftDay] = [DraftDay()]
-    @State private var aiSuggestions: String?
-    @State private var aiBusy = false
-    @State private var aiError: String?
     @State private var showQuitConfirmation = false
 
     private static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -666,7 +655,6 @@ struct CustomWorkoutBuilderView: View {
                     }
                 }
 
-                aiSection
 
                 Button {
                     if workoutManager.weeklySchedule.isEmpty {
@@ -716,9 +704,8 @@ struct CustomWorkoutBuilderView: View {
                 .frame(maxWidth: 160)
                 TextField("Workout name (e.g. Push Day)", text: day.name)
                     .textFieldStyle(.roundedBorder)
-                Stepper("\(day.wrappedValue.minutes) min", value: day.minutes, in: 15...180, step: 5)
-                    .frame(maxWidth: 160)
             }
+            SessionLengthPicker(minutes: day.minutes)
 
             if !day.wrappedValue.exercises.isEmpty {
                 ForEach(day.wrappedValue.exercises.indices, id: \.self) { i in
@@ -769,58 +756,6 @@ struct CustomWorkoutBuilderView: View {
         day.wrappedValue.newExercise = ""
     }
 
-    private var aiSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("AI Coach Review", systemImage: "sparkles")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    Task { await runAI() }
-                } label: {
-                    if aiBusy {
-                        SwiftUI.ProgressView().controlSize(.small)
-                    } else {
-                        Text("Suggest Improvements")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.brandBlue)
-                .disabled(aiBusy || !isValid)
-            }
-            Text("Your workout is reviewed by our AI coach (runs on our server — free to you).")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            if let error = aiError {
-                Text(error).font(.caption).foregroundColor(.red)
-            }
-            if let suggestions = aiSuggestions {
-                Text(suggestions)
-                    .font(.callout)
-                    .textSelection(.enabled)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.brandBlue.opacity(0.08))
-                    .cornerRadius(10)
-            }
-        }
-        .padding()
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(12)
-    }
-
-    private func runAI() async {
-        aiBusy = true
-        aiError = nil
-        defer { aiBusy = false }
-        do {
-            aiSuggestions = try await FitnessAI.improveWorkout(days: draftedDays(), profile: workoutManager.userProfile)
-        } catch {
-            aiError = error.localizedDescription
-        }
-    }
-
     private func draftedDays() -> [ScheduledWorkout] {
         days.map {
             ScheduledWorkout(dayOfWeek: $0.dayOfWeek, workoutType: $0.name,
@@ -838,7 +773,8 @@ struct CustomWorkoutBuilderView: View {
 
 struct MesocycleView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
-    @State private var showAIBuilder = false
+    @State private var templateGoal: MesoPhase.TemplateGoal = .muscle
+    @State private var templateWeeks = 12
     @State private var editingPhase: MesoPhase?
 
     private var totalWeeks: Int { workoutManager.mesoPhases.reduce(0) { $0 + $1.weeks } }
@@ -886,35 +822,31 @@ struct MesocycleView: View {
                 .background(Color.gray.opacity(0.05))
                 .cornerRadius(12)
 
-                // AI builder
-                Button {
-                    showAIBuilder = true
-                } label: {
-                    HStack(spacing: 16) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 32))
-                            .foregroundColor(.yellow)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("AI Mesocycle Builder")
-                                .font(.title2.bold())
-                                .foregroundColor(.white)
-                            Text("Answer a few questions and AI designs your training phases")
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.9))
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(.white)
+                // Phase templates (fixed recipes, scaled to the cycle length you pick)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Start From a Template")
+                        .font(.headline)
+                    Text("Pick a goal and cycle length. You can edit every phase afterwards.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Picker("Goal", selection: $templateGoal) {
+                        ForEach(MesoPhase.TemplateGoal.allCases) { Text($0.label).tag($0) }
                     }
-                    .padding(20)
-                    .frame(maxWidth: .infinity)
-                    .background(LinearGradient(colors: [.brandBlue, .brandPurple], startPoint: .leading, endPoint: .trailing))
-                    .cornerRadius(16)
+                    .compactSegmentedPicker()
+                    HStack {
+                        Stepper("Cycle length: \(templateWeeks) weeks", value: $templateWeeks, in: 4...24, step: 2)
+                        Spacer()
+                        Button("Use Template") {
+                            workoutManager.mesoPhases = MesoPhase.template(goal: templateGoal, weeks: templateWeeks)
+                            workoutManager.saveScheduleState()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.brandPurple)
+                    }
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-
+                .padding()
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(12)
                 // Editable phases
                 HStack {
                     Text("Your Phases")
@@ -941,10 +873,6 @@ struct MesocycleView: View {
                 }
             }
             .padding()
-        }
-        .sheet(isPresented: $showAIBuilder) {
-            AIMesocycleBuilderView()
-                .environmentObject(workoutManager)
         }
         .sheet(item: $editingPhase) { phase in
             MesoPhaseEditor(phase: phase) { updated in
@@ -1036,121 +964,5 @@ struct MesoPhaseEditor: View {
         }
         .padding(24)
         .frame(minWidth: Platform.isDesktop ? 420 : nil)
-    }
-}
-
-struct AIMesocycleBuilderView: View {
-    @EnvironmentObject var workoutManager: WorkoutManager
-    @Environment(\.dismiss) var dismiss
-
-    @State private var goal = "Build muscle"
-    @State private var weeks = 12
-    @State private var notes = ""
-    @State private var busy = false
-    @State private var error: String?
-    @State private var preview: [MesoPhase]?
-
-    private static let goals = ["Build muscle", "Get stronger", "Lose fat", "Athletic performance", "General fitness", "Longevity"]
-
-    /// Six segments share 390pt on an iPhone, so the control shows abbreviated
-    /// titles while the full string is what gets sent to the model.
-    private static let goalLabels = ["Muscle", "Strength", "Fat loss", "Athletic", "General", "Longevity"]
-
-    private static func goalLabel(_ goal: String) -> String {
-        guard let index = goals.firstIndex(of: goal) else { return goal }
-        return goalLabels[index]
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack {
-                    Text("AI Mesocycle Builder")
-                        .font(.title.bold())
-                    Spacer()
-                    Button("Cancel") { dismiss() }
-                        .buttonStyle(.bordered)
-                }
-
-                Picker("Goal", selection: $goal) {
-                    ForEach(Self.goals, id: \.self) { Text(Self.goalLabel($0)) }
-                }
-                .compactSegmentedPicker()
-
-                Stepper("Cycle length: \(weeks) weeks", value: $weeks, in: 4...24, step: 2)
-
-                TextField("Anything else the AI should know? (injuries, schedule, preferences)", text: $notes, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
-
-                Button {
-                    Task { await generate() }
-                } label: {
-                    if busy {
-                        SwiftUI.ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(6)
-                    } else {
-                        Label("Generate Phases", systemImage: "sparkles")
-                            .frame(maxWidth: .infinity)
-                            .padding(6)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.brandPurple)
-                .disabled(busy)
-
-                if let error {
-                    Text(error).font(.caption).foregroundColor(.red)
-                }
-
-                if let preview {
-                    Text("Proposed Plan")
-                        .font(.headline)
-                    ForEach(preview) { phase in
-                        HStack(spacing: 12) {
-                            Text(phase.emoji).font(.system(size: 28))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(phase.name) — \(phase.weeks)w, \(phase.repRange) reps").font(.subheadline.bold())
-                                Text(phase.focus).font(.caption).foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(10)
-                        .background(Color.brandPurple.opacity(0.08))
-                        .cornerRadius(10)
-                    }
-                    Button {
-                        workoutManager.mesoPhases = preview
-                        workoutManager.saveScheduleState()
-                        dismiss()
-                    } label: {
-                        Text("Use This Plan")
-                            .font(.title3.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(6)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.brandGreen)
-                }
-            }
-            .padding(24)
-        }
-        .frame(minWidth: Platform.isDesktop ? 520 : nil,
-               minHeight: Platform.isDesktop ? 480 : nil)
-    }
-
-    private func generate() async {
-        busy = true
-        error = nil
-        defer { busy = false }
-        do {
-            preview = try await FitnessAI.buildMesocycle(
-                goal: goal,
-                experience: workoutManager.userProfile?.experienceLevel.rawValue ?? "intermediate",
-                weeks: weeks,
-                notes: notes
-            )
-        } catch let failure {
-            error = failure.localizedDescription
-        }
     }
 }

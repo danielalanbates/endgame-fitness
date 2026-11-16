@@ -39,6 +39,35 @@ enum ScheduleMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Session length choices shared by every place a user picks minutes:
+/// quick presets up to two hours plus a custom value in 5-minute steps.
+enum SessionLength {
+    static let presets = [30, 45, 60, 90, 120]
+    static let range = 15...120
+    static let step = 5
+    static func clamp(_ minutes: Int) -> Int {
+        let snapped = (minutes + step / 2) / step * step
+        return min(range.upperBound, max(range.lowerBound, snapped))
+    }
+}
+
+struct SessionLengthPicker: View {
+    @Binding var minutes: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Session length", selection: $minutes) {
+                // Five segments at 390pt: "30 min" clips, "30m" does not.
+                ForEach(SessionLength.presets, id: \.self) { Text($0 == 120 ? "2h" : "\($0)m").tag($0) }
+            }
+            .compactSegmentedPicker()
+            .labelsHidden()
+            Stepper("Custom: \(minutes) min", value: $minutes,
+                    in: SessionLength.range, step: SessionLength.step)
+        }
+    }
+}
+
 struct ProgramConfig {
     var scheduleMode: ScheduleMode = .weekly
     var daysOn: Int = 3
@@ -316,12 +345,7 @@ struct ProgramWizardView: View {
             }
 
             card("Session Length", icon: "clock") {
-                Picker("Session length", selection: $config.sessionLength) {
-                    // Five segments at 390pt: "30 min" clips, "30m" does not.
-                    ForEach([30, 45, 60, 75, 90], id: \.self) { Text("\($0)m").tag($0) }
-                }
-                .compactSegmentedPicker()
-                .labelsHidden()
+                SessionLengthPicker(minutes: $config.sessionLength)
             }
         }
     }
