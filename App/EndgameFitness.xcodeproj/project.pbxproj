@@ -54,6 +54,7 @@
 		DDE59FAD789E3B54CCAF07E7 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2228E449771268BB42ECC45 /* AccountView.swift */; };
 		E126FCA0897D8E51C3B90C41 /* TrainingSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D932D3664326F5EB14E1BE7 /* TrainingSync.swift */; };
 		E46FF44B7F2C9AD69C1ADC4A /* PlayerProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD5F6D25B0747CBB34B92E0 /* PlayerProfileView.swift */; };
+		EDBD9D143D2B21BCEFDFAF8B /* SmartPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A026CFE2B1BB260FC619500F /* SmartPlanner.swift */; };
 		F09135DE35EB11EB544583DD /* LocalPlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA4FF38821A1442EFFBB77A3 /* LocalPlayerViews.swift */; };
 		F3C01BEF4F574A42E20462FD /* SeasonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7B384F0700E4DFD5161F6B /* SeasonViews.swift */; };
 		FAFF026D51C1A6CD87C7D177 /* LocalGame.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCA6E0305FF92145DEAB6881 /* LocalGame.swift */; };
@@ -94,6 +95,7 @@
 		8FEFE8651C24567E1E364D07 /* CelebrationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelebrationViews.swift; sourceTree = "<group>"; };
 		961638BC59C4AB9DB7B3BCAB /* EndgameFitness-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "EndgameFitness-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9821287317E68F40835358AF /* GameProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProfile.swift; sourceTree = "<group>"; };
+		A026CFE2B1BB260FC619500F /* SmartPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPlanner.swift; sourceTree = "<group>"; };
 		A9024759EE2A27226B5C8D2C /* GuildViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuildViews.swift; sourceTree = "<group>"; };
 		AFC59F06D0943992C800DD58 /* QuestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestViews.swift; sourceTree = "<group>"; };
 		B4A28E7410AE8775CC42B7AA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 				57618C28AFF851EEA3215FB1 /* ShareCards.swift */,
 				8B4ABDB9AF97FAF369BE5633 /* SmartCoach.swift */,
 				2C1516D27BC706E957A14514 /* SmartCoachViews.swift */,
+				A026CFE2B1BB260FC619500F /* SmartPlanner.swift */,
 				F210ACDFAD421FCE9744559A /* SocialCore.swift */,
 				1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */,
 				5D8B46915952B7C6D49E4C37 /* SocialViews.swift */,
@@ -317,6 +320,7 @@
 				C480866273430FC91866CE62 /* ShareCards.swift in Sources */,
 				82CA8057B3D6D69550A858F0 /* SmartCoach.swift in Sources */,
 				4341949350DDB253A5BF4C06 /* SmartCoachViews.swift in Sources */,
+				EDBD9D143D2B21BCEFDFAF8B /* SmartPlanner.swift in Sources */,
 				868B88FBCE26A9FBB7CE0E20 /* SocialCore.swift in Sources */,
 				A683BD3EA032633C5E5D7F68 /* SocialTabView.swift in Sources */,
 				A87CBB0C6A479E1C686EFBDD /* SocialViews.swift in Sources */,

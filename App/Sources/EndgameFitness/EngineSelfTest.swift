@@ -15,6 +15,7 @@ import Foundation
 
 enum EngineSelfTest {
     static func runIfRequested() {
+        if CommandLine.arguments.contains("-ef.plandump") { SmartPlanner.dumpSamples(); exit(0) }
         guard CommandLine.arguments.contains("-ef.selftest") else { return }
         exit(run())
     }
@@ -485,6 +486,162 @@ enum EngineSelfTest {
             let review = SessionReview.make(workout: w2, before: [sess(0, bench)], after: [sess(0, bench), w2], context: ctx)
             check("coach review PR + next", review.records.count == 1 && review.nextTime.first?.text.hasPrefix("145 lb × 5") == true,
                   "\(review)")
+        }
+
+
+        // MARK: Smart Advisor planner
+        do {
+            typealias SP = SmartPlanner
+            let cfg = { (g: TrainingGoal, e: ExperienceLevel, r: (Int, Int)?, pw: Int, len: Int, eq: EquipmentLevel, inj: Set<String>, days: [String]?) in
+                SP.sampleConfig(g, e, rolling: r, perWeek: pw, len: len, eq: eq, inj: inj, days: days) }
+            func c(_ g: TrainingGoal, _ e: ExperienceLevel = .intermediate, rolling r: (Int, Int)? = nil, perWeek pw: Int = 4,
+                   len: Int = 60, eq: EquipmentLevel = .fullGym, inj: Set<String> = [], days: [String]? = nil) -> ProgramConfig {
+                cfg(g, e, r, pw, len, eq, inj, days)
+            }
+            func backToBackHard(_ p: SP.Plan) -> Int {
+                var n = 0
+                for i in p.sessions.indices {
+                    let j = (i + 1) % p.sessions.count
+                    if j != i && p.slots[j].restBefore == 0 && p.sessions[i].isHard && p.sessions[j].isHard { n += 1 }
+                }
+                return n
+            }
+            func weeklyLiftSets(_ p: SP.Plan) -> Double {
+                Double(p.sessions.flatMap(\.items).filter { $0.kind == .lift }.reduce(0) { $0 + $1.sets }) / p.weeks
+            }
+
+            // The complaint: longevity, 4 on / 1 off.
+            let lon = SP.plan(for: c(.longevity, rolling: (4, 1)))
+            let lonLabels = lon.sessions.map(\.label)
+            check("planner longevity 4on/1off no Upper/Lower", !lonLabels.contains { $0.contains("Upper") || $0.contains("Lower") }, "\(lonLabels)")
+            check("planner longevity has Zone 2", lon.sessions.contains { $0.items.contains { $0.name.hasPrefix("Zone 2") } }, "\(lonLabels)")
+            check("planner longevity mobility every day", lon.sessions.allSatisfy { $0.mobilityMinutes > 0 })
+            check("planner longevity has VO2max", lon.sessions.contains { $0.spec.kind == .intervals })
+            check("planner longevity full-body strength", lon.sessions.filter { $0.label.hasPrefix("Full Body") }.count >= 4)
+            check("planner longevity no back-to-back hard", backToBackHard(lon) == 0, "\(lonLabels)")
+            check("planner longevity hard day after rest", lon.sessions.indices.filter { lon.slots[$0].restBefore > 0 }.allSatisfy { lon.sessions[$0].isHard }, "\(lonLabels)")
+            let lonStats = SP.stats(lon)
+            check("planner longevity aerobic >= 150/wk", lonStats.aerobic >= 150, "\(lonStats.aerobic)")
+            check("planner longevity strength ~2-3/wk", lonStats.strengthSessions >= 1.8 && lonStats.strengthSessions <= 3, "\(lonStats.strengthSessions)")
+            check("planner rolling block whole cycles <= 42", lon.sessions.count % 4 == 0 && lon.sessions.count <= 42, "\(lon.sessions.count)")
+            let lonBeg = SP.plan(for: c(.longevity, .beginner, rolling: (4, 1)))
+            check("planner longevity beginner gentle intervals", !lonBeg.sessions.contains { $0.spec.kind == .intervals }
+                  && lonBeg.sessions.contains { $0.spec.kind == .gentleIntervals } && backToBackHard(lonBeg) == 0)
+            let lonSched = lon.scheduledWorkouts
+            check("planner schedule entries", lonSched.count == lon.sessions.count && lonSched[0].dayOfWeek == "Day 1 · Cycle 1"
+                  && lonSched[0].exercises.count == lon.sessions[0].items.count)
+            let again = SP.plan(for: c(.longevity, rolling: (4, 1)))
+            check("planner deterministic", again.sessions.map { $0.items.map(\.text) } == lon.sessions.map { $0.items.map(\.text) })
+
+            // Size: every major muscle twice a week, sets inside MEV...MAV.
+            let size = SP.plan(for: c(.buildMuscle))
+            let sizeVol = SP.volumeReport(size)
+            for g in SP.majorGroups {
+                let hits = Double(size.sessions.filter { $0.sets(of: g) >= 2 }.count) / size.weeks
+                check("planner size 4/wk \(g) >= 2x/wk", hits >= 2, "\(hits)")
+                let lm = SmartCoach.landmarks.first { $0.group == g }!
+                let sets = sizeVol.first { $0.group == g }!.sets
+                check("planner size 4/wk \(g) sets in MEV-MAV", sets >= Double(lm.mev) && sets <= Double(lm.mav.upperBound), "\(sets)")
+            }
+            check("planner volume report pure", sizeVol.count == 10 && SP.volumeReport(size) == sizeVol)
+
+            // Strength: heavy lower days at least 48 h apart, even on back-to-back weekdays.
+            for days in [["Monday", "Wednesday", "Friday"], ["Monday", "Tuesday", "Thursday"]] {
+                let st = SP.plan(for: c(.getStronger, perWeek: 3, days: days))
+                let heavyDays = st.sessions.indices.filter { st.sessions[$0].items.contains { $0.heavyLoad && ($0.pattern == .squat || $0.pattern == .hinge) } }
+                    .map { st.slots[$0].day }
+                var minGap = 99
+                for (k, d) in heavyDays.enumerated() {
+                    let next = k + 1 < heavyDays.count ? heavyDays[k + 1] : heavyDays[0] + st.blockDays
+                    minGap = min(minGap, next - d)
+                }
+                check("planner strength heavy lower spaced 48h \(days.joined(separator: "/"))", heavyDays.count >= 2 && minGap >= 2, "\(heavyDays)")
+                let sst = SP.stats(st)
+                check("planner strength main lifts 2x/wk \(days.count)", sst.lowerHeavy >= 2 && sst.upperHeavy >= 2, "\(sst.lowerHeavy) \(sst.upperHeavy)")
+            }
+
+            // Experience, equipment, injuries, session length.
+            let beg = SP.plan(for: c(.buildMuscle, .beginner)), mid = SP.plan(for: c(.buildMuscle, .intermediate))
+            check("planner beginners fewer sets", weeklyLiftSets(beg) < weeklyLiftSets(mid), "\(weeklyLiftSets(beg)) vs \(weeklyLiftSets(mid))")
+            check("planner beginners <= 4 sets per lift", beg.sessions.flatMap(\.items).allSatisfy { $0.kind != .lift || $0.sets <= 4 })
+            check("planner beginners simple lifts", !beg.sessions.flatMap(\.items).contains { ["Deadlifts", "Front Squats", "Weighted Pull-ups", "Barbell Rows"].contains($0.name) })
+            let barbellWords = ["Barbell", "Deadlift", "Bench Press", "Back Squat", "Front Squat", "Lat Pulldown", "Leg Press", "Cable", "Machine", "Kettlebell", "Dumbbell"]
+            for g in TrainingGoal.allCases {
+                let bw = SP.plan(for: c(g, perWeek: 4, eq: .bodyweight))
+                let lifts = bw.sessions.flatMap(\.items).filter { $0.kind == .lift }
+                check("planner bodyweight \(g.rawValue) no gear", !lifts.isEmpty && lifts.allSatisfy { $0.gear.contains(.bodyweight) }
+                      && !lifts.contains { l in barbellWords.contains { l.name.contains($0) } }, "\(lifts.map(\.name))")
+                let knee = SP.plan(for: c(g, rolling: (3, 1), inj: ["Knee"]))
+                let names = knee.sessions.flatMap(\.items).map { $0.name.lowercased() }
+                let flagged = Set(SP.catalog.filter { $0.flags.contains("Knee") }.map { $0.name.lowercased() })
+                    .union(SP.mobilityPool.filter { $0.flags.contains("Knee") }.map { $0.name.lowercased() })
+                    .union(SP.balancePool.filter { $0.flags.contains("Knee") }.map { $0.name.lowercased() })
+                let bad = names.filter { n in flagged.contains(n) || ["jump", "lunge", "leg extension", "step-up", "pistol", "split squat"].contains { n.contains($0) } }
+                check("planner knee \(g.rawValue) avoids flagged", bad.isEmpty, "\(bad)")
+            }
+            let lb = SP.plan(for: c(.getStronger, inj: ["Low back"]))
+            check("planner low back avoids loaded hinges", !lb.sessions.flatMap(\.items).contains { $0.name.contains("Deadlift") || $0.name == "Barbell Rows" })
+            let sh = SP.plan(for: c(.buildMuscle, inj: ["Shoulder"]))
+            check("planner shoulder avoids overhead", !sh.sessions.flatMap(\.items).contains { $0.name.contains("Overhead Press") || $0.name.contains("Shoulder Press") || $0.name.contains("Dips") })
+            let long = SP.plan(for: c(.buildMuscle, len: 120)), short = SP.plan(for: c(.buildMuscle, len: 45))
+            check("planner 120 min > 45 min volume", weeklyLiftSets(long) > weeklyLiftSets(short) + 10, "\(weeklyLiftSets(long)) vs \(weeklyLiftSets(short))")
+            let lLong = SP.stats(SP.plan(for: c(.longevity, rolling: (4, 1), len: 120))), lShort = SP.stats(SP.plan(for: c(.longevity, rolling: (4, 1), len: 45)))
+            check("planner 120 min > 45 min aerobic", lLong.aerobic > lShort.aerobic, "\(lLong.aerobic) vs \(lShort.aerobic)")
+            var dl = c(.buildMuscle); dl.includeDeload = false; dl.mesocycleWeeks = 8
+            check("planner no-deload block caps volume lower", SP.targetRange(group: "Chest", config: dl).upperBound < SP.targetRange(group: "Chest", config: c(.buildMuscle)).upperBound)
+
+            // Weekly slots start at the first training day on/after the start date.
+            let cal = Calendar(identifier: .gregorian)
+            let wed = cal.date(from: DateComponents(year: 2026, month: 11, day: 18, hour: 9))!
+            let ws = SP.slots(for: c(.generalFitness), start: wed, calendar: cal).slots
+            check("planner weekly slots from start", ws.first?.label == "Thursday · Wk 1" && ws.first?.restBefore == 1 && ws.count == 8,
+                  "\(ws.map(\.label))")
+
+            // Sweep: sessions fit the time, health goals never stack hard days
+            // when the cycle has room, nothing is empty.
+            var sweepBad: [String] = []
+            for g in TrainingGoal.allCases {
+                for e in [ExperienceLevel.beginner, .advanced] {
+                    for (r, pw) in [((4, 1), 0), ((3, 1), 0), ((2, 1), 0), ((6, 1), 0)] as [((Int, Int), Int)] {
+                        for len in [30, 90] {
+                            let p = SP.plan(for: c(g, e, rolling: r, perWeek: pw, len: len))
+                            let tag = "\(g.rawValue) \(e.rawValue) \(r) \(len)"
+                            if p.sessions.isEmpty || p.sessions.contains(where: { $0.items.isEmpty }) { sweepBad.append("empty " + tag) }
+                            if let over = p.sessions.first(where: { $0.minutes > Double(len) + 3 }) { sweepBad.append("long \(Int(over.minutes)) " + tag) }
+                            if g != .buildMuscle && g != .getStronger && backToBackHard(p) > 0 { sweepBad.append("hard " + tag) }
+                        }
+                    }
+                }
+                for pw in [2, 3, 5, 7] {
+                    let p = SP.plan(for: c(g, perWeek: pw))
+                    if p.sessions.count != pw * 2 { sweepBad.append("count \(g.rawValue) \(pw)") }
+                    if g != .buildMuscle && g != .getStronger && pw < 7 && backToBackHard(p) > 0 { sweepBad.append("hard \(g.rawValue) \(pw)/wk") }
+                }
+            }
+            check("planner sweep (fit, no stacked hard days)", sweepBad.isEmpty, "\(sweepBad.prefix(8))")
+
+            // Smart Advisor vs every hand-built split, same inputs and exercise engine.
+            let reps: [(String, ProgramConfig)] = [
+                ("longevity 4on/1off", c(.longevity, rolling: (4, 1))),
+                ("longevity 3/wk beginner", c(.longevity, .beginner, perWeek: 3)),
+                ("size 4/wk", c(.buildMuscle)),
+                ("size 6/wk advanced", c(.buildMuscle, .advanced, perWeek: 6)),
+                ("strength 3/wk", c(.getStronger, perWeek: 3)),
+                ("fat loss 5/wk", c(.loseWeight, perWeek: 5)),
+                ("endurance 3on/1off", c(.improveEndurance, rolling: (3, 1))),
+                ("flexibility 3/wk bodyweight", c(.increaseFlexibility, perWeek: 3, eq: .bodyweight)),
+                ("general 4/wk home knee", c(.generalFitness, eq: .homeGym, inj: ["Knee"])),
+            ]
+            var wins = 0
+            for (name, cf) in reps {
+                let smart = SP.qualityScore(SP.plan(for: cf)).total
+                let naive = ProgramSplit.allCases.filter { $0 != .auto }.map { (SP.qualityScore(SP.naivePlan(for: cf, split: $0)).total, $0.rawValue) }
+                let best = naive.max { $0.0 < $1.0 }!
+                let ok = smart > best.0
+                if ok { wins += 1 }
+                check("planner beats hand-built: \(name)", ok, String(format: "smart %.1f vs %@ %.1f", smart, best.1, best.0))
+            }
+            check("planner beats hand-built in >= 6 configs", wins >= 6, "\(wins)")
         }
 
         print(failures == 0 ? "SELFTEST PASS \(count)/\(count)" : "SELFTEST FAIL \(failures) of \(count)")

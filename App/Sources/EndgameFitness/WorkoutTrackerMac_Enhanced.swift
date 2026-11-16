@@ -555,20 +555,39 @@ class WorkoutManager: ObservableObject {
     /// split, session length, goal emphasis, injuries. Mesocycle length,
     /// deload and progression style are persisted for the coaching views.
     func generateProgram(with config: ProgramConfig) {
-        let weekOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        var days = weekOrder.filter { config.weekdays.contains($0) }
-        // Fill in sensible days if fewer were picked than daysPerWeek.
-        if days.count < config.daysPerWeek {
-            for d in weekOrder where !days.contains(d) && days.count < config.daysPerWeek {
-                days.append(d)
-            }
-            days = weekOrder.filter { days.contains($0) }
-        }
-        days = Array(days.prefix(config.daysPerWeek))
+        // Picked weekdays, filled in with sensible days if fewer than daysPerWeek.
+        var days = SmartPlanner.weekdays(for: config)
         if config.scheduleMode == .rolling {
             days = (1...max(1, config.daysOn)).map { "Day \($0)" }
         }
 
+        if config.split == .auto {
+            // Smart Advisor: session types placed by the recovery model.
+            weeklySchedule = SmartPlanner.plan(for: config, start: Date()).scheduledWorkouts
+        } else {
+            weeklySchedule = explicitSplitSchedule(config: config, days: days)
+        }
+
+        // Persist the cycle-level knobs for the coaching/mesocycle views.
+        let d = UserDefaults.standard
+        d.set(config.mesocycleWeeks, forKey: "mesocycleWeeks")
+        d.set(config.includeDeload, forKey: "deloadEnabled")
+        d.set(config.progression.rawValue, forKey: "progressionStyle")
+        d.set(config.experienceLevel.rawValue, forKey: "progressionExperience")
+        d.set(config.primaryGoal.rawValue, forKey: "progressionGoal")
+        d.set(Date().timeIntervalSince1970, forKey: "programStartDate")
+        d.set(config.scheduleMode.rawValue, forKey: "scheduleMode")
+        d.set(config.daysOn, forKey: "cycleDaysOn")
+        d.set(config.daysOff, forKey: "cycleDaysOff")
+        d.set(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970, forKey: "cycleStartDay")
+        d.set(true, forKey: "rotationIndexed")
+        d.set(days, forKey: "trainingWeekdays")
+
+        saveData()
+    }
+
+    /// A user-chosen split: its rotation, continued across weeks/cycles.
+    private func explicitSplitSchedule(config: ProgramConfig, days: [String]) -> [ScheduledWorkout] {
         let split = resolvedSplit(for: config)
         let goalFocus = focusString(for: config.primaryGoal)
         let rotation = split.rotation
@@ -602,25 +621,7 @@ class WorkoutManager: ObservableObject {
             schedule.append(ScheduledWorkout(dayOfWeek: dayLabel, workoutType: session.label,
                                              exercises: exercises, estimatedDuration: config.sessionLength))
         }
-
-        weeklySchedule = schedule
-
-        // Persist the cycle-level knobs for the coaching/mesocycle views.
-        let d = UserDefaults.standard
-        d.set(config.mesocycleWeeks, forKey: "mesocycleWeeks")
-        d.set(config.includeDeload, forKey: "deloadEnabled")
-        d.set(config.progression.rawValue, forKey: "progressionStyle")
-        d.set(config.experienceLevel.rawValue, forKey: "progressionExperience")
-        d.set(config.primaryGoal.rawValue, forKey: "progressionGoal")
-        d.set(Date().timeIntervalSince1970, forKey: "programStartDate")
-        d.set(config.scheduleMode.rawValue, forKey: "scheduleMode")
-        d.set(config.daysOn, forKey: "cycleDaysOn")
-        d.set(config.daysOff, forKey: "cycleDaysOff")
-        d.set(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970, forKey: "cycleStartDay")
-        d.set(true, forKey: "rotationIndexed")
-        d.set(days, forKey: "trainingWeekdays")
-
-        saveData()
+        return schedule
     }
 
     /// Rolling "X on / Y off" programs: which training day (0-based) `date`
