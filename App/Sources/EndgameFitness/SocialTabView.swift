@@ -39,7 +39,12 @@ enum SocialSection: String, CaseIterable, Identifiable {
 struct SocialTabView: View {
     @ObservedObject private var game = GameProfileService.shared
     @ObservedObject private var rivals = RivalStore.shared
-    @State private var section: SocialSection = .rivals
+    @State private var section: SocialSection = {
+        #if DEBUG
+        if let v = RootView.debugArg("-ef.social"), let s = SocialSection(rawValue: v) { return s }
+        #endif
+        return .rivals
+    }()
 
     var body: some View {
         VStack(spacing: 0) {

@@ -219,6 +219,49 @@ enum EngineSelfTest {
         let events = RivalStore.changes(from: card, to: newer)
         check("rival update events", events.count == 2, "\(events.map(\.text))")
 
+        // Rival card: every field survives encode/decode, and importing it twice keeps one rival.
+        check("card all fields round trip", (try? PlayerCardCode.decode(code)).map {
+            $0.prs == card.prs && $0.weekKey == card.weekKey && $0.raidDamage == card.raidDamage && $0.symbol == card.symbol
+        } == true)
+        check("garbage card rejected", (try? PlayerCardCode.decode("not a code")) == nil)
+
+        // Player backup: JSON round trip keeps game state; re-keying moves quests to the new id.
+        let aliceState = game.store.state("alice")
+        let backup = LocalPlayerStore.Backup(exportedAt: clock, player: LocalPlayer(id: "alice", name: "Alice", symbol: "bolt.fill",
+                                             colorIndex: 1, pinHash: nil, createdAt: clock, storeKey: "k"),
+                                             game: aliceState, workouts: Data("[]".utf8))
+        let backupData = try? JSONEncoder().encode(backup)
+        let restored = backupData.flatMap { try? JSONDecoder().decode(LocalPlayerStore.Backup.self, from: $0) }
+        check("backup JSON round trip", restored?.game == aliceState && restored?.player.name == "Alice"
+              && restored?.workouts == Data("[]".utf8) && restored?.format == "endgame-fitness-player")
+        let rekeyed = LocalPlayerStore.rekeyed(aliceState, from: "alice", to: "zed")
+        check("backup re-keys quests", rekeyed.quests.count == aliceState.quests.count
+              && rekeyed.quests.values.allSatisfy { !$0.id.contains("alice") } && rekeyed.xp == aliceState.xp,
+              "\(rekeyed.quests.keys.sorted())")
+
+        // Progression over a week of training: level, achievements, quests and raid all move.
+        let pRoot = FileManager.default.temporaryDirectory.appendingPathComponent("ef-selftest-prog-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: pRoot) }
+        let prog = LocalGame(store: LocalGameStore(root: pRoot))
+        var pClock = t
+        prog.clock = { pClock }
+        prog.tzOffsetMin = 0
+        prog.roster = { [("carol", "Carol")] }
+        var totalXP = 0, totalPRs = 0
+        for d in 0..<7 {
+            pClock = t + d * 86_400
+            let o = prog.apply(session("p\(d)", at: pClock - 600, sets: 6, reps: 8, weight: 185 + Double(d * 5)), to: "carol")
+            totalXP += o.xpGained
+            totalPRs += o.prCount
+        }
+        let c = prog.store.state("carol")
+        check("week: XP accumulates", c.xp >= totalXP && totalXP > 0 && c.totalWorkouts == 7, "\(c.xp) / \(totalXP)")
+        check("week: level up", c.level == GameRules.levelForXP(c.xp) && c.level > 1, "lvl \(c.level)")
+        check("week: streak 7", c.streak.current == 7, "\(c.streak)")
+        check("week: achievements unlocked", c.achievements["first_workout"] != nil && c.achievements.count >= 2, "\(c.achievements.keys.sorted())")
+        check("week: PRs counted", totalPRs >= 1, "\(totalPRs)")
+        check("week: solo raid took damage", (prog.currentRaid("carol").damage["carol"] ?? 0) > 0, "\(prog.currentRaid("carol"))")
+
         print(failures == 0 ? "SELFTEST PASS \(count)/\(count)" : "SELFTEST FAIL \(failures) of \(count)")
         return failures == 0 ? 0 : 1
     }

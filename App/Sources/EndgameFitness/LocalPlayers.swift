@@ -182,19 +182,25 @@ final class LocalPlayerStore: ObservableObject {
         player.pinHash = nil
         if taken.contains(player.name) { player.name = String("\(player.name) (restored)".prefix(24)) }
         player.createdAt = Int(Date().timeIntervalSince1970)
-        var game = backup.game
-        // Quest ids embed the player id; re-key them so the board keeps its progress.
-        let oldID = backup.player.id
+        let game = Self.rekeyed(backup.game, from: backup.player.id, to: id)
+        GameProfileService.shared.engine.store.save(game, for: id)
+        if let workouts = backup.workouts { try WorkoutStore.shared.writeRawSessionsFile(workouts, for: player.storeKey) }
+        players.append(player)
+        save()
+        // Same household bookkeeping as a newly created player.
+        GameProfileService.shared.engine.playerJoined(id)
+        return player
+    }
+
+    /// Quest ids embed the player id; re-key them so the board keeps its progress.
+    nonisolated static func rekeyed(_ game: PlayerGameState, from oldID: String, to id: String) -> PlayerGameState {
+        var game = game
         game.quests = Dictionary(uniqueKeysWithValues: game.quests.map { key, q in
             var q = q
             q.id = q.id.replacingOccurrences(of: oldID, with: id)
             return (key.replacingOccurrences(of: oldID, with: id), q)
         })
-        GameProfileService.shared.engine.store.save(game, for: id)
-        if let workouts = backup.workouts { try WorkoutStore.shared.writeRawSessionsFile(workouts, for: player.storeKey) }
-        players.append(player)
-        save()
-        return player
+        return game
     }
 }
 

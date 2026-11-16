@@ -24,6 +24,10 @@ struct RootView: View {
 
     @State private var celebratingLevel: Int?
     @State private var onboardedAccounts = AccountFlags(key: "ef.onboardedAccounts")
+    #if DEBUG
+    private struct DebugSheet: Identifiable { let id: String }
+    @State private var debugSheet: DebugSheet?
+    #endif
 
     private enum Stage: Equatable {
         case picker, onboarding, app
@@ -36,6 +40,14 @@ struct RootView: View {
                 minHeight: Platform.isDesktop ? 700 : nil
             )
             .task { launch() }
+            #if DEBUG
+            .sheet(item: $debugSheet) { which in
+                switch which.id {
+                case "talents": TalentTreeView()
+                default: NavigationStack { AccountView() }
+                }
+            }
+            #endif
             // Friend codes: endgamefitness://card/EGF1.… adds or updates a rival.
             .onOpenURL { url in
                 guard url.host == "card" || url.absoluteString.contains("\(PlayerCardCode.prefix).") else { return }
@@ -135,6 +147,34 @@ struct RootView: View {
            let tab = Int(CommandLine.arguments[i + 1]) {
             workoutManager.selectedTab = tab
         }
+        // `-ef.section <Community section>` (e.g. Quests, Challenges, Guild, Season).
+        if let v = Self.debugArg("-ef.section"), let section = CommunitySection(rawValue: v) {
+            game.requestedCommunitySection = section
+        }
+        // `-ef.sheet talents|account` opens that sheet over the app.
+        if let v = Self.debugArg("-ef.sheet") {
+            Task { try? await Task.sleep(nanoseconds: 800_000_000); debugSheet = DebugSheet(id: v) }
+        }
+        // `-ef.workout live|finish`: drives the real WorkoutManager path the
+        // Workout tab uses — start, add Bench Press + Squat, fill and tick
+        // 3 sets each — then (finish) saves the session so it earns XP.
+        if let mode = Self.debugArg("-ef.workout"), players.current != nil {
+            workoutManager.perform(.empty)
+            for name in ["Bench Press", "Squat"] {
+                workoutManager.addExercise(ExerciseLibrary.shared.match(name: name), customName: name)
+            }
+            for (n, ex) in (workoutManager.currentWorkout?.exercises ?? []).enumerated() {
+                for _ in ex.sets.count..<3 { workoutManager.addSet(to: ex.id) }
+                guard var e = workoutManager.currentWorkout?.exercises.first(where: { $0.id == ex.id }) else { continue }
+                for k in e.sets.indices { e.sets[k].reps = 5; e.sets[k].weight = n == 0 ? 185 : 225 }
+                workoutManager.updateExercise(e)
+                for set in e.sets { workoutManager.toggleSetCompleted(exerciseID: e.id, setID: set.id) }
+            }
+            if mode == "finish" {
+                let saved = workoutManager.completeWorkout()
+                print("EF-DEBUG workout finish saved=\(saved) sessions=\(workoutManager.loggedSessions.count)")
+            }
+        }
         #endif
         // Installs from before local players: the device was already onboarded,
         // so the player who adopts its history doesn't need to be asked again.
@@ -142,6 +182,13 @@ struct RootView: View {
             onboardedAccounts.insert(id)
         }
     }
+
+    #if DEBUG
+    static func debugArg(_ flag: String) -> String? {
+        guard let i = CommandLine.arguments.firstIndex(of: flag), CommandLine.arguments.count > i + 1 else { return nil }
+        return CommandLine.arguments[i + 1]
+    }
+    #endif
 
     /// Onboarding answers go on the local player's profile.
     private func saveOnboardingAnswers() {
