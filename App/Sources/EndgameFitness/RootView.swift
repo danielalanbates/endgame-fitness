@@ -36,6 +36,16 @@ struct RootView: View {
                 minHeight: Platform.isDesktop ? 700 : nil
             )
             .task { launch() }
+            // Friend codes: endgamefitness://card/EGF1.… adds or updates a rival.
+            .onOpenURL { url in
+                guard url.host == "card" || url.absoluteString.contains("\(PlayerCardCode.prefix).") else { return }
+                if RivalStore.shared.importText(url.absoluteString, source: "link") { workoutManager.selectedTab = 8 }
+            }
+            .onChange(of: game.profile) { _, _ in
+                RivalStore.shared.reload()
+                GameCenterService.shared.resumeIfEnabled()
+                Task { await GameCenterService.shared.publish() }
+            }
             .onChange(of: game.profile?.isOnboarded) { _, onboarded in
                 if onboarded == true, let id = players.currentID { onboardedAccounts.insert(id) }
             }

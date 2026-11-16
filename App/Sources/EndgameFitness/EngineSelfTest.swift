@@ -198,6 +198,27 @@ enum EngineSelfTest {
         ] as [String: Any?])
         check("feed model from local shape", item?.reactions.first?.count == 2 && item?.kind == "pr")
 
+        // Friend codes: round trip, deep link, tamper rejection, rival update events.
+        let card = PlayerCard(id: "p1", name: "Alex", symbol: "bolt.fill", colorIndex: 2, level: 7, xp: 1200,
+                              heroClass: "strength", title: nil, weekKey: "2026-W47", weeklyVolume: 12345, weeklyWorkouts: 3,
+                              streak: 4, longestStreak: 9, totalWorkouts: 40, raidDamage: 900,
+                              prs: [.init(exercise: "bench press", e1rm: 225)], issuedAt: 1_700_000_000)
+        let code = PlayerCardCode.encode(card)
+        check("card code round trip", (try? PlayerCardCode.decode(code)) == card, code)
+        check("card deep link decodes", (try? PlayerCardCode.decode("hey add me " + PlayerCardCode.deepLink(card).absoluteString + " thx")) == card)
+        var tampered = card
+        tampered.level = 99
+        let forged = PlayerCardCode.encode(tampered).split(separator: ".")
+        let mixed = "\(forged[0]).\(forged[1]).\(code.split(separator: ".")[2])"
+        check("tampered card rejected", (try? PlayerCardCode.decode(mixed)) == nil)
+        check("card QR renders", PlayerCardCode.qrImage(PlayerCardCode.deepLink(card).absoluteString) != nil)
+        var newer = card
+        newer.level = 8
+        newer.issuedAt += 60
+        newer.prs = [.init(exercise: "bench press", e1rm: 235)]
+        let events = RivalStore.changes(from: card, to: newer)
+        check("rival update events", events.count == 2, "\(events.map(\.text))")
+
         print(failures == 0 ? "SELFTEST PASS \(count)/\(count)" : "SELFTEST FAIL \(failures) of \(count)")
         return failures == 0 ? 0 : 1
     }

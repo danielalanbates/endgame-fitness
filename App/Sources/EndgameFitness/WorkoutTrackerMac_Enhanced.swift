@@ -397,6 +397,8 @@ class WorkoutManager: ObservableObject {
         // SessionGameLayer hook: XP pop-up, combo/PR detection, rest timer.
         if set.completed {
             SessionGame.shared.setLogged(set, in: workout.exercises[ei], workout: workout, history: loggedSessions)
+            let partyName = workout.exercises[ei].name
+            MainActor.assumeIsolated { GymParty.shared.setLogged(weight: set.weight, reps: set.reps, exercise: partyName) }
         } else {
             SessionGame.shared.recalculate(for: workout, history: loggedSessions)
         }
@@ -1744,6 +1746,9 @@ struct ContentView: View {
             CommunityView()
                 .tabItem { Label("Community", systemImage: "person.2.fill") }
                 .tag(7)
+            SocialTabView()
+                .tabItem { Label("Social", systemImage: "person.2.wave.2.fill") }
+                .tag(8)
             TrainingProgressView()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(3)
@@ -1829,6 +1834,14 @@ struct ContentView: View {
             }
 
             SidebarButton(
+                title: "Social",
+                icon: "person.2.wave.2.fill",
+                isSelected: workoutManager.selectedTab == 8
+            ) {
+                workoutManager.selectedTab = 8
+            }
+
+            SidebarButton(
                 title: "Settings",
                 icon: "gear",
                 isSelected: workoutManager.selectedTab == 6
@@ -1881,6 +1894,8 @@ struct ContentView: View {
                 SettingsView()
             case 7:
                 CommunityView()
+            case 8:
+                SocialTabView()
             default:
                 DashboardView()
             }

@@ -87,6 +87,15 @@ enum Platform {
         #endif
     }
 
+    /// Plain text on the system pasteboard, if any.
+    static func pasteboardString() -> String? {
+        #if os(macOS)
+        NSPasteboard.general.string(forType: .string)
+        #else
+        UIPasteboard.general.string
+        #endif
+    }
+
     /// A short "that didn't work" cue. Audible on the Mac, haptic on iPhone.
     static func beep() {
         #if os(macOS)

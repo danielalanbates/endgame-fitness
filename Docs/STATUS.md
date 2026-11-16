@@ -131,3 +131,11 @@ xcrun simctl io booted screenshot shot.png
 security unlock-keychain -p "$(cat ~/Library/Application\ Support/BatesAI/keys/endgame-signing/keychain-password.txt)" ~/Library/Keychains/endgame-ci.keychain-db
 scripts/ship.sh both 1.0.0 <build>
 ```
+
+## Social tab without accounts (2026-11-16)
+
+New Social tab (tab 8): Rivals board from player-card codes/QR/deep links, optional
+Game Center per local player (weekly boards, mirrored achievements, friends,
+turn-based volume duels), Gym Party (MultipeerConnectivity co-op boss fed by
+completed sets), and share-card images via ShareLink. Design, App Store Connect
+setup, and the no-Facebook-SDK rationale: Docs/SOCIAL_DESIGN.md.

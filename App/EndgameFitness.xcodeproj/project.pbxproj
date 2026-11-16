@@ -9,10 +9,12 @@
 /* Begin PBXBuildFile section */
 		021D38A4E20A30B4C3A33EF0 /* ProgressionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9FDD18E5E778E4B604C793 /* ProgressionEngine.swift */; };
 		027C83B7AF83737A3370EE72 /* TalentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82031AC26C4C08D12D1F190E /* TalentViews.swift */; };
+		05CF00856F2A91749107CE7E /* SocialTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */; };
 		0CBD7549433FF93B7FA8E9D8 /* ActiveWorkoutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D01CBD884905DA9095FD305 /* ActiveWorkoutViews.swift */; };
 		0EE67E95A98192884A5DCC9D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B4A28E7410AE8775CC42B7AA /* PrivacyInfo.xcprivacy */; };
 		103CF1C2993C71A13DD25302 /* GameProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD85BA9625E7BD26DF9BACD /* GameProfileService.swift */; };
 		135CDD9A6096CE0005D0F095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E6D0F3A37C36D923BC4BA9 /* RootView.swift */; };
+		156D3EB5A38DDDBC794BDA6D /* GymParty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CADF70A07BEAA3A751AC640 /* GymParty.swift */; };
 		16FE8CE8358EE85D97FFF9B2 /* MuscleVolumeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61304C03E79829A6D866D856 /* MuscleVolumeView.swift */; };
 		1AD07D332B819F1123CCE2CE /* GameProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821287317E68F40835358AF /* GameProfile.swift */; };
 		1D1027A0CD5CF5E2B39B494F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B4A28E7410AE8775CC42B7AA /* PrivacyInfo.xcprivacy */; };
@@ -23,6 +25,7 @@
 		299106A37F16E451B41932C6 /* ProgramsMeso.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */; };
 		2A859A5E1D08088D128ECDBC /* WorkoutTrackerMac_Enhanced.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */; };
 		2CE3EE4BC1B6E37A6FD7A696 /* SeasonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7B384F0700E4DFD5161F6B /* SeasonViews.swift */; };
+		2F5A3BD85D3A48178F19089D /* GameCenterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D61C68FC4C823D56D304DB /* GameCenterService.swift */; };
 		38A84A2CA63CD3B743710F1F /* TrainingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11ABE76069CCE2BDF91312C5 /* TrainingModels.swift */; };
 		426152B504F7980CBFEB1665 /* AvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */; };
 		4B948F235B3E2426F56251B2 /* PlayerProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD5F6D25B0747CBB34B92E0 /* PlayerProfileView.swift */; };
@@ -45,13 +48,17 @@
 		689484BE8BA670DAE626263F /* QuestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC59F06D0943992C800DD58 /* QuestViews.swift */; };
 		6A7B80D2BCEA6235B0D30324 /* WorkoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C1FFB17E4CDBDC03406F24 /* WorkoutStore.swift */; };
 		6F3B8703EEB7658EB620896D /* WorkoutSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695DF64108F4EB0D293656CF /* WorkoutSyncBridge.swift */; };
+		733BE69DEE15E7F6C6D2B031 /* ShareCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57618C28AFF851EEA3215FB1 /* ShareCards.swift */; };
 		766DD7499E8F3D86B1B660B5 /* QuestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC59F06D0943992C800DD58 /* QuestViews.swift */; };
 		78F0C500C962FD0A1162248A /* MuscleVolumeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61304C03E79829A6D866D856 /* MuscleVolumeView.swift */; };
 		7A03CE3354AA8F5A2F787E72 /* GameProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821287317E68F40835358AF /* GameProfile.swift */; };
 		7EC430933E958A5E1D9B068B /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF72E2066BCBAE1BE4C35A24 /* CommentsView.swift */; };
+		7F8103DC78515C066007425A /* GameCenterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D61C68FC4C823D56D304DB /* GameCenterService.swift */; };
 		8195A5C92DF6554EE927DBD1 /* LocalPlayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31453536801AEDFAA9354FAF /* LocalPlayers.swift */; };
 		845F52A6C213CC831F64A0F8 /* GuildViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9024759EE2A27226B5C8D2C /* GuildViews.swift */; };
+		868B88FBCE26A9FBB7CE0E20 /* SocialCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F210ACDFAD421FCE9744559A /* SocialCore.swift */; };
 		872944C7107E2C7A2DE10427 /* ProgramsMeso.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */; };
+		8E01E22FFCCFBAEF3DFCFE95 /* SocialCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F210ACDFAD421FCE9744559A /* SocialCore.swift */; };
 		93BC3BA0F8403554C5D854BB /* WorkoutSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695DF64108F4EB0D293656CF /* WorkoutSyncBridge.swift */; };
 		93E40F0D8D2266BC0AF067BE /* TrainingUnits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FA59F3F324232FDE94BC8A5 /* TrainingUnits.swift */; };
 		94E2E0F23680D25F443A2DC5 /* RaidViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70E1D100FB56EAE773770B7 /* RaidViews.swift */; };
@@ -60,6 +67,7 @@
 		A05F1147A5F77D638D9DFCF3 /* exercise_library.json in Resources */ = {isa = PBXBuildFile; fileRef = DD57C1FA2246AF367A95471D /* exercise_library.json */; };
 		A5B238A4EAA7EC7C0E0E4C0B /* ProgressionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9FDD18E5E778E4B604C793 /* ProgressionEngine.swift */; };
 		A603EF1D2081E79D426D125F /* ExerciseLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFECB8377CFAD3AF38534C3A /* ExerciseLibrary.swift */; };
+		A683BD3EA032633C5E5D7F68 /* SocialTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */; };
 		A79C03D1589239CA5901AA94 /* LocalGame.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCA6E0305FF92145DEAB6881 /* LocalGame.swift */; };
 		A87CBB0C6A479E1C686EFBDD /* SocialViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8B46915952B7C6D49E4C37 /* SocialViews.swift */; };
 		A9319CB8126B245A07723522 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E6D0F3A37C36D923BC4BA9 /* RootView.swift */; };
@@ -71,6 +79,7 @@
 		BE3321436895493A4B71CCBC /* ProfileSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66BA66FD91ED0F58BB7C05EE /* ProfileSetupView.swift */; };
 		C241D6FEBE521E8250D2156D /* LocalPlayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31453536801AEDFAA9354FAF /* LocalPlayers.swift */; };
 		C38664E9B3B87B3AAA70F6FD /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9B52389A47515E3F6C0447 /* HealthKitManager.swift */; };
+		C480866273430FC91866CE62 /* ShareCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57618C28AFF851EEA3215FB1 /* ShareCards.swift */; };
 		C59E8A06DA2502DF0A3FC8D0 /* SessionGameLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD61E68761B022E3F91ADE5 /* SessionGameLayer.swift */; };
 		C86369086E22A534CBE3472E /* HistoryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0163504337DD70B05325B0A3 /* HistoryViews.swift */; };
 		CB8242662A454D086A1022E3 /* EngineSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C6FE9DB7EF8CA6B0D8A86 /* EngineSelfTest.swift */; };
@@ -78,6 +87,7 @@
 		D3B701DF3AE295AD7D94CC9D /* exercise_library.json in Resources */ = {isa = PBXBuildFile; fileRef = DD57C1FA2246AF367A95471D /* exercise_library.json */; };
 		D7955A2ABEB59B3971A5AFA7 /* AvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */; };
 		D938476D0C7487922073E22E /* GameRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B3C89FBDBCE00C73430F9A7 /* GameRules.swift */; };
+		DA0617B443F27908416AC78B /* GymParty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CADF70A07BEAA3A751AC640 /* GymParty.swift */; };
 		DBBCF29A9BBE4CCF84AAD66A /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18610C77DB91BEA7EC1BA5A5 /* Platform.swift */; };
 		DDE59FAD789E3B54CCAF07E7 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2228E449771268BB42ECC45 /* AccountView.swift */; };
 		E126FCA0897D8E51C3B90C41 /* TrainingSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D932D3664326F5EB14E1BE7 /* TrainingSync.swift */; };
@@ -99,10 +109,13 @@
 
 /* Begin PBXFileReference section */
 		0163504337DD70B05325B0A3 /* HistoryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViews.swift; sourceTree = "<group>"; };
+		0CADF70A07BEAA3A751AC640 /* GymParty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GymParty.swift; sourceTree = "<group>"; };
 		11ABE76069CCE2BDF91312C5 /* TrainingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingModels.swift; sourceTree = "<group>"; };
 		18610C77DB91BEA7EC1BA5A5 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
 		1AD5F6D25B0747CBB34B92E0 /* PlayerProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerProfileView.swift; sourceTree = "<group>"; };
+		1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialTabView.swift; sourceTree = "<group>"; };
 		1FA59F3F324232FDE94BC8A5 /* TrainingUnits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingUnits.swift; sourceTree = "<group>"; };
+		26D61C68FC4C823D56D304DB /* GameCenterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameCenterService.swift; sourceTree = "<group>"; };
 		2CD61E68761B022E3F91ADE5 /* SessionGameLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionGameLayer.swift; sourceTree = "<group>"; };
 		2D932D3664326F5EB14E1BE7 /* TrainingSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSync.swift; sourceTree = "<group>"; };
 		2DD85BA9625E7BD26DF9BACD /* GameProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProfileService.swift; sourceTree = "<group>"; };
@@ -113,6 +126,7 @@
 		4D9B52389A47515E3F6C0447 /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
 		5483094B001F034CD09101C6 /* ProgramWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramWizard.swift; sourceTree = "<group>"; };
 		567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTrackerMac_Enhanced.swift; sourceTree = "<group>"; };
+		57618C28AFF851EEA3215FB1 /* ShareCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareCards.swift; sourceTree = "<group>"; };
 		5D8B46915952B7C6D49E4C37 /* SocialViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialViews.swift; sourceTree = "<group>"; };
 		61304C03E79829A6D866D856 /* MuscleVolumeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuscleVolumeView.swift; sourceTree = "<group>"; };
 		66BA66FD91ED0F58BB7C05EE /* ProfileSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSetupView.swift; sourceTree = "<group>"; };
@@ -140,6 +154,7 @@
 		DF72E2066BCBAE1BE4C35A24 /* CommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentsView.swift; sourceTree = "<group>"; };
 		DFECB8377CFAD3AF38534C3A /* ExerciseLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLibrary.swift; sourceTree = "<group>"; };
 		E7978326BA4EE8C8137124B7 /* SafetyViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyViews.swift; sourceTree = "<group>"; };
+		F210ACDFAD421FCE9744559A /* SocialCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCore.swift; sourceTree = "<group>"; };
 		F2228E449771268BB42ECC45 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		F70E1D100FB56EAE773770B7 /* RaidViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaidViews.swift; sourceTree = "<group>"; };
 		FA4FF38821A1442EFFBB77A3 /* LocalPlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPlayerViews.swift; sourceTree = "<group>"; };
@@ -160,10 +175,12 @@
 				CF7C6FE9DB7EF8CA6B0D8A86 /* EngineSelfTest.swift */,
 				DFECB8377CFAD3AF38534C3A /* ExerciseLibrary.swift */,
 				FF7431416290CCE0DF4D3636 /* ExercisePicker.swift */,
+				26D61C68FC4C823D56D304DB /* GameCenterService.swift */,
 				9821287317E68F40835358AF /* GameProfile.swift */,
 				2DD85BA9625E7BD26DF9BACD /* GameProfileService.swift */,
 				8B3C89FBDBCE00C73430F9A7 /* GameRules.swift */,
 				A9024759EE2A27226B5C8D2C /* GuildViews.swift */,
+				0CADF70A07BEAA3A751AC640 /* GymParty.swift */,
 				4D9B52389A47515E3F6C0447 /* HealthKitManager.swift */,
 				B4D1D0516FB0CDC9D2039AF7 /* HistoryMerge.swift */,
 				0163504337DD70B05325B0A3 /* HistoryViews.swift */,
@@ -183,6 +200,9 @@
 				E7978326BA4EE8C8137124B7 /* SafetyViews.swift */,
 				CF7B384F0700E4DFD5161F6B /* SeasonViews.swift */,
 				2CD61E68761B022E3F91ADE5 /* SessionGameLayer.swift */,
+				57618C28AFF851EEA3215FB1 /* ShareCards.swift */,
+				F210ACDFAD421FCE9744559A /* SocialCore.swift */,
+				1B377EF66B88B27DEDCAE105 /* SocialTabView.swift */,
 				5D8B46915952B7C6D49E4C37 /* SocialViews.swift */,
 				82031AC26C4C08D12D1F190E /* TalentViews.swift */,
 				11ABE76069CCE2BDF91312C5 /* TrainingModels.swift */,
@@ -352,10 +372,12 @@
 				65A47C83C8109491A6A1B7BC /* EngineSelfTest.swift in Sources */,
 				247EE300D4A38ABF61AE6473 /* ExerciseLibrary.swift in Sources */,
 				E6D55A665C65857990663403 /* ExercisePicker.swift in Sources */,
+				7F8103DC78515C066007425A /* GameCenterService.swift in Sources */,
 				7A03CE3354AA8F5A2F787E72 /* GameProfile.swift in Sources */,
 				536808368CF05120933C230C /* GameProfileService.swift in Sources */,
 				D938476D0C7487922073E22E /* GameRules.swift in Sources */,
 				2784BB0DB7B7D4630A477781 /* GuildViews.swift in Sources */,
+				156D3EB5A38DDDBC794BDA6D /* GymParty.swift in Sources */,
 				22AA81B4EF2923C3A50F4B70 /* HealthKitManager.swift in Sources */,
 				D1E991712301664ACBB0565E /* HistoryMerge.swift in Sources */,
 				9F71CAA7A9DF9A81B182A5D2 /* HistoryViews.swift in Sources */,
@@ -375,6 +397,9 @@
 				560274BC6B3C630CB2F39F81 /* SafetyViews.swift in Sources */,
 				2CE3EE4BC1B6E37A6FD7A696 /* SeasonViews.swift in Sources */,
 				E47DE414F28CA2B6594C9214 /* SessionGameLayer.swift in Sources */,
+				733BE69DEE15E7F6C6D2B031 /* ShareCards.swift in Sources */,
+				8E01E22FFCCFBAEF3DFCFE95 /* SocialCore.swift in Sources */,
+				05CF00856F2A91749107CE7E /* SocialTabView.swift in Sources */,
 				6825E2C20483B468FA56FE5E /* SocialViews.swift in Sources */,
 				027C83B7AF83737A3370EE72 /* TalentViews.swift in Sources */,
 				E335171791CAEFB018DCBE66 /* TrainingModels.swift in Sources */,
@@ -400,10 +425,12 @@
 				CB8242662A454D086A1022E3 /* EngineSelfTest.swift in Sources */,
 				A603EF1D2081E79D426D125F /* ExerciseLibrary.swift in Sources */,
 				AF739CEA16FF86C2869CD863 /* ExercisePicker.swift in Sources */,
+				2F5A3BD85D3A48178F19089D /* GameCenterService.swift in Sources */,
 				1AD07D332B819F1123CCE2CE /* GameProfile.swift in Sources */,
 				103CF1C2993C71A13DD25302 /* GameProfileService.swift in Sources */,
 				577A901805721AF8746086CD /* GameRules.swift in Sources */,
 				845F52A6C213CC831F64A0F8 /* GuildViews.swift in Sources */,
+				DA0617B443F27908416AC78B /* GymParty.swift in Sources */,
 				C38664E9B3B87B3AAA70F6FD /* HealthKitManager.swift in Sources */,
 				BA9846BCB838C7CF33215443 /* HistoryMerge.swift in Sources */,
 				C86369086E22A534CBE3472E /* HistoryViews.swift in Sources */,
@@ -423,6 +450,9 @@
 				61EB973C07B8B31A0677E6E4 /* SafetyViews.swift in Sources */,
 				F3C01BEF4F574A42E20462FD /* SeasonViews.swift in Sources */,
 				C59E8A06DA2502DF0A3FC8D0 /* SessionGameLayer.swift in Sources */,
+				C480866273430FC91866CE62 /* ShareCards.swift in Sources */,
+				868B88FBCE26A9FBB7CE0E20 /* SocialCore.swift in Sources */,
+				A683BD3EA032633C5E5D7F68 /* SocialTabView.swift in Sources */,
 				A87CBB0C6A479E1C686EFBDD /* SocialViews.swift in Sources */,
 				5E2E43F25D92D096CB26EA57 /* TalentViews.swift in Sources */,
 				38A84A2CA63CD3B743710F1F /* TrainingModels.swift in Sources */,

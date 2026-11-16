@@ -27,6 +27,15 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Gym Party finds other Endgame Fitness players near you so you can trade player cards and fight a co-op boss together.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_egf-gymparty._tcp</string>
+		<string>_egf-gymparty._udp</string>
+	</array>
+	<key>NSGKFriendListUsageDescription</key>
+	<string>Shows your Game Center friends on the Endgame Fitness leaderboards and lets you challenge them to duels.</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -36,7 +45,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>The AI form coach uses the camera on-device to check your lifting technique. Video is not uploaded or stored.</string>
+	<string>The camera scans friends’ player-card QR codes, and the AI form coach uses it on-device to check your lifting technique. Video is not uploaded or stored.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Endgame Fitness reads your steps and active energy to show them on your dashboard and to complete the daily Step Count quest. Only today's totals are sent to your batesai.org account.</string>
 	<key>NSHealthUpdateUsageDescription</key>
