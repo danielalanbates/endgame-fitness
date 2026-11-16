@@ -5439,7 +5439,7 @@ struct StrengthAssessmentStep: View {
 }
 
 // MARK: - User Data Models
-enum TrainingGoal: String, Hashable, Codable {
+enum TrainingGoal: String, Hashable, Codable, CaseIterable {
     case buildMuscle = "Build Muscle"
     case getStronger = "Get Stronger"
     case loseWeight = "Lose Weight"

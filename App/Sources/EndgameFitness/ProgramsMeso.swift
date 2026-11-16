@@ -147,6 +147,23 @@ extension WorkoutManager {
         selectedTab = 1
     }
 
+    /// Save edits to the program in place (keeps weekly/rolling mode).
+    func updateCurrentProgram(name: String, days: [ScheduledWorkout]) {
+        weeklySchedule = days
+        currentProgramName = name.isEmpty ? "My Program" : name
+        saveScheduleState()
+        saveData()
+    }
+
+    /// Stop following a program. History and game progress are untouched.
+    func dropCurrentProgram() {
+        weeklySchedule = []
+        currentProgramName = nil
+        UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode")
+        saveScheduleState()
+        saveData()
+    }
+
     func applyCustomProgram(name: String, days: [ScheduledWorkout], append: Bool) {
         // Catalog and custom programs are weekday-based.
         if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode") }
@@ -311,6 +328,9 @@ struct ProgramsView: View {
     @State private var pendingProgram: CatalogProgram?
     @State private var showQuickBuilder = false
     @State private var showCustomBuilder = false
+    @State private var showEditProgram = false
+    @State private var showWizard = false
+    @State private var confirmDrop = false
 
     private var hasActiveProgram: Bool { !workoutManager.weeklySchedule.isEmpty }
 
@@ -350,6 +370,20 @@ struct ProgramsView: View {
             CustomWorkoutBuilderView()
                 .environmentObject(workoutManager)
         }
+        .sheet(isPresented: $showEditProgram) {
+            CustomWorkoutBuilderView(editingCurrent: true)
+                .environmentObject(workoutManager)
+        }
+        .sheet(isPresented: $showWizard) {
+            ProgramWizardView()
+                .environmentObject(workoutManager)
+        }
+        .confirmationDialog("Drop \(workoutManager.currentProgramLabel)?", isPresented: $confirmDrop) {
+            Button("Drop Program", role: .destructive) { workoutManager.dropCurrentProgram() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Your schedule is cleared. Logged workouts, PRs and game progress are kept.")
+        }
     }
 
     private var currentProgramBanner: some View {
@@ -360,9 +394,16 @@ struct ProgramsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Current Program: \(workoutManager.currentProgramName ?? "Custom Schedule")")
                     .font(.headline)
-                Text("Pick any program below to switch — we'll ask before replacing anything.")
+                Text("\(workoutManager.weeklySchedule.count) workouts. Edit it, rebuild it, drop it, or pick another program below.")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                HStack(spacing: 8) {
+                    Button { showEditProgram = true } label: { Label("Edit Program", systemImage: "pencil") }
+                    Button { showWizard = true } label: { Label("Rebuild", systemImage: "wand.and.stars") }
+                    Button(role: .destructive) { confirmDrop = true } label: { Label("Drop", systemImage: "trash") }
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 4)
             }
             Spacer()
         }
@@ -373,6 +414,15 @@ struct ProgramsView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
+            Button(action: { showWizard = true }) {
+                bigActionLabel(icon: "wand.and.stars", iconColor: .white,
+                               title: "Build Your Program",
+                               subtitle: "Guided setup: days, session length, goal, split and progression",
+                               colors: [.brandBlue, .brandGreen])
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+
             Button(action: { showQuickBuilder = true }) {
                 bigActionLabel(icon: "list.bullet.clipboard", iconColor: .white,
                                title: "Quick Program Builder",
@@ -595,6 +645,9 @@ struct ModulatorSection: View {
 
 private struct DraftDay: Identifiable {
     let id = UUID()
+    /// Set when editing the current program, so unchanged days keep their
+    /// id and smart-coach prescriptions.
+    var original: ScheduledWorkout? = nil
     var dayOfWeek = "Monday"
     var name = ""
     var minutes = 60
@@ -606,9 +659,13 @@ struct CustomWorkoutBuilderView: View {
     @EnvironmentObject var workoutManager: WorkoutManager
     @Environment(\.dismiss) var dismiss
 
+    /// true = edit the program you're on (prefilled, saves in place).
+    var editingCurrent = false
+
     @State private var programName = "My Custom Program"
     @State private var days: [DraftDay] = [DraftDay()]
     @State private var showQuitConfirmation = false
+    @State private var loaded = false
 
     private static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     private static let quickPicks = ["Squats", "Bench Press", "Deadlift", "Overhead Press", "Pull-ups",
@@ -619,7 +676,7 @@ struct CustomWorkoutBuilderView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
-                    Text("Create Your Own Workout")
+                    Text(editingCurrent ? "Edit Your Program" : "Create Your Own Workout")
                         .font(.screenTitle)
                         .bold()
                         .lineLimit(2)
@@ -657,13 +714,16 @@ struct CustomWorkoutBuilderView: View {
 
 
                 Button {
-                    if workoutManager.weeklySchedule.isEmpty {
+                    if editingCurrent {
+                        workoutManager.updateCurrentProgram(name: programName, days: draftedDays())
+                        dismiss()
+                    } else if workoutManager.weeklySchedule.isEmpty {
                         save(append: false)
                     } else {
                         showQuitConfirmation = true
                     }
                 } label: {
-                    Text("Save Program")
+                    Text(editingCurrent ? "Save Changes" : "Save Program")
                         .font(.title3.bold())
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -682,6 +742,7 @@ struct CustomWorkoutBuilderView: View {
         }
         .frame(minWidth: Platform.isDesktop ? 620 : nil,
                minHeight: Platform.isDesktop ? 640 : nil)
+        .onAppear(perform: loadCurrentIfEditing)
         .alert("Quit \(workoutManager.currentProgramLabel)?", isPresented: $showQuitConfirmation) {
             Button("Replace With \(programName)", role: .destructive) { save(append: false) }
             Button("Append to Current Program") { save(append: true) }
@@ -699,7 +760,7 @@ struct CustomWorkoutBuilderView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Picker("Day", selection: day.dayOfWeek) {
-                    ForEach(Self.weekdays, id: \.self) { Text($0) }
+                    ForEach(dayChoices(including: day.wrappedValue.dayOfWeek), id: \.self) { Text($0) }
                 }
                 .frame(maxWidth: 160)
                 TextField("Workout name (e.g. Push Day)", text: day.name)
@@ -757,9 +818,38 @@ struct CustomWorkoutBuilderView: View {
     }
 
     private func draftedDays() -> [ScheduledWorkout] {
-        days.map {
-            ScheduledWorkout(dayOfWeek: $0.dayOfWeek, workoutType: $0.name,
-                             exercises: $0.exercises, estimatedDuration: $0.minutes)
+        days.map { d in
+            var w = d.original ?? ScheduledWorkout(dayOfWeek: d.dayOfWeek, workoutType: d.name,
+                                                   exercises: d.exercises, estimatedDuration: d.minutes)
+            // Prescriptions only stay valid if the exercise list is unchanged.
+            if w.exercises != d.exercises { w.plan = nil }
+            w.dayOfWeek = d.dayOfWeek
+            w.workoutType = d.name
+            w.exercises = d.exercises
+            w.estimatedDuration = d.minutes
+            return w
+        }
+    }
+
+    /// Weekdays, plus "Day N" labels for rolling (days on / off) programs.
+    private func dayChoices(including current: String) -> [String] {
+        var list = Self.weekdays
+        let rolling = workoutManager.weeklySchedule.map(\.dayOfWeek).filter { !Self.weekdays.contains($0) }
+        for d in rolling + [current] where !list.contains(d) && !d.isEmpty { list.append(d) }
+        return list
+    }
+
+    private func loadCurrentIfEditing() {
+        guard editingCurrent, !loaded else { return }
+        loaded = true
+        programName = workoutManager.currentProgramName ?? "My Program"
+        let current = workoutManager.weeklySchedule
+        if !current.isEmpty {
+            days = current.map {
+                DraftDay(original: $0, dayOfWeek: $0.dayOfWeek, name: $0.workoutType,
+                         minutes: min(120, max(15, $0.estimatedDuration)),
+                         exercises: $0.plannedExercises.map(\.name))
+            }
         }
     }
 

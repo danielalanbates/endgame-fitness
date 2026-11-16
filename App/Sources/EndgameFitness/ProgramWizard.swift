@@ -407,12 +407,13 @@ struct ProgramWizardView: View {
     private var goalStep: some View {
         VStack(spacing: 16) {
             card("Primary Goal", icon: "target") {
-                let stored = workoutManager.userProfile?.primaryGoals ?? []
-                let options: [TrainingGoal] = stored.isEmpty
-                    ? [.buildMuscle, .getStronger, .loseWeight, .improveEndurance, .generalFitness, .longevity]
-                    : stored
+                // Every goal is listed so the user can re-pick; the ones chosen
+                // during setup are marked.
+                let stored = Set(workoutManager.userProfile?.primaryGoals ?? [])
                 Picker("Goal", selection: $config.primaryGoal) {
-                    ForEach(options, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(TrainingGoal.allCases, id: \.self) { goal in
+                        Text(stored.contains(goal) ? "\(goal.rawValue)  (from your setup)" : goal.rawValue).tag(goal)
+                    }
                 }
                 .wizardRadioStyle()
                 .labelsHidden()
