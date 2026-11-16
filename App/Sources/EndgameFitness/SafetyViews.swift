@@ -3,12 +3,12 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Reporting, blocking and getting help (API_V2 §4). Names, bios, posts,
 //  comments and guilds are user-generated, so every one of them can be
 //  reported, any player can be blocked, and a person is always reachable at
-//  help@batesai.org. Text filtering happens on the server.
+//  GitHub issues. Filtering happens on this device.
 //
 
 import SwiftUI
@@ -82,12 +82,13 @@ struct ReportSheet: View {
             }
             Section {
                 TextField("What happened? (optional)", text: $details, axis: .vertical)
+                .multilineTextAlignment(.leading)
                     .lineLimit(3...6)
                     .onChange(of: details) { _, value in
                         if value.count > Self.detailLimit { details = String(value.prefix(Self.detailLimit)) }
                     }
             } footer: {
-                Text("Reports are reviewed by the Endgame Fitness team. The person you report isn't told who sent it. For anything urgent, email \(AppInfo.helpEmail).")
+                Text("Reports are reviewed by the Endgame Fitness team. The person you report isn't told who sent it. For anything urgent, open an issue on the Endgame Fitness GitHub page.")
             }
             if let error {
                 Section { Text(error).foregroundStyle(.red) }
@@ -172,23 +173,13 @@ struct BlockedUsersView: View {
 
 // MARK: - Help
 
-/// "Contact help@batesai.org" row, used wherever a person might need one.
+/// "Get help" row (GitHub issues), used wherever a person might need one.
 struct HelpContactLink: View {
     var subject = "Endgame Fitness help"
 
     var body: some View {
-        if let url = mailURL {
-            Link(destination: url) {
-                Label("Contact \(AppInfo.helpEmail)", systemImage: "envelope")
-            }
+        Link(destination: AppInfo.helpURL) {
+            Label("Get help on GitHub", systemImage: "questionmark.circle")
         }
-    }
-
-    private var mailURL: URL? {
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = AppInfo.helpEmail
-        components.queryItems = [URLQueryItem(name: "subject", value: subject)]
-        return components.url
     }
 }

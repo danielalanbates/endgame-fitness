@@ -649,7 +649,7 @@ struct ExerciseRestOverride: View {
                 #if os(iOS)
                 .keyboardType(.numberPad)
                 #endif
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
                 .frame(width: Platform.isDesktop ? 56 : 64)
                 .accessibilityLabel("Rest seconds for \(exerciseName)")
                 .onChange(of: seconds) { _, new in

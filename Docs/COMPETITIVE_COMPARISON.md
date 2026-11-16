@@ -144,9 +144,9 @@ Three distinct positioning strategies in the workout tracking/programming space:
 #### Endgame Fitness
 - **Local JSON per device:** Workout history stored in `/App Group/shared-workouts.json` per device
   - iOS and macOS do NOT sync history between each other
-  - Only game profile (XP/levels/talents) syncs via batesai.org backend
+  - Only game profile (XP/levels/talents) syncs via old online backend
 - **Consequence:** A user with iPhone + Mac sees different workout history on each device; terrible UX for a "native macOS" claim
-- **Backend exists but unused for fitness data:** batesai.org backend handles auth + game state; fitness data never sent to cloud
+- **Backend exists but unused for fitness data:** old online backend handles auth + game state; fitness data never sent to cloud
 
 **Winner:** RP/Boostcamp (seamless cross-device) >> Endgame (broken by design).
 
@@ -367,7 +367,7 @@ Three distinct positioning strategies in the workout tracking/programming space:
    - Feed volume into talent effects ("High Volume" talent +2% XP per extra 2 sets)
    - ~2 days; ties game layer to training science
    
-4. **Sync workout JSON through batesai.org backend**
+4. **Sync workout JSON through old online backend**
    - Ship iOS + Mac workouts to cloud `/api/fitness/workouts`
    - Merge local JSON on re-sync
    - ~1 day; fixes the cross-device sync disaster

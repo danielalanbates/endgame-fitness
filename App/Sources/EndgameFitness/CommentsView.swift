@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  The comment thread under a feed item (API_V2 §4). Anyone who can see the
 //  item can read it; the server allows comments on your own, your friends'

@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Small toasts for rewards the server confirmed after a sync: the real XP a
 //  workout earned (the in-session number is only an estimate) and any

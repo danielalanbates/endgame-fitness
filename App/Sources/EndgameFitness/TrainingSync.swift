@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  The training log's side of sync (wire format: Docs/API_V2.md §3):
 //    • upload: a finished, edited or deleted session becomes a SyncSession

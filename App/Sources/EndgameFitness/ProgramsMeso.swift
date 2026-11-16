@@ -4,7 +4,7 @@
 //
 //  The Programs page (pre-made catalog + custom workout builder) and the
 //  Mesocycle page (hand-editable phase builder + AI builder). AI calls go
-//  through the batesai.org backend (`POST /api/fitness/ai`), which holds the
+//  through the old online backend (`POST /api/fitness/ai`), which holds the
 //  Cerebras key server-side — no AI key ever ships in the app.
 //
 
@@ -79,6 +79,8 @@ extension WorkoutManager {
     }
 
     func applyCatalogProgram(_ program: CatalogProgram, append: Bool) {
+        // Catalog and custom programs are weekday-based.
+        if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode") }
         if append {
             weeklySchedule.append(contentsOf: program.days)
         } else {
@@ -91,6 +93,8 @@ extension WorkoutManager {
     }
 
     func applyCustomProgram(name: String, days: [ScheduledWorkout], append: Bool) {
+        // Catalog and custom programs are weekday-based.
+        if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode") }
         if append {
             weeklySchedule.append(contentsOf: days)
         } else {
@@ -117,9 +121,9 @@ enum FitnessAI {
     static func complete(task: String, payload: [String: Any]) async throws -> String {
         var body = payload
         body["task"] = task
-        // The AI coach ran on the batesai.org account backend, which this
+        // The AI coach ran on the old online account backend, which this
         // local-players build no longer signs in to (see
-        // _archive/batesai-account-2026-11-16/WHY_ARCHIVED.md).
+        // _archive/online-account-2026-11-16/WHY_ARCHIVED.md).
         _ = body
         _ = AIResponse.self
         throw Failure(message: "AI coaching isn't available in the offline, local-players version yet.")

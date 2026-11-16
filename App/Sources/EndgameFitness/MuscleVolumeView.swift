@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Progress-tab building blocks: completed sets per muscle over the last
 //  seven days (from the library's primary muscles), and personal records by

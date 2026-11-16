@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  The logging screen, built like the best set loggers: every exercise is a
 //  card of set rows — set number, last time's numbers, weight, reps, optional
@@ -679,7 +679,7 @@ struct NumberEntryField: View {
     var body: some View {
         TextField(placeholder, text: $text)
             .focused($focused)
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(.leading)
             .font(.body.monospacedDigit())
             .textFieldStyle(.plain)
             #if os(iOS)
@@ -729,7 +729,7 @@ struct DurationEntryField: View {
     var body: some View {
         TextField("m:ss", text: $text)
             .focused($focused)
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(.leading)
             .font(.body.monospacedDigit())
             .textFieldStyle(.plain)
             #if os(iOS)

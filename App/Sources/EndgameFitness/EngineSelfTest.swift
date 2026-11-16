@@ -38,6 +38,20 @@ enum EngineSelfTest {
         check("weekKey (JS)", GameRules.weekKey(t) == "2026-W47", GameRules.weekKey(t))
         check("weekKey year edge (JS)", GameRules.weekKey(1_798_761_600) == "2026-W53", GameRules.weekKey(1_798_761_600))
         check("dayEnd/weekEnd (JS)", GameRules.dayEnd(t) == 1_794_873_600 && GameRules.weekEnd(t) == 1_795_392_000)
+
+        // Rolling "X on / Y off" schedule: 3 on / 1 off from a fixed start.
+        do {
+            let cal = Calendar(identifier: .gregorian)
+            let start = cal.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9))!
+            let slots = (0..<9).map { WorkoutManager.rollingSlot(on: cal.date(byAdding: .day, value: $0, to: start)!,
+                                                                start: start, daysOn: 3, daysOff: 1, calendar: cal) }
+            check("rolling 3on/1off pattern", slots == [0, 1, 2, nil, 0, 1, 2, nil, 0], "\(slots)")
+            let before = WorkoutManager.rollingSlot(on: cal.date(byAdding: .day, value: -1, to: start)!,
+                                                    start: start, daysOn: 3, daysOff: 1, calendar: cal)
+            check("rolling before start wraps", before == nil, "\(String(describing: before))")
+            var c = ProgramConfig(); c.scheduleMode = .rolling; c.daysOn = 3; c.daysOff = 1
+            check("rolling effective frequency", c.effectiveDaysPerWeek == 5 && c.sessionCount == 3)
+        }
         check("hash32 FNV-1a (JS)", GameRules.hash32("player-1|daily|2026-11-16") == 1_147_006_096,
               "\(GameRules.hash32("player-1|daily|2026-11-16"))")
         let board = GameRules.board(for: "player-1", at: t).map(\.def.key).joined(separator: ",")

@@ -25,15 +25,15 @@
   raid damage or season XP for sessions before this week).
 - Backup: Player screen → Export backup / Import (one JSON per player).
 - Verify: `xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -o /tmp/ef_check App/Sources/EndgameFitness/*.swift && /tmp/ef_check -ef.selftest` → `SELFTEST PASS 48/48`.
-- Archived: batesai.org auth/account/sign-in/networked service →
-  `_archive/batesai-account-2026-11-16/` (see WHY_ARCHIVED.md). AI coach is
+- Archived: the old website auth/account/sign-in/networked service →
+  `_archive/online-account-2026-11-16/` (see WHY_ARCHIVED.md). AI coach is
   disabled offline.
 
 
 _Updated 2026-08-29 (autonomous session; supersedes the 2026-08-28 status)._
 
 Goal: world-class fitness app that blurs social game and training log; profiles
-via batesai.org membership; TestFlight on macOS + iOS.
+via the old website membership; TestFlight on macOS + iOS.
 
 ## Where things stand (2026-08-29, evening)
 
@@ -41,7 +41,7 @@ via batesai.org membership; TestFlight on macOS + iOS.
 |---|---|
 | App Store Connect record | **EXISTS** — "Endgame Fitness RPG", app id `6806675925`, bundle `org.batesai.endgamefitness`, SKU `org.batesai.endgamefitness`. Created through Xcode Organizer → Distribute App (REST `POST /v1/apps` is 403). "Endgame Fitness" as a store name is taken by another developer; rename in ASC if a better free name is found. |
 | Signed builds | `scripts/ship.sh both 1.0.0 <build>` archives, exports and uploads locally (Xcode 26.6 + iOS 26.5 platform). Build 3 (both platforms) was REJECTED in processing — see "Build 3 post-mortem". **Build 1.0.0 (6) is VALID on both platforms** (see `Docs/SHIP_LOG.md`); TestFlight internal group created, Daniel invited. |
-| Backend | Live on batesai.org (Cloudflare Pages `website` + D1 `batesai-db`). Guild raids + Step Count quest deployed and migrated 2026-08-29; smoke: `/api/fitness/{profile,quests,raid,achievements,talents,challenges}` all 200, a synced 12,000 lb session dealt 12,250 raid damage. |
+| Backend | Live on the old website (Cloudflare Pages `website` + D1 `batesai-db`). Guild raids + Step Count quest deployed and migrated 2026-08-29; smoke: `/api/fitness/{profile,quests,raid,achievements,talents,challenges}` all 200, a synced 12,000 lb session dealt 12,250 raid damage. |
 | iOS UI | Ran in the Simulator for the FIRST time today. Sign-in, onboarding, Home, Workouts, Community feed verified on iPhone 17 Pro / iOS 26.5 after the layout pass (`Docs/screenshots/2026-08-29-ios/`). Known nit: Community segment labels truncate ("Leader…", "Challe…") on 390pt — use icons or a scrollable segmented control. Drive with `-ef.autologin`, `-ef.skipOnboarding`, `-ef.tab <n>` (DEBUG). |
 | macOS UI | Build 6 verified live: sign-in → dashboard (Level 6) → Community feed → Guild raid card (`Docs/screenshots/2026-08-29-macos/`). `/Applications/Endgame Fitness.app` = build 6 archive re-signed ad-hoc (works locally; App Store profile builds cannot launch outside the store). Previous copies archived to iCloud `EndgameFitness/_archive/apps/2026-08-29-*`. |
 
@@ -115,8 +115,8 @@ via batesai.org membership; TestFlight on macOS + iOS.
 3. Apply raid reward title/cosmetic to the profile/avatar; show raid results in
    the feed UI.
 4. Delete the smoke accounts + "Smoke Raiders" guild once real users exist.
-5. Store listing: privacy policy https://batesai.org/privacy-policy, support
-   https://batesai.org/contact, screenshots from `Docs/screenshots/`.
+5. Store listing: privacy policy https://the old website/privacy-policy, support
+   https://the old website/contact, screenshots from `Docs/screenshots/`.
 
 ## How to build and verify on this Mac
 
@@ -134,7 +134,7 @@ xcrun simctl boot "iPhone 17 Pro"; xcrun simctl install booted "$HOME/Downloads/
 xcrun simctl launch booted org.batesai.endgamefitness -ef.autologin <email> <password>
 xcrun simctl io booted screenshot shot.png
 # ship
-security unlock-keychain -p "$(cat ~/Library/Application\ Support/BatesAI/keys/endgame-signing/keychain-password.txt)" ~/Library/Keychains/endgame-ci.keychain-db
+security unlock-keychain -p "$(cat ~/Library/Application\ Support/Bates LLC/keys/endgame-signing/keychain-password.txt)" ~/Library/Keychains/endgame-ci.keychain-db
 scripts/ship.sh both 1.0.0 <build>
 ```
 

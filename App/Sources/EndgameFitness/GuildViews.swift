@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Guilds (API_V2 §5): join with an invite code, browse open guilds, start
 //  one, share the code, and — for owners — rotate the code and edit the
@@ -478,7 +478,9 @@ struct GuildEditSheet: View {
             Form {
                 Section("Guild") {
                     TextField("Name", text: $name)
+                .multilineTextAlignment(.leading)
                     TextField("Motto", text: $motto)
+                .multilineTextAlignment(.leading)
                 }
                 Section("Emblem") {
                     GuildEmblemPicker(selection: $emblem)

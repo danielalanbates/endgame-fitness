@@ -223,6 +223,7 @@ struct AddRivalSheet: View {
             Form {
                 Section("Paste a code or link") {
                     TextField("EGF1.… or endgamefitness://card/…", text: $text, axis: .vertical)
+                .multilineTextAlignment(.leading)
                         .lineLimit(3...6)
                     HStack {
                         Button("Paste") { text = Platform.pasteboardString() ?? text }

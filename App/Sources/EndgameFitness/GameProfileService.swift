@@ -5,7 +5,7 @@
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 //
 //  The game, for the views. Same surface the networked service had (the
-//  batesai.org version is archived in _archive/batesai-account-2026-11-16),
+//  online version is archived in _archive/online-account-2026-11-16),
 //  but everything is computed on the device by LocalGame for the current
 //  local player. The models (FitnessProfile, Quest, RaidState, ...) are the
 //  ones in GameProfile.swift; the Decodable-only ones are built from the same
@@ -576,7 +576,7 @@ final class GameProfileService: ObservableObject {
     /// There is no moderator for players on one device.
     @discardableResult
     func report(_ target: ReportTarget, id: String, reason: String) async -> String? {
-        "Players on this device aren't moderated online. Block them, or ask whoever manages this device to remove the player. For anything urgent, email \(AppInfo.helpEmail)."
+        "Players on this device aren't moderated online. Block them, or ask whoever manages this device to remove the player. For anything urgent, open an issue on the Endgame Fitness GitHub page."
     }
 
     // MARK: Guild (household)

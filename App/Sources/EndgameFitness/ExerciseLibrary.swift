@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  The bundled exercise library: 876 exercises from free-exercise-db by yuhonas
 //  (The Unlicense, public domain), shipped as Resources/exercise_library.json.

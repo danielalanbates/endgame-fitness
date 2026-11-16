@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Seasons (API_V2 §6): eight weeks, 30 reward tiers, a fresh leaderboard.
 //  Season XP is the XP earned while the season runs, so a new player can

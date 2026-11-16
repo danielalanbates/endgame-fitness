@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  One unit setting for the whole app. Weights are stored and synced in pounds
 //  (Docs/API_V2.md); this file converts at the edges for display and entry,

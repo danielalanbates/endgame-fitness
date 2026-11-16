@@ -197,6 +197,7 @@ struct LocalPlayerEditor: View {
                         Spacer()
                     }
                     TextField("Name", text: $name)
+                .multilineTextAlignment(.leading)
                     if let nameProblem, !name.isEmpty {
                         Text(nameProblem).font(.caption).foregroundStyle(.red)
                     }
@@ -227,6 +228,7 @@ struct LocalPlayerEditor: View {
                     Toggle("Lock with a PIN", isOn: $usePIN)
                     if usePIN {
                         SecureField(player?.hasPIN == true ? "New PIN (leave empty to keep)" : "4-digit PIN", text: $pin)
+                .multilineTextAlignment(.leading)
                         if let pinProblem { Text(pinProblem).font(.caption).foregroundStyle(.red) }
                     }
                 } footer: {

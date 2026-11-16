@@ -20,7 +20,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>org.batesai.endgamefitness.oauth</string>
+			<string>endgamefitness.playercard</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>endgamefitness</string>

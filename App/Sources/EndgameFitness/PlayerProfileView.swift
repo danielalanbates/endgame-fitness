@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Someone else's public player card (API_V2 §2.6), opened by tapping a name
 //  anywhere: feed, leaderboard, friends, guild roster, raid contributors,

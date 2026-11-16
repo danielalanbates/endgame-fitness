@@ -5,8 +5,8 @@
 //  The local player's own profile: hero name, bio, earned title and aura,
 //  avatar, blocked players, backup (export/import), switching player and
 //  deleting the player. Titles and auras can only be picked from what the
-//  local game says was earned. (The batesai.org membership version of this
-//  screen is in _archive/batesai-account-2026-11-16.)
+//  local game says was earned. (The old online-account version of this
+//  screen is in _archive/online-account-2026-11-16.)
 //
 
 import SwiftUI
@@ -173,12 +173,14 @@ struct AccountView: View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
                 TextField("Hero name", text: $displayName)
+                    .multilineTextAlignment(.leading)
                 if let problem = ProfileRules.displayNameProblem(displayName) {
                     Text(problem).font(.caption).foregroundStyle(.red)
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
                 TextField("Bio (optional)", text: $bio, axis: .vertical)
+                    .multilineTextAlignment(.leading)
                     .lineLimit(1...4)
                     .onChange(of: bio) { _, value in
                         if value.count > ProfileRules.bioLimit { bio = String(value.prefix(ProfileRules.bioLimit)) }

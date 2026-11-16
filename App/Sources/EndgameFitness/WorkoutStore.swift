@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  The training log on disk. Rules, in order of importance:
 //
@@ -16,7 +16,7 @@
 //     one dated copy per day in `backups/` (last 7 days).
 //  3. Decoding is tolerant (see TrainingModels.swift). A single unreadable
 //     workout is skipped, and a copy of the original file is kept.
-//  4. One store per batesai.org account under Application Support, plus a
+//  4. One store per local player under Application Support, plus a
 //     `local` store for signed-out use. The first account that signs in on a
 //     device adopts the old un-namespaced store (Documents/WorkoutTracker)
 //     once, read-only.
@@ -199,7 +199,7 @@ final class WorkoutStore {
             if decoded.dropped > 0 {
                 // Keep the original so the skipped workouts can be recovered.
                 _ = copyToRecovery(url, in: dir, label: "partial")
-                issue = "\(decoded.dropped) workout\(decoded.dropped == 1 ? "" : "s") in your history could not be read and \(decoded.dropped == 1 ? "was" : "were") left out. A copy of the file was kept; write to help@batesai.org if you need it recovered."
+                issue = "\(decoded.dropped) workout\(decoded.dropped == 1 ? "" : "s") in your history could not be read and \(decoded.dropped == 1 ? "was" : "were") left out. A copy of the file was kept; open an issue on the Endgame Fitness GitHub page if you need it recovered."
             }
             return (decoded.sessions, decoded.tombstones, issue)
         }
@@ -218,7 +218,7 @@ final class WorkoutStore {
                         "Your workout history file could not be read, so your most recent backup was restored. The unreadable file was kept, not deleted.")
             }
         }
-        return ([], [:], "Your workout history file could not be read. It was set aside, not deleted. Write to help@batesai.org and we will help recover it.")
+        return ([], [:], "Your workout history file could not be read. It was set aside, not deleted. Open an issue on the Endgame Fitness GitHub page and we will help recover it.")
     }
 
     private func loadActive(in dir: URL) -> (workout: WorkoutSession?, issue: String?) {

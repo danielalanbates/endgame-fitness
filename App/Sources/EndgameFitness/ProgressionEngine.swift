@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  Everything that reads training history to decide what comes next:
 //    • program targets ("Bench Press 4x8-12" -> name + 4 sets of 8–12 reps)

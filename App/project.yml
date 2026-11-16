@@ -1,6 +1,6 @@
 # XcodeGen spec for Endgame Fitness.
 #
-# The .xcodeproj is generated (locally by scripts/ship.sh, or in CI) rather than
+# The .xcodeproj is generated (locally or in CI) rather than
 # committed, so the spec here is the source of truth. Regenerate with:
 #
 #   xcodegen generate --spec App/project.yml

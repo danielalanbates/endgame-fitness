@@ -3,7 +3,7 @@
 //  Endgame Fitness
 //
 //  Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-//  https://batesai.org · help@batesai.org
+//  https://github.com/danielalanbates/endgame-fitness
 //
 //  The seam between the training log (WorkoutTrackerMac_Enhanced.swift owns the
 //  local workout store) and the game/account layer (GameProfile.swift owns the

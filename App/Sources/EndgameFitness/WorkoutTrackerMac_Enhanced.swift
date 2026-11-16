@@ -565,6 +565,9 @@ class WorkoutManager: ObservableObject {
             days = weekOrder.filter { days.contains($0) }
         }
         days = Array(days.prefix(config.daysPerWeek))
+        if config.scheduleMode == .rolling {
+            days = (1...max(1, config.daysOn)).map { "Day \($0)" }
+        }
 
         let split = resolvedSplit(for: config)
         let focus = focusString(for: config.primaryGoal)
@@ -607,17 +610,48 @@ class WorkoutManager: ObservableObject {
         d.set(config.includeDeload, forKey: "deloadEnabled")
         d.set(config.progression.rawValue, forKey: "progressionStyle")
         d.set(Date().timeIntervalSince1970, forKey: "programStartDate")
+        d.set(config.scheduleMode.rawValue, forKey: "scheduleMode")
+        d.set(config.daysOn, forKey: "cycleDaysOn")
+        d.set(config.daysOff, forKey: "cycleDaysOff")
+        d.set(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970, forKey: "cycleStartDay")
 
         saveData()
     }
 
+    /// Rolling "X on / Y off" programs: which training day (0-based) `date`
+    /// falls on, or nil for a rest day. Pure, so the selftest can check it.
+    static func rollingSlot(on date: Date, start: Date, daysOn: Int, daysOff: Int,
+                            calendar: Calendar = .current) -> Int? {
+        let cycle = max(1, daysOn + daysOff)
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: start),
+                                           to: calendar.startOfDay(for: date)).day ?? 0
+        let idx = ((days % cycle) + cycle) % cycle
+        return idx < daysOn ? idx : nil
+    }
+
+    /// Today's planned session for either schedule mode.
+    func scheduledWorkout(for date: Date = Date()) -> ScheduledWorkout? {
+        let d = UserDefaults.standard
+        if d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue {
+            let start = Date(timeIntervalSince1970: d.double(forKey: "cycleStartDay"))
+            guard let slot = Self.rollingSlot(on: date, start: start,
+                                              daysOn: d.integer(forKey: "cycleDaysOn"),
+                                              daysOff: d.integer(forKey: "cycleDaysOff")) else { return nil }
+            return weeklySchedule.first { $0.dayOfWeek == "Day \(slot + 1)" }
+        }
+        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        let today = dayNames[Calendar.current.component(.weekday, from: date) - 1]
+        return weeklySchedule.first { $0.dayOfWeek == today }
+    }
+
     func resolvedSplit(for config: ProgramConfig) -> ProgramSplit {
         guard config.split == .auto else { return config.split }
-        if config.primaryGoal == .longevity && config.daysPerWeek <= 4 { return .fullBody }
-        switch config.daysPerWeek {
+        let perWeek = config.effectiveDaysPerWeek
+        if config.primaryGoal == .longevity && perWeek <= 4 { return .fullBody }
+        switch perWeek {
         case ..<4:
             let strengthy = config.primaryGoal == .getStronger || config.primaryGoal == .buildMuscle
-            return (config.daysPerWeek == 3 && strengthy && config.experienceLevel != .beginner) ? .ppl : .fullBody
+            return (perWeek == 3 && strengthy && config.experienceLevel != .beginner) ? .ppl : .fullBody
         case 4: return .upperLower
         default: return .ppl
         }
@@ -1946,9 +1980,7 @@ struct DashboardView: View {
     @State private var showProgramWizard = false
 
     private var todaysScheduledWorkout: ScheduledWorkout? {
-        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        let today = dayNames[Calendar.current.component(.weekday, from: Date()) - 1]
-        return workoutManager.weeklySchedule.first { $0.dayOfWeek == today }
+        workoutManager.scheduledWorkout()
     }
 
     // First login: nothing trained, no program built yet. Show a calm
@@ -3048,8 +3080,8 @@ struct OneRMCalculatorView: View {
 }
 
 struct BMICalculatorView: View {
-    @State private var weight = ""
-    @State private var height = ""
+    @State private var weight = "150"
+    @State private var height = "64"
     @State private var bmi: Double?
 
     var body: some View {
@@ -3114,10 +3146,10 @@ struct BMICalculatorView: View {
 }
 
 struct TDEECalculatorView: View {
-    @State private var weight = ""
-    @State private var height = ""
+    @State private var weight = "150"
+    @State private var height = "64"
     @State private var age = ""
-    @State private var gender = "Male"
+    @State private var gender = "Female"
     @State private var activityLevel = "Moderate"
     @State private var tdee: Double?
 
@@ -3546,9 +3578,10 @@ struct SettingsView: View {
                         Text("Default Rest Time")
                         Spacer()
                         TextField("Seconds", value: $defaultRestTime, format: .number)
+                .multilineTextAlignment(.leading)
                             .labelsHidden()
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .multilineTextAlignment(.trailing)
+                            .multilineTextAlignment(.leading)
                             #if os(iOS)
                             .keyboardType(.numberPad)
                             #endif
@@ -4417,8 +4450,9 @@ struct OnboardingView: View {
     @State private var currentStep = 0
     @State private var userName = ""
     @State private var userAge = ""
-    @State private var userWeight = ""
-    @State private var userHeight = ""
+    // Defaults: 150 lb woman of average US female height (5'4").
+    @State private var userWeight = "150"
+    @State private var userHeight = "64"
     @State private var experienceLevel: ExperienceLevel = .beginner
     @State private var selectedGoals: Set<TrainingGoal> = []
     @State private var availableEquipment: EquipmentLevel = .fullGym
@@ -4620,26 +4654,13 @@ struct OnboardingView: View {
 struct WelcomeStep: View {
     var body: some View {
         VStack(spacing: Platform.isDesktop ? 40 : 24) {
-            // Stick figure in deep squat with dumbbells overhead
+            // Stick figure in a squat
             ZStack {
                 // Stick figure in squat
                 Image(systemName: "figure.strengthtraining.functional")
                     .font(.system(size: 100))
                     .foregroundColor(.brandBlue)
 
-                // Left dumbbell (overhead - in hands)
-                Image(systemName: "dumbbell.fill")
-                    .font(.system(size: 35))
-                    .foregroundColor(.brandPurple)
-                    .offset(x: -45, y: -65)
-                    .rotationEffect(.degrees(-15))
-
-                // Right dumbbell (overhead - in hands)
-                Image(systemName: "dumbbell.fill")
-                    .font(.system(size: 35))
-                    .foregroundColor(.brandPurple)
-                    .offset(x: 45, y: -65)
-                    .rotationEffect(.degrees(15))
             }
             .frame(height: 140)
 
@@ -4742,7 +4763,7 @@ struct WaiverStep: View {
                     WaiverSection(
                         title: "🏥 Medical Disclaimer",
                         content: """
-                        WorkoutTracker and BatesAI are not medical professionals and do not provide medical advice, diagnosis, or treatment. The information and workout programs provided by this application are for educational and informational purposes only.
+                        Endgame Fitness and its developers are not medical professionals and do not provide medical advice, diagnosis, or treatment. The information and workout programs provided by this application are for educational and informational purposes only.
 
                         Before beginning any exercise program, you should consult with your primary care physician or other qualified healthcare provider to ensure that exercise is safe and appropriate for your individual circumstances.
 
@@ -4770,14 +4791,14 @@ struct WaiverStep: View {
                     WaiverSection(
                         title: "🛡️ Limitation of Liability",
                         content: """
-                        TO THE FULLEST EXTENT PERMITTED BY LAW, BatesAI, its owners, developers, and affiliates SHALL NOT BE LIABLE for any injuries, damages, or losses of any kind arising from:
+                        TO THE FULLEST EXTENT PERMITTED BY LAW, Bates LLC, its owners, developers, and affiliates SHALL NOT BE LIABLE for any injuries, damages, or losses of any kind arising from:
 
                         • Use of this application
                         • Following workout programs or recommendations
                         • Use of exercise equipment
                         • Any direct, indirect, incidental, consequential, or punitive damages
 
-                        You release and hold harmless BatesAI and all associated parties from any and all claims, liabilities, damages, or expenses arising from your use of this application.
+                        You release and hold harmless Bates LLC and all associated parties from any and all claims, liabilities, damages, or expenses arising from your use of this application.
                         """
                     )
 
@@ -4785,13 +4806,13 @@ struct WaiverStep: View {
                     WaiverSection(
                         title: "🏢 Business Indemnification",
                         content: """
-                        You agree to indemnify and hold harmless BatesAI, its officers, directors, employees, contractors, and agents from any claims, lawsuits, damages, losses, or expenses (including attorney fees) arising from:
+                        You agree to indemnify and hold harmless Bates LLC, its officers, directors, employees, contractors, and agents from any claims, lawsuits, damages, losses, or expenses (including attorney fees) arising from:
 
                         • Your use of this application
                         • Your breach of these terms
                         • Your violation of any law or rights of third parties
 
-                        BatesAI provides this software "AS IS" without warranties of any kind, either express or implied.
+                        Bates LLC provides this software "AS IS" without warranties of any kind, either express or implied.
                         """
                     )
 
@@ -4804,7 +4825,7 @@ struct WaiverStep: View {
                         • You have read and understood all waivers and disclaimers
                         • You have been advised to consult with a physician before starting any exercise program
                         • You voluntarily assume all risks associated with physical exercise
-                        • You release BatesAI from all liability
+                        • You release Bates LLC from all liability
                         • You are of legal age to enter into this agreement
                         • This agreement is legally binding
                         """
@@ -4907,7 +4928,7 @@ struct BasicInfoStep: View {
     }
     private var heightCmBinding: Binding<Int> {
         Binding(
-            get: { Int(((Double(userHeight) ?? 68) * 2.54).rounded()) },
+            get: { Int(((Double(userHeight) ?? 64) * 2.54).rounded()) },
             set: { userHeight = String(Int((Double($0) / 2.54).rounded())) }
         )
     }
@@ -4917,14 +4938,14 @@ struct BasicInfoStep: View {
     // downstream changes.
     private var feetBinding: Binding<Int> {
         Binding(
-            get: { Int(Double(userHeight) ?? 68) / 12 },
-            set: { userHeight = String($0 * 12 + Int(Double(userHeight) ?? 68) % 12) }
+            get: { Int(Double(userHeight) ?? 64) / 12 },
+            set: { userHeight = String($0 * 12 + Int(Double(userHeight) ?? 64) % 12) }
         )
     }
     private var inchesBinding: Binding<Int> {
         Binding(
-            get: { Int(Double(userHeight) ?? 68) % 12 },
-            set: { userHeight = String((Int(Double(userHeight) ?? 68) / 12) * 12 + $0) }
+            get: { Int(Double(userHeight) ?? 64) % 12 },
+            set: { userHeight = String((Int(Double(userHeight) ?? 64) / 12) * 12 + $0) }
         )
     }
 
@@ -4977,7 +4998,7 @@ struct BasicInfoStep: View {
                     if unitPreference == "metric" {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Weight (kg)").font(.headline)
-                            TextField("84", text: weightKgBinding)
+                            TextField("68", text: weightKgBinding)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.title3)
                                 .frame(width: 110)
@@ -4995,7 +5016,7 @@ struct BasicInfoStep: View {
                     } else {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Weight (lb)").font(.headline)
-                            TextField("185", text: $userWeight)
+                            TextField("150", text: $userWeight)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.title3)
                                 .frame(width: 110)
@@ -5030,7 +5051,7 @@ struct BasicInfoStep: View {
         .padding()
         .onAppear {
             Platform.activate()
-            if userHeight.isEmpty { userHeight = "68" }   // sensible default; pickers can't be blank
+            if userHeight.isEmpty { userHeight = "64" }   // sensible default; pickers can't be blank
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 focusedField = .name
             }
@@ -5186,7 +5207,7 @@ struct GoalsStep: View {
         .alert("⚕️ Medical Reminder", isPresented: $showMedicalDisclaimer) {
             Button("I Understand", role: .cancel) { }
         } message: {
-            Text("WorkoutTracker and BatesAI are not a substitute for medical advice. Please consult with your primary care physician and get cleared for exercise before starting any workout program.\n\nIf you have any pre-existing health conditions, injuries, or concerns, speak with a qualified healthcare provider to ensure this program is safe for you.")
+            Text("Endgame Fitness and its developers are not a substitute for medical advice. Please consult with your primary care physician and get cleared for exercise before starting any workout program.\n\nIf you have any pre-existing health conditions, injuries, or concerns, speak with a qualified healthcare provider to ensure this program is safe for you.")
         }
     }
 }

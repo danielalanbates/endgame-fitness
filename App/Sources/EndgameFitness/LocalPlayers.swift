@@ -19,7 +19,7 @@ import CryptoKit
 import UniformTypeIdentifiers
 
 enum AppInfo {
-    static let helpEmail = "help@batesai.org"
+    static let helpURL = URL(string: "https://github.com/danielalanbates/endgame-fitness/issues")!
 }
 
 struct LocalPlayer: Codable, Identifiable, Equatable {

@@ -7,7 +7,7 @@
 //  The on-device game: per-player state and a shared "household" (the local
 //  players on this device), persisted as JSON under Application Support, and
 //  the engine that applies GameRules to them. This replaces everything the
-//  batesai.org fitness API used to compute (XP, levels, streaks, quests,
+//  old online fitness API used to compute (XP, levels, streaks, quests,
 //  achievements, talents, challenges, raids, seasons, feed).
 //
 //  Layout (root = Application Support/EndgameFitness/Game):

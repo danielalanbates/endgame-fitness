@@ -31,7 +31,18 @@ enum ProgressionStyle: String, CaseIterable, Identifiable {
     var shortLabel: String { self == .double ? "Double" : rawValue }
 }
 
+/// Weekly = fixed weekdays. Rolling = X days on, Y days off, repeating
+/// regardless of the calendar week (e.g. 3 on / 1 off).
+enum ScheduleMode: String, CaseIterable, Identifiable {
+    case weekly = "Weekly"
+    case rolling = "Days on / off"
+    var id: String { rawValue }
+}
+
 struct ProgramConfig {
+    var scheduleMode: ScheduleMode = .weekly
+    var daysOn: Int = 3
+    var daysOff: Int = 1
     var daysPerWeek: Int = 4
     var weekdays: Set<String> = ["Monday", "Tuesday", "Thursday", "Friday"]
     var sessionLength: Int = 60
@@ -43,6 +54,17 @@ struct ProgramConfig {
     var injuries: Set<String> = []
     var split: ProgramSplit = .auto
     var progression: ProgressionStyle = .auto
+
+    /// Training frequency used to pick a split. Rolling cycles are converted
+    /// to their average sessions per 7 days (3 on / 1 off ≈ 5.25 → 5).
+    var effectiveDaysPerWeek: Int {
+        guard scheduleMode == .rolling else { return daysPerWeek }
+        let perWeek = 7.0 * Double(daysOn) / Double(daysOn + daysOff)
+        return min(6, max(2, Int(perWeek.rounded())))
+    }
+
+    /// Session count the program generates: one per training day.
+    var sessionCount: Int { scheduleMode == .rolling ? daysOn : daysPerWeek }
 }
 
 // MARK: - Calm first-login dashboard
@@ -221,7 +243,7 @@ struct ProgramWizardView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.brandPurple)
-            .disabled(step == 0 && config.weekdays.isEmpty)
+            .disabled(step == 0 && config.scheduleMode == .weekly && config.weekdays.isEmpty)
         }
         .padding(20)
     }
@@ -243,6 +265,13 @@ struct ProgramWizardView: View {
     private var scheduleStep: some View {
         VStack(spacing: 16) {
             card("Training Days", icon: "calendar") {
+                Picker("Schedule", selection: $config.scheduleMode) {
+                    ForEach(ScheduleMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .compactSegmentedPicker()
+                .labelsHidden()
+
+                if config.scheduleMode == .weekly {
                 Stepper("Days per week: \(config.daysPerWeek)",
                         value: $config.daysPerWeek, in: 2...6)
                     .onChange(of: config.daysPerWeek) { _, _ in trimWeekdays() }
@@ -263,6 +292,25 @@ struct ProgramWizardView: View {
                                 .foregroundColor(on ? .white : .primary)
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+                            } else {
+                    Stepper("Days on: \(config.daysOn)", value: $config.daysOn, in: 1...7)
+                    Stepper("Days off: \(config.daysOff)", value: $config.daysOff, in: 1...7)
+                    Text("Repeats every \(config.daysOn + config.daysOff) days, starting today — not tied to the calendar week.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        ForEach(0..<(config.daysOn + config.daysOff), id: \.self) { i in
+                            let on = i < config.daysOn
+                            Text(on ? "Train" : "Rest")
+                                .font(.caption2.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(on ? Color.brandPurple : Color.gray.opacity(0.15),
+                                            in: RoundedRectangle(cornerRadius: 6))
+                                .foregroundColor(on ? .white : .primary)
+                        }
                     }
                 }
             }
@@ -403,7 +451,11 @@ struct ProgramWizardView: View {
             }
 
             card("Review", icon: "checkmark.seal") {
-                reviewRow("Days", "\(config.daysPerWeek)/week — \(weekOrder.filter { config.weekdays.contains($0) }.map { String($0.prefix(3)) }.joined(separator: ", "))")
+                if config.scheduleMode == .rolling {
+                    reviewRow("Days", "\(config.daysOn) on / \(config.daysOff) off, repeating")
+                } else {
+                    reviewRow("Days", "\(config.daysPerWeek)/week — \(weekOrder.filter { config.weekdays.contains($0) }.map { String($0.prefix(3)) }.joined(separator: ", "))")
+                }
                 reviewRow("Sessions", "\(config.sessionLength) min")
                 reviewRow("Cycle", "\(config.mesocycleWeeks) weeks\(config.includeDeload ? " + deload" : "")")
                 reviewRow("Goal", config.primaryGoal.rawValue)

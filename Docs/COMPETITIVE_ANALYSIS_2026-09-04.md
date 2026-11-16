@@ -46,7 +46,7 @@ Endgame has **unmatched gamification** (raids, talents, duels) but **critical sc
 ## Ranked Improvements (2-Week Sprint)
 
 ### Week 1
-1. **Sync workouts to batesai.org backend** (1 day)
+1. **Sync workouts to old online backend** (1 day)
    - Ship iOS + Mac workouts to `/api/fitness/workouts`
    - Fixes cross-device sync disaster
    
@@ -83,7 +83,7 @@ Endgame has **unmatched gamification** (raids, talents, duels) but **critical sc
 
 ## Ship Checklist (Before Public Release)
 
-- [ ] Cross-device sync working (iCloud or batesai.org backend)
+- [ ] Cross-device sync working (iCloud or old online backend)
 - [ ] Structured exercise targets in programs
 - [ ] RIR field optional in logger
 - [ ] Avatar wired up and evolving visibly
