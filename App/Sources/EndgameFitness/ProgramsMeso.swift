@@ -135,7 +135,7 @@ extension WorkoutManager {
 
     func applyCatalogProgram(_ program: CatalogProgram, append: Bool) {
         // Catalog and custom programs are weekday-based.
-        if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode") }
+        if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode"); UserDefaults.standard.set(false, forKey: "rotationIndexed") }
         if append {
             weeklySchedule.append(contentsOf: program.days)
         } else {
@@ -160,13 +160,14 @@ extension WorkoutManager {
         weeklySchedule = []
         currentProgramName = nil
         UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode")
+        UserDefaults.standard.set(false, forKey: "rotationIndexed")
         saveScheduleState()
         saveData()
     }
 
     func applyCustomProgram(name: String, days: [ScheduledWorkout], append: Bool) {
         // Catalog and custom programs are weekday-based.
-        if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode") }
+        if !append { UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode"); UserDefaults.standard.set(false, forKey: "rotationIndexed") }
         if append {
             weeklySchedule.append(contentsOf: days)
         } else {

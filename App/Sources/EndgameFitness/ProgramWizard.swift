@@ -14,15 +14,60 @@ import SwiftUI
 // MARK: - Config types
 
 enum ProgramSplit: String, CaseIterable, Identifiable {
-    case auto = "Auto-recommend"
+    case auto = "Smart Advisor"
     case fullBody = "Full Body"
     case upperLower = "Upper / Lower"
     case ppl = "Push / Pull / Legs"
+    case phul = "Power & Hypertrophy (PHUL)"
+    case pplUpperLower = "Push / Pull / Legs + Upper / Lower"
+    case arnold = "Arnold Split"
+    case bodyPart = "Body-Part Split"
+    case torsoLimbs = "Torso / Limbs"
     var id: String { rawValue }
+
+    /// One session of the split's rotation.
+    struct Session { let label: String; let groups: [String]; let focus: String? }
+
+    /// The split's session order. Programs rotate through it continuously,
+    /// so a 4-day cycle on PPL runs Push, Pull, Legs, Push | Pull, Legs, ...
+    var rotation: [Session] {
+        switch self {
+        case .fullBody: return ["A", "B", "C"].map { Session(label: "Full Body \($0)", groups: ["Full Body"], focus: nil) }
+        case .upperLower: return [Session(label: "Upper Body", groups: ["Upper"], focus: nil),
+                                  Session(label: "Lower Body", groups: ["Lower"], focus: nil)]
+        case .ppl, .auto: return [Session(label: "Push Day", groups: ["Push"], focus: nil),
+                                  Session(label: "Pull Day", groups: ["Pull"], focus: nil),
+                                  Session(label: "Leg Day", groups: ["Legs"], focus: nil)]
+        case .phul: return [Session(label: "Upper Power", groups: ["Upper"], focus: "strength"),
+                            Session(label: "Lower Power", groups: ["Lower"], focus: "strength"),
+                            Session(label: "Upper Hypertrophy", groups: ["Upper"], focus: "hypertrophy"),
+                            Session(label: "Lower Hypertrophy", groups: ["Lower"], focus: "hypertrophy")]
+        case .pplUpperLower: return ProgramSplit.ppl.rotation + ProgramSplit.upperLower.rotation
+        case .arnold: return [Session(label: "Chest & Back", groups: ["Chest", "Back"], focus: nil),
+                              Session(label: "Shoulders & Arms", groups: ["Shoulders", "Arms"], focus: nil),
+                              Session(label: "Leg Day", groups: ["Legs"], focus: nil)]
+        case .bodyPart: return ["Chest", "Back", "Legs", "Shoulders", "Arms"].map {
+                              Session(label: "\($0) Day", groups: [$0], focus: nil) }
+        case .torsoLimbs: return [Session(label: "Torso", groups: ["Chest", "Back"], focus: nil),
+                                  Session(label: "Limbs", groups: ["Legs", "Arms"], focus: nil)]
+        }
+    }
+
+    /// Training days per week this split fits evenly (for the wizard hint).
+    var fits: [Int] {
+        switch self {
+        case .auto: return Array(2...7)
+        case .fullBody: return [2, 3, 4]
+        case .upperLower, .torsoLimbs: return [2, 4, 6]
+        case .ppl, .arnold: return [3, 6]
+        case .phul: return [4]
+        case .pplUpperLower, .bodyPart: return [5]
+        }
+    }
 }
 
 enum ProgressionStyle: String, CaseIterable, Identifiable {
-    case auto = "Auto"
+    case auto = "Smart Advisor"
     case linear = "Linear"
     case double = "Double Progression"
     case rpe = "RPE / RIR"
@@ -407,12 +452,10 @@ struct ProgramWizardView: View {
     private var goalStep: some View {
         VStack(spacing: 16) {
             card("Primary Goal", icon: "target") {
-                // Every goal is listed so the user can re-pick; the ones chosen
-                // during setup are marked.
-                let stored = Set(workoutManager.userProfile?.primaryGoals ?? [])
+                // Every goal is listed so the user can re-pick.
                 Picker("Goal", selection: $config.primaryGoal) {
                     ForEach(TrainingGoal.allCases, id: \.self) { goal in
-                        Text(stored.contains(goal) ? "\(goal.rawValue)  (from your setup)" : goal.rawValue).tag(goal)
+                        Text(goal.rawValue).tag(goal)
                     }
                 }
                 .wizardRadioStyle()
@@ -479,10 +522,11 @@ struct ProgramWizardView: View {
                 }
                 .wizardRadioStyle()
                 .labelsHidden()
-                if config.split == .auto {
-                    Text("Recommended for you: \(workoutManager.resolvedSplit(for: config).rawValue)")
+                if config.split != .auto && config.scheduleMode == .weekly
+                    && !config.split.fits.contains(config.daysPerWeek) {
+                    Text("Fits best at \(config.split.fits.map(String.init).joined(separator: " or ")) days a week. With \(config.daysPerWeek), the sessions rotate across weeks.")
                         .font(.caption)
-                        .foregroundStyle(Color.brandPurple)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -495,7 +539,7 @@ struct ProgramWizardView: View {
                 reviewRow("Sessions", "\(config.sessionLength) min")
                 reviewRow("Cycle", "\(config.mesocycleWeeks) weeks\(config.includeDeload ? " + deload" : "")")
                 reviewRow("Goal", config.primaryGoal.rawValue)
-                reviewRow("Split", workoutManager.resolvedSplit(for: config).rawValue)
+                reviewRow("Split", config.split.rawValue)
                 reviewRow("Progression", config.progression.rawValue)
                 if !config.injuries.isEmpty {
                     reviewRow("Protecting", config.injuries.sorted().joined(separator: ", "))

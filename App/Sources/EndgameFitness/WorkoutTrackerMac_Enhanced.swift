@@ -570,36 +570,37 @@ class WorkoutManager: ObservableObject {
         }
 
         let split = resolvedSplit(for: config)
-        let focus = focusString(for: config.primaryGoal)
+        let goalFocus = focusString(for: config.primaryGoal)
+        let rotation = split.rotation
+        let perCycle = max(1, days.count)
+        // One entry per training day until the split rotation and the
+        // week/cycle line up again, so sessions keep rotating instead of
+        // restarting (4 on with PPL: P Pu L P | Pu L P Pu | L P Pu L).
+        let length = Self.lcm(perCycle, rotation.count)
 
         var schedule: [ScheduledWorkout] = []
-        for (i, day) in days.enumerated() {
-            let (label, group): (String, String)
-            switch split {
-            case .fullBody:
-                label = "Full Body \(["A", "B", "C", "D", "E", "F"][i % 6])"
-                group = "Full Body"
-            case .upperLower:
-                label = i % 2 == 0 ? "Upper Body" : "Lower Body"
-                group = i % 2 == 0 ? "Upper" : "Lower"
-            case .ppl, .auto:
-                label = ["Push Day", "Pull Day", "Leg Day"][i % 3]
-                group = ["Push", "Pull", "Legs"][i % 3]
+        for k in 0..<length {
+            let session = rotation[k % rotation.count]
+            let dayLabel: String
+            if config.scheduleMode == .rolling {
+                dayLabel = "Day \(k + 1)"
+            } else {
+                let weekday = days[k % perCycle]
+                dayLabel = length > perCycle ? "\(weekday) · Wk \(k / perCycle + 1)" : weekday
             }
-
-            var exercises = Self.generateExercises(for: group, duration: config.sessionLength, focus: focus)
+            let focus = session.focus ?? goalFocus
+            let share = config.sessionLength / max(1, session.groups.count)
+            var exercises: [String] = []
+            for group in session.groups {
+                exercises += Self.generateExercises(for: group, duration: max(15, share), focus: focus)
+            }
             exercises = injurySafe(exercises, injuries: config.injuries)
             if config.primaryGoal == .longevity {
                 exercises.append("Mobility Flow 10 min")
                 exercises.append("Zone 2 Cardio 15 min")
             }
-
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: day,
-                workoutType: label,
-                exercises: exercises,
-                estimatedDuration: config.sessionLength
-            ))
+            schedule.append(ScheduledWorkout(dayOfWeek: dayLabel, workoutType: session.label,
+                                             exercises: exercises, estimatedDuration: config.sessionLength))
         }
 
         weeklySchedule = schedule
@@ -616,6 +617,8 @@ class WorkoutManager: ObservableObject {
         d.set(config.daysOn, forKey: "cycleDaysOn")
         d.set(config.daysOff, forKey: "cycleDaysOff")
         d.set(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970, forKey: "cycleStartDay")
+        d.set(true, forKey: "rotationIndexed")
+        d.set(days, forKey: "trainingWeekdays")
 
         saveData()
     }
@@ -631,9 +634,48 @@ class WorkoutManager: ObservableObject {
         return idx < daysOn ? idx : nil
     }
 
+    static func lcm(_ a: Int, _ b: Int) -> Int {
+        func gcd(_ x: Int, _ y: Int) -> Int { y == 0 ? x : gcd(y, x % y) }
+        let a = max(1, a), b = max(1, b)
+        return min(42, a / gcd(a, b) * b)
+    }
+
+    /// How many training days come before `date` (nil = `date` is a rest day).
+    /// Pure, so the selftest can check it.
+    static func trainingDayIndex(on date: Date, start: Date, rolling: Bool, daysOn: Int, daysOff: Int,
+                                 weekdays: [String], calendar: Calendar = .current) -> Int? {
+        let s = calendar.startOfDay(for: start), t = calendar.startOfDay(for: date)
+        let diff = calendar.dateComponents([.day], from: s, to: t).day ?? 0
+        guard diff >= 0 else { return nil }
+        if rolling {
+            let cycle = max(1, daysOn + daysOff)
+            let slot = diff % cycle
+            guard slot < daysOn else { return nil }
+            return (diff / cycle) * daysOn + slot
+        }
+        let names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        func isTraining(_ day: Date) -> Bool { weekdays.contains(names[calendar.component(.weekday, from: day) - 1]) }
+        guard isTraining(t) else { return nil }
+        var count = 0
+        for i in 0..<diff {
+            if let day = calendar.date(byAdding: .day, value: i, to: s), isTraining(day) { count += 1 }
+        }
+        return count
+    }
+
     /// Today's planned session for either schedule mode.
     func scheduledWorkout(for date: Date = Date()) -> ScheduledWorkout? {
         let d = UserDefaults.standard
+        if d.bool(forKey: "rotationIndexed"), !weeklySchedule.isEmpty {
+            let rolling = d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue
+            guard let idx = Self.trainingDayIndex(on: date,
+                                                  start: Date(timeIntervalSince1970: d.double(forKey: "cycleStartDay")),
+                                                  rolling: rolling,
+                                                  daysOn: d.integer(forKey: "cycleDaysOn"),
+                                                  daysOff: d.integer(forKey: "cycleDaysOff"),
+                                                  weekdays: d.stringArray(forKey: "trainingWeekdays") ?? []) else { return nil }
+            return weeklySchedule[idx % weeklySchedule.count]
+        }
         if d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue {
             let start = Date(timeIntervalSince1970: d.double(forKey: "cycleStartDay"))
             guard let slot = Self.rollingSlot(on: date, start: start,
@@ -646,18 +688,22 @@ class WorkoutManager: ObservableObject {
         return weeklySchedule.first { $0.dayOfWeek == today }
     }
 
+    /// Smart Advisor split choice: hit every muscle about twice a week,
+    /// fit the session count evenly, and match goal + experience.
     func resolvedSplit(for config: ProgramConfig) -> ProgramSplit {
         guard config.split == .auto else { return config.split }
         let perWeek = config.effectiveDaysPerWeek
-        if config.primaryGoal == .longevity && perWeek <= 4 { return .fullBody }
+        let experienced = config.experienceLevel != .beginner
+        let strengthOrSize = config.primaryGoal == .getStronger || config.primaryGoal == .buildMuscle
+        if config.primaryGoal == .longevity || config.primaryGoal == .increaseFlexibility { return perWeek <= 4 ? .fullBody : .upperLower }
         switch perWeek {
-        case ..<4:
-            let strengthy = config.primaryGoal == .getStronger || config.primaryGoal == .buildMuscle
-            return (perWeek == 3 && strengthy && config.experienceLevel != .beginner) ? .ppl : .fullBody
-        case 4: return .upperLower
-        default: return .ppl
+        case ..<4: return .fullBody
+        case 4: return experienced && strengthOrSize ? .phul : .upperLower
+        case 5: return experienced ? .pplUpperLower : .upperLower
+        default: return experienced ? .ppl : .upperLower
         }
     }
+
 
     private func focusString(for goal: TrainingGoal) -> String {
         switch goal {

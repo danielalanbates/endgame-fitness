@@ -51,6 +51,22 @@ enum EngineSelfTest {
             check("rolling before start wraps", before == nil, "\(String(describing: before))")
             var c = ProgramConfig(); c.scheduleMode = .rolling; c.daysOn = 3; c.daysOff = 1
             check("rolling effective frequency", c.effectiveDaysPerWeek == 5 && c.sessionCount == 3)
+            // Rotation keeps going across cycles (no Push twice in a 4-day block).
+            let idx = (0..<10).map { WorkoutManager.trainingDayIndex(on: cal.date(byAdding: .day, value: $0, to: start)!,
+                start: start, rolling: true, daysOn: 4, daysOff: 1, weekdays: [], calendar: cal) }
+            check("rolling 4on/1off training index", idx == [0, 1, 2, 3, nil, 4, 5, 6, 7, nil], "\(idx)")
+            let ppl = ProgramSplit.ppl.rotation.map(\.label)
+            let firstEight = (0..<8).map { ppl[$0 % 3] }
+            check("PPL rotation continuous", firstEight == ["Push Day", "Pull Day", "Leg Day", "Push Day", "Pull Day", "Leg Day", "Push Day", "Pull Day"])
+            check("schedule length lcm", WorkoutManager.lcm(4, 3) == 12 && WorkoutManager.lcm(3, 3) == 3 && WorkoutManager.lcm(5, 5) == 5)
+            // 2026-11-16 is a Monday; Mon/Wed/Fri plan.
+            let wk = (0..<8).map { WorkoutManager.trainingDayIndex(on: cal.date(byAdding: .day, value: $0, to: start)!,
+                start: start, rolling: false, daysOn: 0, daysOff: 0, weekdays: ["Monday", "Wednesday", "Friday"], calendar: cal) }
+            check("weekly training index", wk == [0, nil, 1, nil, 2, nil, nil, 3], "\(wk)")
+            var sa = ProgramConfig(); sa.split = .auto; sa.daysPerWeek = 4; sa.experienceLevel = .intermediate; sa.primaryGoal = .buildMuscle
+            check("Smart Advisor 4-day size = PHUL", WorkoutManager.shared.resolvedSplit(for: sa) == .phul)
+            sa.scheduleMode = .rolling; sa.daysOn = 3; sa.daysOff = 1
+            check("Smart Advisor never mismatched", WorkoutManager.shared.resolvedSplit(for: sa) != .auto)
         }
         check("hash32 FNV-1a (JS)", GameRules.hash32("player-1|daily|2026-11-16") == 1_147_006_096,
               "\(GameRules.hash32("player-1|daily|2026-11-16"))")

@@ -35,10 +35,10 @@ extension WorkoutManager {
             guard missed > 0 else { return nil }
             return ("You missed \(missed) training day\(missed == 1 ? "" : "s"). Shift the cycle so you pick up where you left off instead of skipping ahead.", missed)
         }
-        let weekdays = Set(weeklySchedule.map(\.dayOfWeek))
+        let weekdays = Set(weeklySchedule.map { String($0.dayOfWeek.components(separatedBy: " · ").first ?? $0.dayOfWeek) })
         let missed = SmartCoach.missedWeeklyDays(weekdays: weekdays, logged: logged, now: now)
         guard let first = missed.last else { return nil }
-        let name = weeklySchedule.first { $0.dayOfWeek == first }?.workoutType ?? "workout"
+        let name = weeklySchedule.first { $0.dayOfWeek.hasPrefix(first) }?.workoutType ?? "workout"
         return ("\(first)'s \(name) was missed. Doing it today keeps the week balanced.", 0)
     }
 }
@@ -75,7 +75,7 @@ struct SmartTodayCard: View {
 
     private var cycleText: String {
         let c = context
-        let model = c.model == .auto ? "Auto" : c.model.shortLabel
+        let model = c.model == .auto ? "Smart Advisor" : c.model.shortLabel
         if c.isDeloadWeek { return "Deload week · \(model)" }
         return "Week \(c.weekInCycle + 1) of \(c.cycleWeeks) · \(model)"
     }

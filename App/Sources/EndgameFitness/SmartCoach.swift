@@ -76,7 +76,7 @@ extension ProgressionStyle {
     var explanation: String {
         switch self {
         case .auto:
-            return "Picks for you: Linear while you're new, Double or RPE once you've trained a while, and waves if strength is the goal and you're experienced. It switches when your history says to."
+            return "Smart Advisor runs the numbers on every set you log and adjusts how you progress as your training changes."
         case .linear:
             return "Same reps every session; add a fixed jump (5 lb upper, 10 lb lower, or 2.5/5 kg) whenever you complete every set. Fast, and it stops working once lifts stall."
         case .double:
