@@ -1982,7 +1982,7 @@ struct DashboardView: View {
                 }
 
                 // Today's Workout / Next Workout
-                WorkoutScheduleCard(workoutManager: workoutManager)
+                WorkoutScheduleCard(workoutManager: workoutManager, hidesToday: todaysScheduledWorkout != nil)
 
                 // Today's Quests (server-generated; jumps to Community → Quests)
                 TodaysQuestsCard { workoutManager.selectedTab = 7 }
@@ -3882,6 +3882,8 @@ struct ProgramRecommendationCard: View {
 
 struct WorkoutScheduleCard: View {
     let workoutManager: WorkoutManager
+    /// True when the dashboard's Today card already shows today's workout.
+    var hidesToday: Bool = false
     @State private var isHovering = false
 
     var body: some View {
@@ -3890,7 +3892,7 @@ struct WorkoutScheduleCard: View {
                 .font(.title2)
                 .bold()
 
-            if let todaysWorkout = getTodaysWorkout() {
+            if !hidesToday, let todaysWorkout = getTodaysWorkout() {
                 // Today's workout
                 Button(action: {
                     workoutManager.selectedTab = 1
@@ -3948,9 +3950,9 @@ struct WorkoutScheduleCard: View {
                 // Next workout (rest day today)
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Image(systemName: "bed.double.fill")
+                        Image(systemName: hidesToday ? "calendar" : "bed.double.fill")
                             .foregroundColor(.brandYellow)
-                        Text("Rest Day")
+                        Text(hidesToday ? "Up Next" : "Rest Day")
                             .font(.headline)
                     }
 

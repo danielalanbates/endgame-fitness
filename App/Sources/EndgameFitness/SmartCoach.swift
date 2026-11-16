@@ -204,7 +204,7 @@ enum SmartCoach {
         guard pounds > 0 else { return 0 }
         let step = increment(equipment: equipment, unit: unit)
         let display = TrainingUnits.toDisplay(pounds, unit)
-        let rounded = (display / step).rounded() * step
+        let rounded = max(step, (display / step).rounded() * step)
         return TrainingUnits.toPounds(max(0, rounded), from: unit)
     }
 
