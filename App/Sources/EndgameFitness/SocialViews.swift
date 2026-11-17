@@ -367,6 +367,41 @@ struct CommunityView: View {
                     .padding([.horizontal, .top], 16)
             }
 
+            sectionPicker
+
+            Divider()
+
+            selectedSection
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .task { await game.loadAll() }
+        .onChange(of: section) { _, newValue in
+            Task {
+                switch newValue {
+                case .feed:        await game.loadFeed()
+                case .leaderboard: await game.loadLeaderboard(scope: leaderboardScope, metric: leaderboardMetric)
+                case .friends:     await game.loadFriends()
+                case .guild:       await game.loadGuild()
+                case .challenges:  await game.loadChallenges()
+                case .quests:      await game.loadQuests()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var selectedSection: some View {
+        switch section {
+        case .feed: feedList
+        case .leaderboard: leaderboardList
+        case .friends: friendsList
+        case .guild: guildPane
+        case .challenges: ChallengesView()
+        case .quests: QuestsAndAchievementsPane()
+        }
+    }
+
+    private var sectionPicker: some View {
             #if os(iOS)
             // Six segments don't fit a 390pt screen ("Leader…", "Challe…"), so
             // iOS gets a horizontally scrollable chip row with icon + full label.
@@ -384,9 +419,9 @@ struct CommunityView: View {
                                 .background(
                                     Capsule().fill(section == item
                                         ? Color.accentColor.opacity(0.2)
-                                        : Color(.secondarySystemBackground))
+                                        : Color.platformControlBackground)
                                 )
-                                .foregroundStyle(section == item ? Color.accentColor : .primary)
+                                .foregroundStyle(section == item ? Color.accentColor : Color.primary)
                         }
                         .buttonStyle(.plain)
                         .help(item.rawValue)  // Accessibility tooltip
@@ -408,9 +443,9 @@ struct CommunityView: View {
                             .background(
                                 Capsule().fill(section == item
                                     ? Color.accentColor.opacity(0.2)
-                                    : Color(.secondarySystemBackground))
+                                    : Color.platformControlBackground)
                             )
-                            .foregroundStyle(section == item ? Color.accentColor : .primary)
+                            .foregroundStyle(section == item ? Color.accentColor : Color.primary)
                     }
                     .buttonStyle(.plain)
                     .help(item.rawValue)  // Accessibility tooltip
@@ -420,33 +455,6 @@ struct CommunityView: View {
             .padding(16)
             #endif
 
-            Divider()
-
-            Group {
-                switch section {
-                case .feed:        feedList
-                case .leaderboard: leaderboardList
-                case .friends:     friendsList
-                case .guild:       guildPane
-                case .challenges:  ChallengesView()
-                case .quests:      QuestsAndAchievementsPane()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .task { await game.loadAll() }
-        .onChange(of: section) { _, newValue in
-            Task {
-                switch newValue {
-                case .feed:        await game.loadFeed()
-                case .leaderboard: await game.loadLeaderboard(scope: leaderboardScope, metric: leaderboardMetric)
-                case .friends:     await game.loadFriends()
-                case .guild:       await game.loadGuild()
-                case .challenges:  await game.loadChallenges()
-                case .quests:      await game.loadQuests()
-                }
-            }
-        }
     }
 
     // MARK: Feed
