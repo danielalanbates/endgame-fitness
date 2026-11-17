@@ -25,7 +25,7 @@ extension WorkoutManager {
     /// Missed-day nudge text, or nil when on track.
     func adherenceNudge(now: Date = Date()) -> (text: String, shiftDays: Int)? {
         let d = UserDefaults.standard
-        let logged = loggedSessions.map(\.date)
+        let logged = SmartCoach.trainingDates(loggedSessions)
         guard !weeklySchedule.isEmpty else { return nil }
         if d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue {
             let start = Date(timeIntervalSince1970: d.double(forKey: "cycleStartDay"))
@@ -231,5 +231,37 @@ struct RestDayPlanView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Shown once after a Smart Advisor update: the program was rebuilt from
+/// its saved answers, or (edited by hand) should be rebuilt in the wizard.
+struct ProgramUpdateNotice: View {
+    let rebuilt: Bool
+    let onRebuild: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(rebuilt ? "Your program was updated" : "Rebuild your program", systemImage: "arrow.triangle.2.circlepath")
+                .font(.subheadline.bold())
+            Text(rebuilt
+                 ? "The Smart Advisor rebuilt it with a warm-up in every session, a separate rest-day page and, for longevity, joint-safe loading (8+ reps, 2-3 reps short of failure). Your cycle start is unchanged. If your equipment or injuries changed, rebuild it."
+                 : "You edited this program by hand, so it was not changed, apart from removing the rest-day walk from training days. Rebuild it to get warm-ups and joint-safe loading.")
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button(rebuilt ? "Review Settings" : "Rebuild Program", action: onRebuild)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.brandPurple)
+                    .controlSize(.small)
+                Button("Dismiss", action: onDismiss)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.brandPurple.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
     }
 }

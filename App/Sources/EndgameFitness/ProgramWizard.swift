@@ -13,7 +13,7 @@ import SwiftUI
 
 // MARK: - Config types
 
-enum ProgramSplit: String, CaseIterable, Identifiable {
+enum ProgramSplit: String, CaseIterable, Identifiable, Codable {
     case auto = "Smart Advisor"
     case fullBody = "Full Body"
     case upperLower = "Upper / Lower"
@@ -66,7 +66,7 @@ enum ProgramSplit: String, CaseIterable, Identifiable {
     }
 }
 
-enum ProgressionStyle: String, CaseIterable, Identifiable {
+enum ProgressionStyle: String, CaseIterable, Identifiable, Codable {
     case auto = "Smart Advisor"
     case linear = "Linear"
     case double = "Double Progression"
@@ -87,7 +87,7 @@ enum ProgressionStyle: String, CaseIterable, Identifiable {
 
 /// Weekly = fixed weekdays. Rolling = X days on, Y days off, repeating
 /// regardless of the calendar week (e.g. 3 on / 1 off).
-enum ScheduleMode: String, CaseIterable, Identifiable {
+enum ScheduleMode: String, CaseIterable, Identifiable, Codable {
     case weekly = "Weekly"
     case rolling = "Days on / off"
     var id: String { rawValue }
@@ -122,7 +122,7 @@ struct SessionLengthPicker: View {
     }
 }
 
-struct ProgramConfig {
+struct ProgramConfig: Codable, Equatable {
     var scheduleMode: ScheduleMode = .weekly
     var daysOn: Int = 3
     var daysOff: Int = 1
@@ -278,6 +278,8 @@ struct ProgramWizardView: View {
 
     // Prefill from the onboarding answers so nothing is asked twice cold.
     private func prefill() {
+        // Rebuilding: start from the answers the current program was built with.
+        if let saved = workoutManager.savedProgramConfig() { config = saved; return }
         guard let profile = workoutManager.userProfile else { return }
         config.experienceLevel = profile.experienceLevel
         config.equipment = profile.availableEquipment

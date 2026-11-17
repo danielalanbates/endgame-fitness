@@ -474,6 +474,18 @@ enum EngineSelfTest {
                 let hard = ex("Lon Hard", 8, 12, sets: [(60, 12, 1), (60, 12, 1)])
                 check("coach longevity needs 2 RIR to add load",
                       SmartCoach.prescribe(exercise: hard, history: [sess(0, hard)], context: lctx, now: now)?.kind == .addReps)
+                // Longevity beginners (Auto) and Linear never add load after a grinding set:
+                // they run double progression, which needs the top of the range with 2+ RIR.
+                var bctx = lctx; bctx.experience = .beginner
+                let grind = ex("Lon Grind", 10, 15, lower: true, sets: [(50, 10, 0), (50, 10, 0)])
+                let grindKinds = [ProgressionStyle.auto, .linear].map { m -> SmartCoach.Prescription? in
+                    bctx.model = m; return SmartCoach.prescribe(exercise: grind, history: [sess(0, grind)], context: bctx, now: now) }
+                check("coach longevity beginner/linear: no load increase after an RPE 10 set",
+                      grindKinds.allSatisfy { $0?.kind == .addReps && $0?.model == .double && ($0?.topLoad ?? 0) <= 50 },
+                      "\(grindKinds.map { "\(String(describing: $0?.model)) \(String(describing: $0?.kind)) \($0?.topLoad ?? -1)" })")
+                bctx.model = .linear; var sctx = bctx; sctx.goal = .getStronger
+                check("coach linear unchanged for other goals", SmartCoach.resolvedModel(sctx, state: nil) == .linear
+                      && SmartCoach.resolvedModel(bctx, state: nil) == .double)
                 // Warm-up entries are timed: never prescribed, never counted as volume.
                 var warm = Exercise(name: "Warm-up: Ramp-up Sets for Goblet Squats (2-3 lighter sets building to your working weight)")
                 WorkoutManager.attachLibraryMatch(&warm)
@@ -930,10 +942,15 @@ enum EngineSelfTest {
                     let w = s.warmupMinutes
                     let drills = s.items.filter(\.warmDrill).count
                     if s.hasStrength {
-                        let ramp = s.items.first { $0.name.hasPrefix("Warm-up: Ramp-up Sets for ") }
+                        // Ramp-up sets only toward a working weight; a bodyweight first lift gets a practice set.
+                        let ramp = s.items.first { $0.name.hasPrefix("Warm-up: Ramp-up Sets for ") || $0.name.hasPrefix("Warm-up: Practice Set of ") }
                         let firstLift = s.items.first { $0.kind == .lift }?.name ?? ""
                         if w < 6 || drills < 3 || ramp == nil { noWarm.append("\(n) \(s.label) warm \(w) drills \(drills)") }
-                        if let r = ramp, !s.items.filter({ $0.kind == .lift }).contains(where: { r.name.contains($0.name) }) { noWarm.append("\(n) ramp \(r.name) vs \(firstLift)") }
+                        if let r = ramp {
+                            if let target = s.items.first(where: { $0.kind == .lift && r.name.contains("for \($0.name) (") || r.name.contains("of \($0.name) (") }) {
+                                if r.name.contains("Ramp-up") != SP.isLoadable(target, ctx: SP.Ctx(config: cf)) { noWarm.append("\(n) \(r.name) loadable mismatch") }
+                            } else { noWarm.append("\(n) ramp \(r.name) vs \(firstLift)") }
+                        }
                         // Lifts end before the session's length runs out with the warm-up counted.
                         if s.warmupMinutes + s.strengthMinutes > Double(cf.sessionLength) + 0.5 { noWarm.append("\(n) \(s.label) over") }
                     }
@@ -947,8 +964,8 @@ enum EngineSelfTest {
             }
             check("warm-up first in every session, timed and counted in its minutes", noWarm.isEmpty, "\(noWarm.prefix(5))")
             let lonWarm = lon.sessions[0].items.prefix { $0.kind == .warmup }
-            check("warm-up on longevity day 1: cardio raise, 4 drills, ramp-up, ~11 min",
-                  lonWarm.count == 6 && lonWarm.first?.minutes == 5 && lonWarm.reduce(0) { $0 + $1.minutes } == 11, "\(lonWarm.map(\.text))")
+            check("warm-up on longevity day 1: cardio raise, 4 drills, 3-min ramp-up, 12 min",
+                  lonWarm.count == 6 && lonWarm.first?.minutes == 5 && lonWarm.last?.minutes == 3 && lonWarm.reduce(0) { $0 + $1.minutes } == 12, "\(lonWarm.map(\.text))")
             let wParsed = lon.scheduledWorkouts[0].plannedExercises.filter { $0.name.hasPrefix("Warm-up") }
             check("warm-up entries parse as timed targets", wParsed.count == 6 && wParsed.allSatisfy { $0.seconds != nil && $0.repMin == nil })
 
@@ -958,8 +975,8 @@ enum EngineSelfTest {
             check("longevity 4on/1off sessions carry no outside-the-session walk", !lon.sessions.flatMap(\.items).contains { $0.kind == .outside })
             let rdp = lon.restDayPlan
             let rdItems = rdp.plannedExercises
-            check("rest-day plan: walk 20-45 min, 10 min mobility, all timed",
-                  rdItems.count >= 2 && rdItems[0].name.contains("Walk") && (1200...2700).contains(rdItems[0].seconds ?? 0)
+            check("rest-day plan: walk 20-30 min, 10 min mobility, all timed",
+                  rdItems.count >= 2 && rdItems[0].name.contains("Walk") && (1200...1800).contains(rdItems[0].seconds ?? 0)
                   && rdItems.contains { $0.name.contains("Mobility") && $0.seconds == 600 }
                   && rdItems.allSatisfy { $0.seconds != nil && $0.repMin == nil }, "\(rdp.exercises)")
             check("rest-day plan covers the aerobic gap", lon.restDayWalk == 0 || Double(rdItems[0].seconds ?? 0) / 60 >= lon.restDayWalk)
@@ -1014,6 +1031,170 @@ enum EngineSelfTest {
             check("longevity full gym uses joint-safe swaps", lonFull.contains { ["Goblet Squats", "Leg Press", "Safety Bar Squats"].contains($0.name) }
                   && lonFull.allSatisfy { $0.pattern != .squat || ["Goblet Squats", "Leg Press", "Safety Bar Squats", "Belt Squats"].contains($0.name) },
                   "\(Set(lonFull.map(\.name)))")
+            // Review fixes (planner).
+            // 3. Longevity rotates only among its best-ranked variations.
+            let lowerRanked = ["Bulgarian Split Squats", "Walking Lunges", "Back Extensions", "Barbell Hip Thrusts", "Skull Crushers"]
+            var rotBad: [String] = []
+            for (n, cf, p) in lonPlans where cf.equipment == .fullGym {
+                for it in p.sessions.flatMap(lifts) where lowerRanked.contains(it.name) { rotBad.append("\(n) \(it.name)") }
+            }
+            for e in [ExperienceLevel.beginner, .intermediate, .advanced] {
+                for v in 0..<6 {
+                    for pat in SP.Pattern.allCases {
+                        let ctx = SP.Ctx(config: c(.longevity, e))
+                        let all = SP.ranked(pat, ctx: ctx, intensity: .foundation, used: [])
+                        guard let best = all.first, let m = SP.pick(pat, variant: v, ctx: ctx, intensity: .foundation, used: []), m.pattern == pat else { continue }
+                        if m.longevity < best.longevity { rotBad.append("\(e.rawValue) \(pat) v\(v) \(m.name) < \(best.name)") }
+                    }
+                }
+            }
+            check("longevity rotation never picks a lower-ranked variation", rotBad.isEmpty, "\(rotBad.prefix(6))")
+            // 4. Ramp-up sets only toward a working weight: bodyweight first lifts get a practice set.
+            let bwLon = SP.plan(for: c(.longevity, .intermediate, rolling: (4, 1), eq: .bodyweight))
+            let bwWarm = bwLon.sessions.flatMap(\.items).filter { $0.kind == .warmup }.map(\.name)
+            check("bodyweight plan: practice sets, no ramp-up to a working weight",
+                  !bwWarm.contains { $0.contains("Ramp-up") } && bwWarm.contains { $0.hasPrefix("Warm-up: Practice Set of ") }, "\(bwWarm.prefix(8))")
+            let lbLon = SP.plan(for: c(.longevity, .intermediate, perWeek: 3, inj: ["Low back"]))
+            let lbRamp = lbLon.sessions.flatMap(\.items).filter { $0.name.contains("Ramp-up Sets for Single-Leg") || $0.name.contains("Ramp-up Sets for Push-ups") }
+            check("low-back longevity: no ramp-up for a bodyweight hinge", lbRamp.isEmpty, "\(lbRamp.map(\.name))")
+            // 5/6. Rest-day walk: recovery length (<= 30 min), the same minutes the plan counts;
+            // training days carry an extra walk only when the rest days are full.
+            var walkBad: [String] = []
+            for e in [ExperienceLevel.beginner, .intermediate] {
+                for len in [30, 45, 60] {
+                    for (r, pw) in [((4, 1), 0), ((3, 1), 0), ((5, 2), 0), ((0, 0), 4), ((0, 0), 6), ((0, 0), 3)] as [((Int, Int), Int)] {
+                        for inj in [Set<String>(), ["Knee"]] {
+                            let cf = r.0 > 0 ? c(.longevity, e, rolling: r, len: len, inj: inj) : c(.longevity, e, perWeek: pw, len: len, inj: inj)
+                            let p = SP.plan(for: cf)
+                            let tag = "\(e.rawValue) \(r) \(pw) \(len) \(inj)"
+                            let walk = (p.restDayPlan.plannedExercises.first?.seconds ?? 0) / 60
+                            if walk > 30 { walkBad.append("long rest walk \(walk) " + tag) }
+                            if p.restDayWalk > 0 && Double(walk) != p.restDayWalk { walkBad.append("walk \(walk) vs \(p.restDayWalk) " + tag) }
+                            let extra = p.sessions.flatMap(\.items).contains { $0.kind == .outside }
+                            if extra && p.walkDaysPerWeek > 0.01 && p.restDayWalk < SP.maxRestDayWalk { walkBad.append("extra walk with room " + tag) }
+                            if p.restDayPlan.estimatedDuration > 45 { walkBad.append("rest day \(p.restDayPlan.estimatedDuration) min " + tag) }
+                        }
+                    }
+                }
+            }
+            check("rest-day walk <= 30 min, matches the plan, extra walks only when rest days are full", walkBad.isEmpty, "\(walkBad.prefix(5))")
+            // 7. Short longevity plans keep hinge/hamstring and core work; no upper-only day under 45 min.
+            var shortBad: [String] = []
+            for e in [ExperienceLevel.intermediate, .advanced] {
+                for pw in [2, 3, 4, 5] {
+                    let p = SP.plan(for: c(.longevity, e, perWeek: pw, len: 30))
+                    let tag = "\(e.rawValue) \(pw)/wk"
+                    if p.sessions.contains(where: { $0.spec.template == .upper && $0.spec.kind == .strength }) { shortBad.append("upper day " + tag) }
+                    // Known limit: two 30-min lifting days hold one hinge a week (2 of 3 hamstring
+                    // sets), and 2/wk Strength + Zone 2 has no room for core work.
+                    for l in SP.longevityFloorReport(p) {
+                        if l.group == "Hamstrings" && l.sets < 2 { shortBad.append("Hamstrings \(l.sets) " + tag) }
+                        if l.group == "Core" && pw >= 3 && l.sets < Double(l.target.lowerBound) - 0.01 { shortBad.append("Core \(l.sets) " + tag) }
+                    }
+                }
+            }
+            check("longevity 30 min: a hinge every week, core at its minimum (3+/wk), no upper-only day", shortBad.isEmpty, "\(shortBad.prefix(6))")
+            // 8. Interval warm-ups: leg drills in order, build-up efforts last.
+            var ivBad: [String] = []
+            for len in [30, 40, 60] {
+                for g in [TrainingGoal.longevity, .improveEndurance, .loseWeight] {
+                    for s in SP.plan(for: c(g, .intermediate, rolling: (4, 1), len: len)).sessions where s.spec.kind == .intervals {
+                        let w = s.items.prefix { $0.kind == .warmup }.map(\.name)
+                        if w.last != "Warm-up: \(SP.buildUps)" { ivBad.append("\(g.rawValue) \(len) \(w)") }
+                        if w.count >= 3 && w[1] != "Warm-up: Leg Swings (10 each leg)" { ivBad.append("\(g.rawValue) \(len) order \(w)") }
+                        if w.count >= 4 && w[2] != "Warm-up: Walking Knee Hugs (8 each leg)" { ivBad.append("\(g.rawValue) \(len) skip \(w)") }
+                    }
+                }
+            }
+            let ctxK = SP.Ctx(config: c(.longevity))
+            let fourDrills = SP.warmDrillItems(areas: [4], count: 4, ctx: ctxK).map(\.name)
+            check("interval warm-up ends with build-ups; drills taken in order", ivBad.isEmpty
+                  && fourDrills == SP.warmDrills[4]!.map { "Warm-up: \($0.name)" }, "\(ivBad.prefix(3)) \(fourDrills)")
+            // 9. Shoulder injuries: no overhead hanging pulls or end-range flyes.
+            var shInjBad: [String] = []
+            for g in [TrainingGoal.longevity, .buildMuscle, .generalFitness] {
+                for e in [ExperienceLevel.beginner, .advanced] {
+                    for eq in [EquipmentLevel.fullGym, .homeGym, .minimal] {
+                        let p = SP.plan(for: c(g, e, perWeek: 4, eq: eq, inj: ["Shoulder"]))
+                        for it in p.sessions.flatMap(lifts) where ["Band-Assisted Pull-ups", "Dumbbell Flyes", "Pec Deck", "Pull-ups", "Chin-ups",
+                                                                   "Weighted Pull-ups", "Assisted Pull-ups"].contains(it.name) {
+                            shInjBad.append("\(g.rawValue) \(e.rawValue) \(eq) \(it.name)")
+                        }
+                    }
+                }
+            }
+            check("shoulder injury: no pull-up variations, flyes or pec deck", shInjBad.isEmpty, "\(shInjBad.prefix(5))")
+            check("shoulder injury: lat pulldowns are the vertical-pull swap",
+                  SP.plan(for: c(.longevity, .advanced, perWeek: 4, inj: ["Shoulder"])).sessions.flatMap(lifts).contains { $0.name == "Lat Pulldowns" })
+            // 11. Ramp-up time: 3 min at 45+ min, 2 under.
+            check("ramp-up booked 3 min (45+) / 2 min (<45)", SP.strengthWarmup(60, ctx: ctxK).ramp == 3 && SP.strengthWarmup(30, ctx: ctxK).ramp == 2)
+
+            // Review fixes (app).
+            // 10. Hand-picked splits on longevity: no heavy "strength" days, joint-safe swaps, 8+ reps, fits the length.
+            let banned = ["Barbell Bench Press", "Bench Press", "Overhead Press", "Weighted Dips", "Back Squats", "Squats", "Deadlifts",
+                          "Romanian Deadlifts", "Pull-ups", "Weighted Pull-ups", "Barbell Rows", "Chin-ups", "Skull Crushers", "Lunges", "Push Press"]
+            var exBad: [String] = []
+            for split in ProgramSplit.allCases where split != .auto {
+                for len in [30, 45, 60, 90] {
+                    var cf = c(.longevity, .intermediate, perWeek: 4, len: len); cf.split = split
+                    for w in WorkoutManager.shared.explicitSplitSchedule(config: cf, days: ["Monday", "Tuesday", "Thursday", "Friday"]) {
+                        let plan = w.exercises.map(ProgramTargetParser.parse)
+                        for pe in plan where banned.contains(pe.name) { exBad.append("\(split.rawValue) \(len) \(pe.name)") }
+                        for pe in plan where (pe.repMin ?? 99) < 8 { exBad.append("\(split.rawValue) \(len) \(pe.name) \(pe.repMin ?? 0)") }
+                        let timed = plan.reduce(0) { $0 + ($1.repMin == nil ? ($1.seconds ?? 0) / 60 : 0) }
+                        if timed > len - 15 { exBad.append("\(split.rawValue) \(len) timed \(timed)") }
+                        let first = plan.first { !$0.name.hasPrefix("Warm-up") }?.name ?? ""
+                        let ramp = plan.first { $0.name.hasPrefix("Warm-up: Ramp-up") || $0.name.hasPrefix("Warm-up: Practice") }?.name ?? ""
+                        let loadable = ExerciseLibrary.shared.tracking(forID: nil, name: first) == .weighted
+                        if ramp.contains("Ramp-up") != loadable { exBad.append("\(split.rawValue) \(len) \(ramp) for \(first)") }
+                    }
+                }
+            }
+            check("hand-picked longevity splits: joint-safe, 8+ reps, fit the session, ramp-up only when loaded", exBad.isEmpty, "\(exBad.prefix(5))")
+            var phul = c(.getStronger, .intermediate, perWeek: 4); phul.split = .phul
+            check("hand-picked splits for other goals keep their heavy days",
+                  WorkoutManager.shared.explicitSplitSchedule(config: phul, days: ["Monday", "Tuesday", "Thursday", "Friday"])
+                    .flatMap(\.exercises).contains { $0.hasPrefix("Bench Press 5x5") })
+            // App 1 / coach 1. Programs from an older planner: answers saved, rebuilt from them, or read back.
+            var saved = c(.longevity, .intermediate, rolling: (4, 1)); saved.injuries = ["Knee"]
+            let savedData = try? JSONEncoder().encode(saved)
+            check("program config round-trips (saved for planner updates)", savedData.flatMap { try? JSONDecoder().decode(ProgramConfig.self, from: $0) } == saved)
+            check("planner version bumped past the old planner", SP.version >= 3)
+            let legacy = [ScheduledWorkout(dayOfWeek: "Day 1", workoutType: "Full Body Strength A",
+                                           exercises: ["Back Squats 3x6-10", "Brisk Walk on rest days 20 min"], estimatedDuration: 59),
+                          ScheduledWorkout(dayOfWeek: "Day 2", workoutType: "Zone 2 + Mobility", exercises: ["Zone 2 Cardio 45 min"], estimatedDuration: 39)]
+            let vals: [String: Any] = ["progressionGoal": "Longevity", "progressionExperience": "Intermediate", "scheduleMode": ScheduleMode.rolling.rawValue,
+                                       "cycleDaysOn": 4, "cycleDaysOff": 1, "trainingWeekdays": ["Day 1", "Day 2", "Day 3", "Day 4"], "mesocycleWeeks": 6]
+            let rc = WorkoutManager.reconstructConfig(schedule: legacy, values: vals, profile: nil)
+            check("legacy program read back: goal, level, 4 on / 1 off, 60 min, Smart Advisor",
+                  rc?.primaryGoal == .longevity && rc?.experienceLevel == .intermediate && rc?.scheduleMode == .rolling
+                  && rc?.daysOn == 4 && rc?.daysOff == 1 && rc?.sessionLength == 60 && rc?.split == .auto, "\(String(describing: rc))")
+            let ulLegacy = ["Upper Body", "Lower Body", "Upper Body", "Lower Body"].enumerated().map {
+                ScheduledWorkout(dayOfWeek: "Day \($0.offset + 1)", workoutType: $0.element, exercises: [], estimatedDuration: 45) }
+            check("legacy hand-picked split detected from its labels",
+                  WorkoutManager.reconstructConfig(schedule: ulLegacy, values: vals, profile: nil)?.split == .upperLower)
+            check("stale in-session rest-day walks recognised",
+                  WorkoutManager.isStaleRestDayEntry("Brisk Walk on rest days 20 min") && WorkoutManager.isStaleRestDayEntry("Brisk Walk every day (outside the session) 15 min")
+                  && !WorkoutManager.isStaleRestDayEntry("Zone 2 Cardio 45 min"))
+            // App 3. A logged recovery session neither hides a missed day nor counts as a workout.
+            let rcStart = cal.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 8))!
+            func dayAt(_ k: Int) -> Date { cal.date(byAdding: .day, value: k, to: rcStart)! }
+            // 4 on / 1 off: days 0-2 trained, day 3 skipped, recovery logged on rest day 4, checked on day 5.
+            var logs = (0..<3).map { WorkoutSession(date: dayAt($0), programName: "Full Body Strength A", completed: true) }
+            logs.append(WorkoutSession(date: dayAt(4), programName: RestDayPlan.recoveryTitle, completed: true))
+            let missedAfterRecovery = SmartCoach.missedRollingDays(start: rcStart, daysOn: 4, daysOff: 1,
+                                                                   logged: SmartCoach.trainingDates(logs), now: dayAt(5), calendar: cal)
+            check("recovery session does not hide a missed training day", logs.last?.isRecoverySession == true && missedAfterRecovery == 1,
+                  "\(missedAfterRecovery)")
+            // App 4. No rest-day page for programs with no rest days.
+            check("rest days: none for 7-day weeks or 0 days off, found otherwise",
+                  !WorkoutManager.programHasRestDay(from: rcStart, cycleStart: rcStart, rolling: false, daysOn: 0, daysOff: 0,
+                                                    weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], calendar: cal)
+                  && !WorkoutManager.programHasRestDay(from: rcStart, cycleStart: rcStart, rolling: true, daysOn: 5, daysOff: 0, weekdays: [], calendar: cal)
+                  && WorkoutManager.programHasRestDay(from: rcStart, cycleStart: rcStart, rolling: true, daysOn: 4, daysOff: 1, weekdays: [], calendar: cal)
+                  && WorkoutManager.programHasRestDay(from: rcStart, cycleStart: rcStart, rolling: false, daysOn: 0, daysOff: 0,
+                                                      weekdays: ["Monday", "Tuesday", "Thursday", "Friday"], calendar: cal))
+
             // Other goals keep their lifts: size and strength still use the barbell staples.
             let strengthLifts = SP.plan(for: c(.getStronger, perWeek: 3)).sessions.flatMap(lifts).map(\.name)
             check("other goals keep barbell lifts and no longevity-only variations",

@@ -302,6 +302,10 @@ enum SmartCoach {
     static func resolvedModel(_ ctx: CoachContext, state: ExerciseState?) -> ProgressionStyle {
         // Longevity never runs percentage waves (heavy singles near a max).
         if ctx.goal == .longevity && ctx.model == .waves { return .double }
+        // Longevity never runs linear either: it adds load after any session
+        // that hit the reps, however hard it was. Double progression only adds
+        // load once the top of the range came with 2+ reps in reserve.
+        if ctx.goal == .longevity && (ctx.model == .linear || (ctx.model == .auto && ctx.experience == .beginner)) { return .double }
         guard ctx.model == .auto else { return ctx.model }
         let exposures = state?.exposures.count ?? 0
         switch ctx.experience {
@@ -601,6 +605,12 @@ enum SmartCoach {
     }
 
     // MARK: Adherence
+
+    /// Days with a training session. A rest-day recovery session is not one:
+    /// it must not hide a missed training day.
+    static func trainingDates(_ sessions: [WorkoutSession]) -> [Date] {
+        sessions.filter { !$0.isRecoverySession }.map(\.date)
+    }
 
     /// Rolling schedule: how many training slots in a row, ending yesterday,
     /// passed with nothing logged (looks back at most `lookback` days).

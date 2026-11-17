@@ -37,6 +37,11 @@ import Foundation
 
 enum SmartPlanner {
 
+    /// Bumped when the planner's output changes in a way saved programs must
+    /// pick up (3: warm-ups, rest-day page, joint-safe longevity loading).
+    /// Programs built by an older version are rebuilt on launch.
+    static let version = 3
+
     // MARK: - Vocabulary
 
     enum Gear: Hashable { case barbell, dumbbell, kettlebell, cable, machine, pullupBar, band, bodyweight }
@@ -132,12 +137,12 @@ enum SmartPlanner {
         Move(name: "Doorframe Rows", pattern: .hPull, gear: [.bodyweight], muscles: ["Back": 1, "Biceps": 0.5], reps: "10-15"),
         Move(name: "Towel Rows", pattern: .hPull, gear: [.bodyweight], muscles: ["Back": 1, "Biceps": 0.5], reps: "10-15"),
         // Vertical pull
-        Move(name: "Weighted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, heavyOnly: true, longevity: -1),
-        Move(name: "Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], beginner: false, reps: "5-10", longevity: -1),
-        Move(name: "Lat Pulldowns", pattern: .vPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5], longevity: 1),
-        Move(name: "Chin-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 1], beginner: false, reps: "5-10", longevity: -1),
-        Move(name: "Assisted Pull-ups", pattern: .vPull, gear: [.machine], muscles: ["Back": 1, "Biceps": 0.5], longevity: 1, longevityOnly: true),
-        Move(name: "Band-Assisted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], reps: "5-8"),
+        Move(name: "Weighted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, flags: ["Shoulder"], heavyOnly: true, longevity: -1),
+        Move(name: "Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], beginner: false, flags: ["Shoulder"], reps: "5-10", longevity: -1),
+        Move(name: "Lat Pulldowns", pattern: .vPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5], safeFor: ["Shoulder"], longevity: 1),
+        Move(name: "Chin-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 1], beginner: false, flags: ["Shoulder"], reps: "5-10", longevity: -1),
+        Move(name: "Assisted Pull-ups", pattern: .vPull, gear: [.machine], muscles: ["Back": 1, "Biceps": 0.5], flags: ["Shoulder"], longevity: 1, longevityOnly: true),
+        Move(name: "Band-Assisted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], flags: ["Shoulder"], reps: "5-8"),
         Move(name: "Band Lat Pulldowns", pattern: .vPull, gear: [.band], muscles: ["Back": 1, "Biceps": 0.5]),
         Move(name: "Prone Lat Pulls", pattern: .vPull, gear: [.bodyweight], muscles: ["Back": 1], reps: "12-15"),
         // Core / carry
@@ -160,9 +165,9 @@ enum SmartPlanner {
         Move(name: "Hammer Curls", pattern: .biceps, gear: [.dumbbell], muscles: ["Biceps": 1]),
         Move(name: "Cable Curls", pattern: .biceps, gear: [.cable], muscles: ["Biceps": 1]),
         Move(name: "Band Curls", pattern: .biceps, gear: [.band], muscles: ["Biceps": 1]),
-        Move(name: "Cable Pushdowns", pattern: .triceps, gear: [.cable], muscles: ["Triceps": 1]),
+        Move(name: "Cable Pushdowns", pattern: .triceps, gear: [.cable], muscles: ["Triceps": 1], longevity: 1),
         Move(name: "Overhead Dumbbell Extensions", pattern: .triceps, gear: [.dumbbell], muscles: ["Triceps": 1]),
-        Move(name: "Skull Crushers", pattern: .triceps, gear: [.barbell, .dumbbell], muscles: ["Triceps": 1]),
+        Move(name: "Skull Crushers", pattern: .triceps, gear: [.barbell, .dumbbell], muscles: ["Triceps": 1], longevity: -1),
         Move(name: "Band Pushdowns", pattern: .triceps, gear: [.band], muscles: ["Triceps": 1]),
         Move(name: "Diamond Push-ups", pattern: .triceps, gear: [.bodyweight], muscles: ["Triceps": 1, "Chest": 0.5], reps: "8-15"),
         // Shoulders
@@ -176,12 +181,12 @@ enum SmartPlanner {
         Move(name: "Reverse Snow Angels", pattern: .rearDelt, gear: [.bodyweight], muscles: ["Shoulders": 0.5, "Back": 0.5], reps: "10-12"),
         // Chest isolation
         Move(name: "Cable Flyes", pattern: .chestIso, gear: [.cable], muscles: ["Chest": 1]),
-        Move(name: "Pec Deck", pattern: .chestIso, gear: [.machine], muscles: ["Chest": 1]),
-        Move(name: "Dumbbell Flyes", pattern: .chestIso, gear: [.dumbbell], muscles: ["Chest": 1]),
+        Move(name: "Pec Deck", pattern: .chestIso, gear: [.machine], muscles: ["Chest": 1], flags: ["Shoulder"]),
+        Move(name: "Dumbbell Flyes", pattern: .chestIso, gear: [.dumbbell], muscles: ["Chest": 1], flags: ["Shoulder"]),
         // Glutes / hamstrings / quads isolation
         Move(name: "Barbell Hip Thrusts", pattern: .glute, gear: [.barbell], muscles: ["Glutes": 1, "Hamstrings": 0.5], heavy: true),
-        Move(name: "Hip Thrusts", pattern: .glute, gear: [.dumbbell, .machine], muscles: ["Glutes": 1, "Hamstrings": 0.5]),
-        Move(name: "Glute Bridges", pattern: .glute, gear: [.bodyweight], muscles: ["Glutes": 1, "Hamstrings": 0.5], reps: "12-20"),
+        Move(name: "Hip Thrusts", pattern: .glute, gear: [.dumbbell, .machine], muscles: ["Glutes": 1, "Hamstrings": 0.5], longevity: 1),
+        Move(name: "Glute Bridges", pattern: .glute, gear: [.bodyweight], muscles: ["Glutes": 1, "Hamstrings": 0.5], reps: "12-20", longevity: 1),
         Move(name: "Single-Leg Glute Bridges", pattern: .glute, gear: [.bodyweight], muscles: ["Glutes": 1, "Hamstrings": 0.5], reps: "10-12"),
         Move(name: "Leg Curls", pattern: .hamIso, gear: [.machine], muscles: ["Hamstrings": 1]),
         Move(name: "Sliding Leg Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], reps: "8-12"),
@@ -301,6 +306,8 @@ enum SmartPlanner {
         func sets(of group: String) -> Double {
             items.reduce(0) { $0 + Double($1.sets) * ($1.kind == .lift ? ($1.muscles[group] ?? 0) : 0) }
         }
+        /// Core sets done as stability drills (Dead Bug 3x10 on a mobility day).
+        var stabilityCoreSets: Double { items.filter { $0.kind == .stability }.reduce(0) { $0 + Double($1.sets) * ($1.muscles["Core"] ?? 0) } }
     }
 
     struct Slot { let label: String; let day: Int; let restBefore: Int; var cycle = 0 }
@@ -314,6 +321,10 @@ enum SmartPlanner {
         /// `walkDaysPerWeek` days (the rest days, or every day).
         var restDayWalk = 0.0
         var walkDaysPerWeek = 0.0
+        /// When the rest days cannot hold the gap: an extra walk outside the
+        /// session on each training day (`trainingWalkDaysPerWeek` days).
+        var trainingDayWalk = 0.0
+        var trainingWalkDaysPerWeek = 0.0
         var weeks: Double { Double(blockDays) / 7 }
 
         /// Session length is a ceiling: each entry carries its own time.
@@ -463,6 +474,15 @@ enum SmartPlanner {
                     if let h = ranked(f, ctx: ctx, intensity: .heavy, used: used).first(where: \.heavy) { return h }
                 }
             }
+            // Longevity: rotate only among the moves that rank best for joint
+            // safety (an injury swap, then the longevity score), never past them
+            // to a lower-ranked variation for the sake of variety.
+            if ctx.jointSafe {
+                func key(_ m: Move) -> (Int, Int) { (m.safeFor.isDisjoint(with: ctx.injuries) ? 1 : 0, m.longevity) }
+                let top = key(c[0])
+                let best = c.filter { key($0) == top }
+                return best[variant % min(best.count, 3)]
+            }
             return c[variant % min(c.count, 3)]
         }
         return nil
@@ -585,7 +605,10 @@ enum SmartPlanner {
         return items
     }
 
-    static func drills(minutes: Double, balance: Bool, stability: Bool, offset: Int, ctx: Ctx, used: inout Set<String>) -> [Item] {
+    /// `coreFirst`: a lifting day's closing block when the warm-up already
+    /// covered mobility and no lift trains the core: core stability, then balance.
+    static func drills(minutes: Double, balance: Bool, stability: Bool, offset: Int, ctx: Ctx, used: inout Set<String>,
+                       coreFirst: Bool = false) -> [Item] {
         guard minutes >= 2 else { return [] }
         let ok: (Drill) -> Bool = { d in d.flags.isDisjoint(with: ctx.injuries) && (d.gear.map { !$0.isDisjoint(with: ctx.gear) } ?? true) }
         let mob = mobilityPool.filter(ok), bal = balancePool.filter(ok), stab = stabilityPool.filter(ok)
@@ -593,6 +616,7 @@ enum SmartPlanner {
         if balance { order.append((.balance, bal, 3)) }
         order.append((.mobility, mob, 2.5))
         if stability { order.append((.stability, stab, 3)) }
+        if coreFirst { order = [(.stability, stab.filter { $0.name != "Glute Bridge Hold" }, 2.5), (.balance, bal, 2.5), (.mobility, mob, 2.5)] }
         var items: [Item] = []
         var spent = 0.0
         var counters: [Item.Kind: Int] = [:]
@@ -608,7 +632,13 @@ enum SmartPlanner {
             counters[kind] = n + 1
             if used.contains(d.name) { continue }
             used.insert(d.name)
-            items.append(Item(kind: kind, name: d.name, reps: d.scheme, minutes: t))
+            var it = Item(kind: kind, name: d.name, reps: d.scheme, minutes: t)
+            // Core stability work (Dead Bug 3x10, Side Plank 3x30s) counts as core sets.
+            if kind == .stability && d.name != "Glute Bridge Hold" {
+                it.sets = Int(d.scheme.split(separator: "x").first ?? "") ?? 0
+                it.muscles = ["Core": 1]
+            }
+            items.append(it)
             spent += t
         }
         return items
@@ -694,10 +724,21 @@ enum SmartPlanner {
 
     /// Warm-up minutes for a strength or Strength + Zone 2 session:
     /// (pulse raise, number of 1-minute drills, ramp-up sets).
-    static func strengthWarmup(_ len: Double) -> (raise: Double, drills: Int, ramp: Double) {
-        if len >= 45 { return (5, 4, 2) }
-        if len >= 30 { return (3, 3, 1) }
-        return (2, 3, 1)
+    /// Ramp-up sets: 2-3 lighter sets with changeovers take about 3 minutes
+    /// (2 in short sessions, which use fewer and smaller jumps).
+    /// Strength and size keep 3 drills at 45+ min so the lifts keep their time;
+    /// health goals take a 4th (mobility is part of the goal).
+    static func strengthWarmup(_ len: Double, ctx: Ctx) -> (raise: Double, drills: Int, ramp: Double) {
+        if len >= 45 { return (5, ctx.healthGoal ? 4 : 3, 3) }
+        if len >= 30 { return (3, 3, 2) }
+        return (2, 3, 2)
+    }
+
+    /// A lift that takes external load with this gear (bar, dumbbell,
+    /// kettlebell, cable or machine): only those have a working weight to
+    /// ramp up to. Push-ups, pull-ups or single-leg hinges get a practice set.
+    static func isLoadable(_ it: Item, ctx: Ctx) -> Bool {
+        !it.gear.intersection(ctx.gear).isDisjoint(with: [.barbell, .dumbbell, .kettlebell, .cable, .machine])
     }
 
     static func pulseRaiseName(_ ctx: Ctx) -> String {
@@ -706,33 +747,33 @@ enum SmartPlanner {
         return "Warm-up: Easy Cardio (brisk walk, marching or easy jog)"
     }
 
-    /// `count` 1-minute dynamic drills for the given areas, taken in turn.
-    static func warmDrillItems(areas: [Int], count: Int, ctx: Ctx) -> [Item] {
+    /// `count` 1-minute dynamic drills for the given areas, taken in turn:
+    /// each area's list in order, skipping drills already taken, blocked by
+    /// an injury, missing their gear, or in `exclude`.
+    static func warmDrillItems(areas: [Int], count: Int, ctx: Ctx, exclude: Set<String> = []) -> [Item] {
         var out: [Item] = []
-        var taken = Set<String>()
-        var idx = [Int: Int]()
+        var taken = exclude
         let areas = areas.isEmpty ? [2, 0, 1] : areas
         var k = 0
         while out.count < count && k < 40 {
             let a = areas[k % areas.count]
             k += 1
-            let pool = (warmDrills[a] ?? []).filter { d in
+            guard let d = (warmDrills[a] ?? []).first(where: { d in
                 d.flags.isDisjoint(with: ctx.injuries) && (d.gear.map { !$0.isDisjoint(with: ctx.gear) } ?? true) && !taken.contains(d.name)
-            }
-            guard !pool.isEmpty else { continue }
-            let d = pool[min(idx[a, default: 0], pool.count - 1)]
-            idx[a, default: 0] += 1
+            }) else { continue }
             taken.insert(d.name)
             out.append(Item(kind: .warmup, name: "Warm-up: \(d.name)", minutes: 1, warmDrill: true))
         }
         return out
     }
 
+    static let buildUps = "Build-up Efforts (3 x 20 s, getting faster)"
+
     /// The warm-up for a lifting session, built from its lifts: an easy
     /// pulse raise, dynamic drills for the patterns the session loads, and
     /// ramp-up sets on the first main lift.
     static func liftWarmup(for lifts: [Item], ctx: Ctx, len: Double) -> [Item] {
-        let w = strengthWarmup(len)
+        let w = strengthWarmup(len, ctx: ctx)
         var areas: [Int] = []
         for it in lifts {
             let a: Int?
@@ -746,17 +787,27 @@ enum SmartPlanner {
             if let a, !areas.contains(a) { areas.append(a) }
         }
         var items = [Item(kind: .warmup, name: pulseRaiseName(ctx), minutes: w.raise)]
+        let first = lifts.first(where: { $0.kind == .lift && ($0.pattern?.isCompound ?? false) }) ?? lifts.first(where: { $0.kind == .lift })
+        // Bodyweight first lift: no working weight to build to, so one easy
+        // practice set (1 min; the session simply runs that much shorter).
+        let loadable = first.map { isLoadable($0, ctx: ctx) } ?? false
         items += warmDrillItems(areas: areas, count: w.drills, ctx: ctx)
-        if let first = lifts.first(where: { $0.pattern?.isCompound ?? false }) ?? lifts.first {
-            items.append(Item(kind: .warmup, name: "Warm-up: Ramp-up Sets for \(first.name) (2-3 lighter sets building to your working weight)",
-                              minutes: w.ramp))
+        if let first {
+            if loadable {
+                items.append(Item(kind: .warmup, name: "Warm-up: Ramp-up Sets for \(first.name) (2-3 lighter sets building to your working weight)",
+                                  minutes: w.ramp))
+            } else {
+                items.append(Item(kind: .warmup, name: "Warm-up: Practice Set of \(first.name) (1 easy set at half your reps)", minutes: 1))
+            }
+        } else if w.ramp > 0 {
+            items += warmDrillItems(areas: areas, count: Int(w.ramp), ctx: ctx, exclude: Set(items.map { String($0.name.dropFirst(9)) }))
         }
         return items
     }
 
     /// Minutes a lifting session's warm-up takes (planned before the lifts are picked).
-    static func liftWarmupMinutes(_ len: Double) -> Double {
-        let w = strengthWarmup(len)
+    static func liftWarmupMinutes(_ len: Double, ctx: Ctx) -> Double {
+        let w = strengthWarmup(len, ctx: ctx)
         return w.raise + Double(w.drills) + w.ramp
     }
 
@@ -784,18 +835,21 @@ enum SmartPlanner {
             // (Flexibility keeps the full block: mobility is its goal.)
             let finisher = spec.groups.isEmpty ? (mobFinisher >= 10 && ctx.goal != .increaseFlexibility ? 5 : mobFinisher) : 0
             // The warm-up's time comes off the lifts, never the other way round.
-            budget = len - finisher - liftWarmupMinutes(len)
+            budget = len - finisher - liftWarmupMinutes(len, ctx: ctx)
             items = strengthItems(patterns: pats, variant: spec.variant, intensity: spec.intensity,
                                   budget: budget, ctx: ctx, used: &used)
             items = liftWarmup(for: items, ctx: ctx, len: len) + items
-            items += drills(minutes: finisher, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 3, ctx: ctx, used: &used)
+            // Longevity: no core lift in the session -> the closing block starts with core stability.
+            let noCore = !items.contains { $0.kind == .lift && ($0.pattern == .core || $0.pattern == .carry) }
+            items += drills(minutes: finisher, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 3, ctx: ctx, used: &used,
+                            coreFirst: ctx.jointSafe && noCore)
             // "Heavy" only when a heavy-capable lift is actually in the session.
             let shown = spec.intensity == .heavy && !items.contains(where: \.heavyLoad) ? Intensity.endurance : spec.intensity
             label = spec.label ?? strengthLabel(groups[0], shown, variant: spec.variant)
             if spec.label == nil && items.contains(where: \.superset) { label += " (Push/Pull Superset)" }
         case .mixed:
             let t = spec.template ?? .fullBody
-            let warm = liftWarmupMinutes(len)
+            let warm = liftWarmupMinutes(len, ctx: ctx)
             let fin = len >= 45 ? min(mobFinisher, 8) : 0
             // Lifts keep their share; at least 10 minutes of Zone 2 stay after them.
             budget = max(8, min(max((len * 0.55).rounded(), min(len, 20)) - 5, len - warm - fin - 10))
@@ -808,8 +862,16 @@ enum SmartPlanner {
                 items += drills(minutes: rest + fin, balance: true, stability: true, offset: spec.variant * 2, ctx: ctx, used: &used)
                 label = "Strength + Mobility \(["A", "B", "C", "D", "E", "F"][spec.variant % 6])"
             } else {
-                items.append(zone2(rest, ctx: ctx))
-                items += drills(minutes: fin, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 2 + 5, ctx: ctx, used: &used)
+                // Longevity: core stability comes before Zone 2 when no lift trains the core.
+                let noCore = !items.contains { $0.kind == .lift && ($0.pattern == .core || $0.pattern == .carry) }
+                var z = rest
+                if ctx.jointSafe && noCore && fin == 0 && rest >= 12.5 {
+                    items += drills(minutes: 2.5, balance: false, stability: true, offset: spec.variant * 2 + 5, ctx: ctx, used: &used, coreFirst: true)
+                    z = rest - items.filter { $0.kind == .stability }.reduce(0) { $0 + $1.minutes }
+                }
+                items.append(zone2(z, ctx: ctx))
+                items += drills(minutes: fin, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 2 + 5, ctx: ctx, used: &used,
+                                coreFirst: ctx.jointSafe && noCore)
                 label = "Strength + Zone 2 \(["A", "B", "C", "D", "E", "F"][spec.variant % 6])"
             }
         case .zone2:
@@ -834,7 +896,10 @@ enum SmartPlanner {
             let nDrills = short ? 2 : 3
             let raise = warm - Double(nDrills)
             items = [Item(kind: .warmup, name: "Warm-up: Easy Cardio (same machine or route as the intervals)", minutes: raise, aerobic: raise)]
-            items += warmDrillItems(areas: [4], count: nDrills, ctx: ctx)
+            // Leg drills, then build-up efforts last, so the first hard effort
+            // never comes cold.
+            items += warmDrillItems(areas: [4], count: nDrills - 1, ctx: ctx, exclude: [buildUps])
+            items.append(Item(kind: .warmup, name: "Warm-up: \(buildUps)", minutes: 1, warmDrill: true))
             items += [Item(kind: .intervals, name: "VO2max Intervals: \(hard) min hard / \(easy) min easy (\(intervalMode(ctx)))", sets: reps,
                           reps: "\(reps)x\(hard * 60)s", minutes: block, aerobic: Double(reps * hard * 2 + reps * easy)),
                      Item(kind: .cardio, name: "Easy Cool-down", minutes: cool, aerobic: cool)]
@@ -849,7 +914,7 @@ enum SmartPlanner {
             let block = Double(reps * 3)
             let raise = warm - 2
             items = [Item(kind: .warmup, name: "Warm-up: Easy Walk, building to brisk", minutes: raise, aerobic: raise)]
-            items += warmDrillItems(areas: [4], count: 2, ctx: ctx)
+            items += warmDrillItems(areas: [4], count: 2, ctx: ctx, exclude: [buildUps])
             items += [Item(kind: .intervals, name: "Uphill Walk Intervals: 1 min brisk / 2 min easy", sets: reps,
                           reps: "\(reps)x60s", minutes: block, aerobic: Double(reps * 4)),
                      Item(kind: .cardio, name: "Easy Cool-down", minutes: cool, aerobic: cool)]
@@ -1137,7 +1202,9 @@ enum SmartPlanner {
         let restKinds: [[Kind]]
         switch ctx.goal {
         case .longevity:
-            strengthOpts = [2, 2.5, 3]; intervalOpts = f >= 3 ? [1] : [0]
+            // Short sessions may trade the VO2max day for a second strength day
+            // (they cannot pair an upper day with it); the score decides.
+            strengthOpts = [2, 2.5, 3]; intervalOpts = f >= 3 ? (ctx.length < 45 ? [1, 0] : [1]) : [0]
             restKinds = [[.zone2, .mobility], [.zone2, .zone2, .mobility], [.zone2, .recovery]]
         case .loseWeight:
             strengthOpts = f >= 3 ? [3] : [2]; intervalOpts = f >= 6 && !ctx.beginner ? [1, 2] : f >= 4 ? [1] : [0]
@@ -1174,7 +1241,9 @@ enum SmartPlanner {
                     while excess > 0 && m > 0 { m -= 1; excess -= 1 }
                     // VO2max may follow an upper-only strength day (legs rested):
                     // tried both with that pairing and with one strength day fewer.
-                    for pair in excess > 0 && hardI > 0 && s >= 2 ? [true, false] : [false] {
+                    // Short sessions never pair: an upper day under 45 min leaves the
+                    // week with almost no hinge, hamstring or core work.
+                    for pair in excess > 0 && hardI > 0 && s >= 2 && ctx.length >= 45 ? [true, false] : [false] {
                         var s = s, i = i, excess = excess
                         var upper = 0
                         if pair { upper = 1; excess -= 1 }
@@ -1200,7 +1269,7 @@ enum SmartPlanner {
 
     struct VolumeLine: Equatable {
         let group: String
-        let sets: Double          // per week
+        var sets: Double          // per week
         let target: ClosedRange<Int>
         let mrv: Int
         var inRange: Bool { sets >= Double(target.lowerBound) - 0.01 && sets <= Double(target.upperBound) + 0.01 }
@@ -1237,6 +1306,17 @@ enum SmartPlanner {
             let total = plan.sessions.reduce(0) { $0 + $1.sets(of: g) }
             let lm = SmartCoach.landmarks.first { $0.group == g }
             return VolumeLine(group: g, sets: total / plan.weeks, target: targetRange(group: g, config: plan.config), mrv: lm?.mrv ?? 99)
+        }
+    }
+
+    /// The volume report with core stability drills counted as core sets
+    /// (floors only: the caps stay on lifted sets).
+    static func longevityFloorReport(_ plan: Plan) -> [VolumeLine] {
+        let drillCore = plan.sessions.reduce(0) { $0 + $1.stabilityCoreSets } / plan.weeks
+        return volumeReport(plan).map { l in
+            var l = l
+            if l.group == "Core" { l.sets += drillCore }
+            return l
         }
     }
 
@@ -1481,7 +1561,7 @@ enum SmartPlanner {
             if x.items.contains(where: { $0.heavyLoad && ($0.pattern == .hPush || $0.pattern == .vPush) }) { s.upperHeavy += 1 }
         }
         let w = plan.weeks
-        s.aerobic += plan.restDayWalk * plan.walkDaysPerWeek * w
+        s.aerobic += (plan.restDayWalk * plan.walkDaysPerWeek + plan.trainingDayWalk * plan.trainingWalkDaysPerWeek) * w
         s.strengthSessions /= w; s.aerobic /= w; s.vo2 /= w; s.mobility /= w; s.balanceSessions /= w
         s.lowerHeavy /= w; s.upperHeavy /= w; s.sessions = Double(plan.sessions.count) / w
         return s
@@ -1598,9 +1678,14 @@ enum SmartPlanner {
         return Double(max(0, 7 - weekdays(for: c).count))
     }
 
+    /// The longest rest-day walk: past this a rest day stops being recovery.
+    static let maxRestDayWalk = 30.0
+
     /// When the sessions alone miss the goal's weekly aerobic minutes, a
-    /// brisk walk outside the sessions makes up the gap: on each rest day
-    /// (20-45 min), or every day when the rest days cannot hold it.
+    /// brisk walk outside the sessions makes up the gap: first on each rest
+    /// day (20-30 min, recovery pace), then, only for what the rest days
+    /// cannot hold, an extra walk on training days, done outside the session.
+    /// (Zone 2 days already run the full session length for health goals.)
     static func addRestDayWalks(_ p: inout Plan, ctx: Ctx) {
         let target: Double
         switch ctx.goal {
@@ -1612,15 +1697,21 @@ enum SmartPlanner {
         let have = p.sessions.reduce(0) { $0 + $1.aerobic } / p.weeks
         let gap = target - have
         guard gap > 0.5 else { return }
-        let restOnly = rd > 0.01 && gap / rd <= 45
-        let days = restOnly ? rd : 7
-        let per = min(45, max(restOnly ? 20 : 15, (gap / days / 5).rounded(.up) * 5))
-        p.restDayWalk = per
-        p.walkDaysPerWeek = days
+        var left = gap
+        if rd > 0.01 {
+            let per = min(maxRestDayWalk, max(20, (gap / rd / 5).rounded(.up) * 5))
+            p.restDayWalk = per
+            p.walkDaysPerWeek = rd
+            left -= per * rd
+        }
         // Rest-day walks live on the rest-day page (`restDayPlan`), never in a
-        // training session. Only when the rest days cannot hold the gap does a
-        // training day carry an extra walk, done outside the session.
-        guard !restOnly else { return }
+        // training session. Only what the rest days cannot hold goes on the
+        // training days, as an extra walk outside the session.
+        let td = Double(p.sessions.count) / p.weeks
+        guard left > 0.5, td > 0.01 else { return }
+        let per = min(30, max(10, (left / td / 5).rounded(.up) * 5))
+        p.trainingDayWalk = per
+        p.trainingWalkDaysPerWeek = td
         for i in p.sessions.indices {
             p.sessions[i].items.append(Item(kind: .outside, name: "Extra Brisk Walk (any time today, outside this session)", minutes: per))
         }
@@ -1630,7 +1721,8 @@ enum SmartPlanner {
     /// `walk`: brisk-walk minutes the plan needs on rest days (0 = none needed).
     static func restDayPlan(config: ProgramConfig, walk: Double = 0) -> RestDayPlan {
         let ctx = Ctx(config: config)
-        let minutes = Int(min(45, max(walk > 0 ? walk : (ctx.healthGoal ? 25 : 20), 20)))
+        // The same minutes the plan counted (`walk`), never more than a recovery walk.
+        let minutes = Int(min(maxRestDayWalk, walk > 0 ? walk : (ctx.healthGoal ? 25 : 20)))
         var items = ["Brisk Walk (Zone 1-2, easy enough to talk) \(minutes) min",
                      "Easy Mobility Flow (hips, spine, shoulders) 10 min",
                      "Optional: Foam Rolling (calves, quads, upper back) 5 min",
@@ -1638,7 +1730,7 @@ enum SmartPlanner {
         if ctx.injuries.contains("Knee") { items[0] = "Easy Walk or Cycling (Zone 1-2, easy enough to talk) \(minutes) min" }
         var note = "Recovery, not training: keep everything easy. Skip it if you feel run down."
         if walk > 0 { note += " The walk counts toward your weekly aerobic minutes." }
-        return RestDayPlan(title: "Rest Day: Active Recovery", exercises: items, note: note, estimatedDuration: minutes + 10)
+        return RestDayPlan(title: RestDayPlan.recoveryTitle, exercises: items, note: note, estimatedDuration: minutes + 10)
     }
 
     /// Coaching cue shown with a session's lifts.
@@ -1685,13 +1777,19 @@ enum SmartPlanner {
                              blockDays: u.blockDays)
                 p.restDayWalk = up.restDayWalk
                 p.walkDaysPerWeek = up.walkDaysPerWeek
+                p.trainingDayWalk = up.trainingDayWalk
+                p.trainingWalkDaysPerWeek = up.trainingWalkDaysPerWeek
                 let sc = qualityScore(p).total
                 // Size: no cardio or walk days while a major muscle is under its
                 // minimum. Rolling: every cycle gets the same strength days.
                 var perCycle: [Int: Int] = [:]
                 for (sl, s) in zip(u.unit, up.sessions) { perCycle[sl.cycle, default: 0] += s.hasStrength ? 1 : 0 }
+                // Longevity: no major muscle group, and no core (lifts or stability
+                // drills), left under its minimum.
+                let under = longevityFloorReport(p).filter { $0.sets < Double($0.target.lowerBound) - 0.01 }.map(\.group)
                 if (ctx.goal == .buildMuscle && p.sessions.contains(where: { $0.spec.kind != .strength })
-                    && volumeReport(p).contains(where: { majorGroups.contains($0.group) && $0.sets < Double($0.target.lowerBound) - 0.01 }))
+                    && under.contains(where: majorGroups.contains))
+                    || (ctx.goal == .longevity && under.contains(where: { majorGroups.contains($0) || $0 == "Core" }))
                     || (perCycle.values.max() ?? 0) - (perCycle.values.min() ?? 0) > (config.daysOn >= 4 ? 0 : 1) {
                     if sc > fallbackScore + 1e-9 { fallbackScore = sc; fallbackPlan = p }
                     continue
@@ -1778,6 +1876,8 @@ extension SmartPlanner {
             ("flex 3/wk bw", sampleConfig(.increaseFlexibility, perWeek: 3, eq: .bodyweight)),
             ("general beginner 3/wk", sampleConfig(.generalFitness, .beginner, perWeek: 3)),
             ("longevity beginner 3/wk", sampleConfig(.longevity, .beginner, perWeek: 3)),
+            ("longevity beginner 3/wk 30", sampleConfig(.longevity, .beginner, perWeek: 3, len: 30)),
+            ("longevity int 4/wk 30", sampleConfig(.longevity, perWeek: 4, len: 30)),
             ("size advanced 6/wk", sampleConfig(.buildMuscle, .advanced, perWeek: 6)),
         ]
         for (name, c) in samples {
@@ -1826,6 +1926,7 @@ struct RestDayPlan: Codable, Equatable {
     }
 
     static let storageKey = "restDayPlan.v1"
+    static let recoveryTitle = "Rest Day: Active Recovery"
 
     static func stored(_ d: UserDefaults = .standard) -> RestDayPlan? {
         d.data(forKey: storageKey).flatMap { try? JSONDecoder().decode(RestDayPlan.self, from: $0) }

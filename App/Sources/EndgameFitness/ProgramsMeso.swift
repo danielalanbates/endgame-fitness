@@ -119,6 +119,95 @@ extension WorkoutManager {
             userProfile = profile
         }
         normalizeSchedule()
+        migrateProgramIfNeeded()
+    }
+
+    // MARK: Planner-update migration
+
+    static let programConfigKey = "programConfig.v1"
+    static let plannerVersionKey = "plannerVersion"
+    static let programEditedKey = "programEditedByUser"
+    /// "rebuilt" (the program was rebuilt) or "rebuild" (the user should rebuild it).
+    static let programNoticeKey = "programUpdateNotice"
+
+    /// The wizard answers the current program was built with.
+    func savedProgramConfig() -> ProgramConfig? {
+        UserDefaults.standard.data(forKey: Self.programConfigKey).flatMap { try? JSONDecoder().decode(ProgramConfig.self, from: $0) }
+    }
+
+    /// Entries an older planner put inside every session for the rest days.
+    static func isStaleRestDayEntry(_ text: String) -> Bool {
+        let name = ProgramTargetParser.parse(text).name.lowercased()
+        return name.hasPrefix("brisk walk on rest days") || name.hasPrefix("brisk walk every day")
+    }
+
+    /// The wizard answers of a program built before they were saved, read
+    /// back from what was saved then: goal, level, schedule, length (the
+    /// longest session), equipment and injuries from the profile, and the
+    /// split when the labels match a hand-picked split's rotation.
+    /// `values`: the saved settings (`UserDefaults.dictionaryRepresentation()`).
+    static func reconstructConfig(schedule: [ScheduledWorkout], values v: [String: Any], profile: UserProfile?) -> ProgramConfig? {
+        func str(_ k: String) -> String { v[k] as? String ?? "" }
+        func int(_ k: String) -> Int? { (v[k] as? NSNumber)?.intValue }
+        guard !schedule.isEmpty, let goal = TrainingGoal(rawValue: str("progressionGoal")) else { return nil }
+        var c = ProgramConfig()
+        c.primaryGoal = goal
+        c.experienceLevel = ExperienceLevel(rawValue: str("progressionExperience")) ?? profile?.experienceLevel ?? .intermediate
+        c.equipment = profile?.availableEquipment ?? .fullGym
+        let known = ["low back": "Low back", "shoulder": "Shoulder", "knee": "Knee"]
+        c.injuries = Set((profile?.healthConditions ?? []).compactMap { h in known.first { h.lowercased().contains($0.key) }?.value })
+        if let p = ProgressionStyle(rawValue: str("progressionStyle")) { c.progression = p }
+        if let m = int("mesocycleWeeks") { c.mesocycleWeeks = m }
+        if let dl = v["deloadEnabled"] as? NSNumber { c.includeDeload = dl.boolValue }
+        let days = v["trainingWeekdays"] as? [String] ?? []
+        if str("scheduleMode") == ScheduleMode.rolling.rawValue {
+            c.scheduleMode = .rolling
+            c.daysOn = max(1, int("cycleDaysOn") ?? 1)
+            c.daysOff = max(0, int("cycleDaysOff") ?? 0)
+        } else {
+            guard !days.isEmpty else { return nil }
+            c.scheduleMode = .weekly
+            c.weekdays = Set(days)
+            c.daysPerWeek = days.count
+        }
+        c.sessionLength = SessionLength.clamp(schedule.map(\.estimatedDuration).max() ?? 60)
+        let labels = schedule.map(\.workoutType)
+        c.split = ProgramSplit.allCases.first { sp in
+            sp != .auto && labels.indices.allSatisfy { labels[$0] == sp.rotation[$0 % sp.rotation.count].label }
+        } ?? .auto
+        return c
+    }
+
+    /// A wizard-built program from an older planner version is rebuilt from
+    /// its saved answers (keeping the cycle start), so warm-ups, the
+    /// rest-day page and joint-safe loading reach it without a manual rerun.
+    /// A program the user edited by hand is never overwritten: its stale
+    /// rest-day walks are removed and a notice asks for a rebuild. Catalog
+    /// and custom programs are left alone.
+    func migrateProgramIfNeeded(defaults d: UserDefaults = .standard) {
+        guard !weeklySchedule.isEmpty, d.integer(forKey: Self.plannerVersionKey) < SmartPlanner.version else { return }
+        guard d.bool(forKey: "rotationIndexed") else { d.set(SmartPlanner.version, forKey: Self.plannerVersionKey); return }
+        if !d.bool(forKey: Self.programEditedKey),
+           let config = savedProgramConfig() ?? Self.reconstructConfig(schedule: weeklySchedule, values: d.dictionaryRepresentation(), profile: userProfile) {
+            // After init finishes (this runs while the shared manager loads).
+            DispatchQueue.main.async { [weak self] in
+                self?.generateProgram(with: config, keepStart: true)   // also saves the new planner version
+                d.set("rebuilt", forKey: Self.programNoticeKey)
+                self?.objectWillChange.send()
+            }
+            return
+        } else {
+            weeklySchedule = weeklySchedule.map { day in
+                var day = day
+                day.exercises.removeAll(where: Self.isStaleRestDayEntry)
+                day.plan = nil
+                day.normalizePlan()
+                return day
+            }
+            d.set("rebuild", forKey: Self.programNoticeKey)
+            saveScheduleState()
+        }
+        d.set(SmartPlanner.version, forKey: Self.plannerVersionKey)
     }
 
     /// Program generators still write names like "Bench Press 4x8". Split the
@@ -149,6 +238,8 @@ extension WorkoutManager {
 
     /// Save edits to the program in place (keeps weekly/rolling mode).
     func updateCurrentProgram(name: String, days: [ScheduledWorkout]) {
+        // Hand edits: a planner update must never silently overwrite them.
+        UserDefaults.standard.set(true, forKey: Self.programEditedKey)
         weeklySchedule = days
         currentProgramName = name.isEmpty ? "My Program" : name
         saveScheduleState()

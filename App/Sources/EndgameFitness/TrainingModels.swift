@@ -272,6 +272,10 @@ struct WorkoutSession: Codable, Identifiable, Equatable {
         completedSetCount > 0 || (syncedTotalReps ?? 0) > 0 || (syncedTotalVolume ?? 0) > 0
     }
 
+    /// A rest-day recovery session (started from the rest-day plan): logged
+    /// like any session, but not a training day for adherence or the weekly goal.
+    var isRecoverySession: Bool { programName == RestDayPlan.recoveryTitle }
+
     var displayName: String {
         if let programName, !programName.isEmpty { return programName }
         return "Workout"
