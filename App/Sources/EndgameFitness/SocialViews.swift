@@ -2,7 +2,7 @@
 //  SocialViews.swift
 //  Endgame Fitness
 //
-//  Sign-in, the player card, and the Community tab (feed, leaderboard, friends;
+//  Sign-in, the player card, and the Community tab (feed, leaderboard, friends, rivals, Gym Party, Game Center, share;
 //  guild and season live in GuildViews.swift / SeasonViews.swift). This is
 //  where the app stops being a spreadsheet and starts being a game other
 //  people can see.
@@ -174,10 +174,14 @@ enum CommunitySection: String, CaseIterable, Identifiable {
     case feed = "Feed"
     case leaderboard = "Leaderboard"
     case friends = "Friends"
+    case rivals = "Rivals"
+    case party = "Gym Party"
     case guild = "Guild"
     case season = "Season"
     case challenges = "Challenges"
     case quests = "Quests"
+    case gameCenter = "Game Center"
+    case share = "Share"
 
     var id: String { rawValue }
 
@@ -186,6 +190,10 @@ enum CommunitySection: String, CaseIterable, Identifiable {
         case .feed:        return "bolt.horizontal.fill"
         case .leaderboard: return "trophy.fill"
         case .friends:     return "person.2.fill"
+        case .rivals:      return "person.2.wave.2.fill"
+        case .party:       return "dot.radiowaves.left.and.right"
+        case .gameCenter:  return "gamecontroller.fill"
+        case .share:       return "square.and.arrow.up"
         case .guild:       return "shield.lefthalf.filled"
         case .season:      return "calendar.badge.clock"
         case .challenges:  return "flag.2.crossed.fill"
@@ -253,6 +261,20 @@ struct CommunityView: View {
         case .season:      SeasonView(open: open)
         case .challenges:  ChallengesView()
         case .quests:      QuestsAndAchievementsPane()
+        // From the former Social tab.
+        case .rivals:      socialPane { RivalsPane() }
+        case .party:       socialPane { GymPartyPane() }
+        case .gameCenter:  socialPane { GameCenterPane() }
+        case .share:       socialPane { SharePane() }
+        }
+    }
+
+    private func socialPane<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .padding(16)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -292,11 +314,12 @@ struct CommunityView: View {
         case .season:      break   // SeasonView loads itself
         case .challenges:  await game.loadChallenges()
         case .quests:      await game.loadQuests()
+        case .rivals, .party, .gameCenter, .share: break   // these panes load themselves
         }
     }
 }
 
-/// Horizontally scrolling chips: seven sections don't fit a 390pt screen as a
+/// Horizontally scrolling chips: eleven sections don't fit a 390pt screen as a
 /// segmented control, and the same row reads well in a Mac window.
 struct CommunitySectionBar: View {
     @Binding var selection: CommunitySection

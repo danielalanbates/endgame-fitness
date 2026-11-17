@@ -142,7 +142,8 @@ enum SmartPlanner {
         Move(name: "Lat Pulldowns", pattern: .vPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5], safeFor: ["Shoulder"], longevity: 1),
         Move(name: "Chin-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 1], beginner: false, flags: ["Shoulder"], reps: "5-10", longevity: -1),
         Move(name: "Assisted Pull-ups", pattern: .vPull, gear: [.machine], muscles: ["Back": 1, "Biceps": 0.5], flags: ["Shoulder"], longevity: 1, longevityOnly: true),
-        Move(name: "Band-Assisted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], flags: ["Shoulder"], reps: "5-8"),
+        // Needs a bar and a band; ranks with the band moves, so a gym's lat pulldown or assisted machine comes first.
+        Move(name: "Band-Assisted Pull-ups", pattern: .vPull, gear: [.band], muscles: ["Back": 1, "Biceps": 0.5], flags: ["Shoulder"], reps: "5-8"),
         Move(name: "Band Lat Pulldowns", pattern: .vPull, gear: [.band], muscles: ["Back": 1, "Biceps": 0.5]),
         Move(name: "Prone Lat Pulls", pattern: .vPull, gear: [.bodyweight], muscles: ["Back": 1], reps: "12-15"),
         // Core / carry
@@ -189,7 +190,7 @@ enum SmartPlanner {
         Move(name: "Glute Bridges", pattern: .glute, gear: [.bodyweight], muscles: ["Glutes": 1, "Hamstrings": 0.5], reps: "12-20", longevity: 1),
         Move(name: "Single-Leg Glute Bridges", pattern: .glute, gear: [.bodyweight], muscles: ["Glutes": 1, "Hamstrings": 0.5], reps: "10-12"),
         Move(name: "Leg Curls", pattern: .hamIso, gear: [.machine], muscles: ["Hamstrings": 1]),
-        Move(name: "Sliding Leg Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], reps: "8-12"),
+        Move(name: "Sliding Leg Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], reps: "6-10"),
         Move(name: "Nordic Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], beginner: false, reps: "4-6", longevity: -1),
         Move(name: "Leg Extensions", pattern: .quadIso, gear: [.machine], muscles: ["Quads": 1], flags: ["Knee"]),
         Move(name: "Wall Sits", pattern: .quadIso, gear: [.bodyweight], muscles: ["Quads": 1], reps: "45s"),
@@ -333,7 +334,7 @@ enum SmartPlanner {
             return zip(slots, sessions).map { slot, s in
                 ScheduledWorkout(dayOfWeek: slot.label, workoutType: s.label, exercises: s.items.map(\.text),
                                  estimatedDuration: max(10, min(config.sessionLength, Int(s.minutes.rounded()))),
-                                 notes: s.hasStrength ? note : nil)
+                                 notes: s.hasStrength ? SmartPlanner.joinedNote(note, SmartPlanner.bodyweightNote(s.items)) : nil)
             }
         }
 
@@ -1731,6 +1732,34 @@ enum SmartPlanner {
         var note = "Recovery, not training: keep everything easy. Skip it if you feel run down."
         if walk > 0 { note += " The walk counts toward your weekly aerobic minutes." }
         return RestDayPlan(title: RestDayPlan.recoveryTitle, exercises: items, note: note, estimatedDuration: minutes + 10)
+    }
+
+    /// Catalog moves done with bodyweight, a band or a pull-up bar only: tracked
+    /// as reps (optional added load), never as a weight to pick. Timed ones ("40s")
+    /// stay timed; heavy-only loaded variants (Weighted Pull-ups) stay weighted.
+    static let bodyweightOnlyMoves: [String: SetTracking] = {
+        var out: [String: SetTracking] = [:]
+        for m in catalog where m.gear.isSubset(of: [.bodyweight, .band, .pullupBar]) && !m.heavyOnly {
+            out[ExerciseLibrary.normalize(m.name)] = (m.reps?.hasSuffix("s") ?? false) ? .timed : .bodyweight
+        }
+        return out
+    }()
+
+    static func bodyweightTracking(name: String) -> SetTracking? {
+        bodyweightOnlyMoves[ExerciseLibrary.normalize(ProgramTargetParser.parse(name).name)]
+    }
+
+    /// How a session's bodyweight/band lifts progress, since they have no weight to add.
+    static func bodyweightNote(_ items: [Item]) -> String? {
+        let names = items.filter { $0.kind == .lift && !$0.gear.isEmpty && $0.gear.isSubset(of: [.bodyweight, .band]) }.map(\.name)
+        guard !names.isEmpty else { return nil }
+        let list = names.prefix(3).joined(separator: ", ")
+        return "No weight for \(list): lower slowly (about 3 s), add reps up to the top of the range, then move to a harder version (single-leg, feet elevated, a stronger band)."
+    }
+
+    static func joinedNote(_ parts: String?...) -> String? {
+        let t = parts.compactMap { $0 }.joined(separator: " ")
+        return t.isEmpty ? nil : t
     }
 
     /// Coaching cue shown with a session's lifts.

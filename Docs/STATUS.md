@@ -140,7 +140,9 @@ scripts/ship.sh both 1.0.0 <build>
 
 ## Social tab without accounts (2026-11-16)
 
-New Social tab (tab 8): Rivals board from player-card codes/QR/deep links, optional
+Now Community tab sections (the separate Social tab 8 was removed the same day;
+its feed was a duplicate of Community > Feed, rival events moved to Rivals > Rival
+activity): Rivals board from player-card codes/QR/deep links, optional
 Game Center per local player (weekly boards, mirrored achievements, friends,
 turn-based volume duels), Gym Party (MultipeerConnectivity co-op boss fed by
 completed sets), and share-card images via ShareLink. Design, App Store Connect

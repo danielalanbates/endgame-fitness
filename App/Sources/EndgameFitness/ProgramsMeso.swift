@@ -436,21 +436,9 @@ struct ProgramsView: View {
 
                 if hasActiveProgram {
                     currentProgramBanner
-                    if let rest = workoutManager.restDayProgram {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Training days: \(workoutManager.weeklySchedule.count) in the rotation. Rest days:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            RestDayPlanView(plan: rest)
-                        }
-                        .padding()
-                        .background(Color.brandYellow.opacity(0.08))
-                        .cornerRadius(12)
-                    }
                 }
 
                 actionButtons
-                ModulatorSection()
                 catalogSection
             }
             .padding()
@@ -498,9 +486,6 @@ struct ProgramsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Current Program: \(workoutManager.currentProgramName ?? "Custom Schedule")")
                     .font(.headline)
-                Text("\(workoutManager.weeklySchedule.count) workouts. Edit it, rebuild it, drop it, or pick another program below.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
                 HStack(spacing: 8) {
                     Button { showEditProgram = true } label: { Label("Edit Program", systemImage: "pencil") }
                     Button { showWizard = true } label: { Label("Rebuild", systemImage: "wand.and.stars") }
@@ -654,96 +639,6 @@ struct CatalogProgramCard: View {
 }
 
 // MARK: - Modulator section (sliders + presets)
-
-struct ModulatorSection: View {
-    @EnvironmentObject var workoutManager: WorkoutManager
-
-    private static let presets: [(title: String, subtitle: String, icon: String, preset: String)] = [
-        ("Optimal", "Balanced approach", "⚖️", "optimal"),
-        ("Time Crunched", "Short, intense sessions", "⏱️", "time_crunched"),
-        ("Weekend Warrior", "Infrequent, long sessions", "🏔️", "weekend_warrior"),
-        ("Longevity", "Safety-focused, recovery", "🛡️", "longevity"),
-        ("Strength", "Heavy lifting, low reps", "💪", "strength"),
-        ("Weight Lifter", "Olympic-style training", "🏋️", "weight_lifter"),
-        ("Powerlifting", "Main lifts focus", "🐘", "powerlifting"),
-        ("Power Building", "Hybrid strength/speed", "⚡", "power_building"),
-        ("Bodybuilding", "High volume hypertrophy", "🏆", "bodybuilding"),
-        ("Functional Fitness", "Multi-joint movements", "🤸", "functional_fitness"),
-        ("Bodybuilder MAX", "Precautions thrown out", "🔥", "bodybuilder"),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("🎛️ Workout Modulator")
-                .font(.title2)
-                .bold()
-            Text("Fine-tune your training approach")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250))], spacing: 16) {
-                modSlider(value: $workoutManager.repRangeModulation, icon: "repeat", color: .brandBlue,
-                          title: "Rep Range (Safe to Maximal)", low: "Safer", high: "Maximal")
-                modSlider(value: $workoutManager.volumeIntensityModulation, icon: "chart.bar.fill", color: .brandGreen,
-                          title: "Volume vs Intensity", low: "Volume", high: "Intensity")
-                modSlider(value: $workoutManager.frequencyModulation, icon: "calendar.badge.clock", color: .brandOrange,
-                          title: "Training Frequency", low: "Often", high: "Sparingly")
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("🎯 Bodybuilder Mini")
-                    .font(.subheadline)
-                    .bold()
-                Toggle("Add intense hypertrophy exercises to any program", isOn: $workoutManager.bodybuilderMiniActive)
-                    .toggleStyle(.switch)
-                    .tint(.brandOrange)
-            }
-            .padding()
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(12)
-
-            VStack(alignment: .leading, spacing: 16) {
-                Text("🎯 Training Presets")
-                    .font(.title2)
-                    .bold()
-                Text("Choose your training style to auto-adjust modulation settings")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))], spacing: 12) {
-                    ForEach(Self.presets, id: \.preset) { p in
-                        PresetButton(title: p.title, subtitle: p.subtitle, icon: p.icon,
-                                     preset: p.preset, workoutManager: workoutManager)
-                    }
-                }
-            }
-            .padding()
-            .background(Color.brandPurple.opacity(0.1))
-            .cornerRadius(12)
-        }
-    }
-
-    private func modSlider(value: Binding<Double>, icon: String, color: Color, title: String, low: String, high: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: icon).foregroundColor(color)
-                Text(title).font(.subheadline).bold()
-            }
-            VStack {
-                Slider(value: value, in: 0...100, step: 5).tint(color)
-                HStack {
-                    Text(low).font(.caption).foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(value.wrappedValue))%").font(.headline)
-                    Spacer()
-                    Text(high).font(.caption).foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
-    }
-}
 
 // MARK: - Custom workout builder
 
