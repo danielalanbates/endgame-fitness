@@ -109,6 +109,8 @@ final class ExerciseLibrary {
 
     /// Set tracking for a known id, else inferred from the name alone.
     func tracking(forID id: String?, name: String) -> SetTracking {
+        // A planner move done with bodyweight or a band only is never given a load to pick.
+        if let planned = SmartPlanner.bodyweightTracking(name: name) { return planned }
         if let id, let entry = byID[id] { return entry.tracking }
         if let entry = match(name: name) { return entry.tracking }
         return Self.inferTracking(category: nil, equipment: nil, force: nil, name: name)

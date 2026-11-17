@@ -146,10 +146,6 @@ class WorkoutManager: ObservableObject {
     @Published var selectedTab: Int = 0
     @Published var userProfile: UserProfile?
     @Published var weeklySchedule: [ScheduledWorkout] = []
-    @Published var repRangeModulation: Double = 50.0 // 0-100, 50=neutral
-    @Published var volumeIntensityModulation: Double = 50.0 // Lower=volume bias, higher=intensity bias
-    @Published var frequencyModulation: Double = 50.0 // Lower=often, higher=sparingly
-    @Published var bodybuilderMiniActive: Bool = false
     @Published var currentProgramName: String?
     @Published var mesoPhases: [MesoPhase] = MesoPhase.classic12Week
     /// A new workout was requested while one is in progress. The Workout tab
@@ -210,7 +206,6 @@ class WorkoutManager: ObservableObject {
         TrainingUnits.migrateLegacySetting()
         loadData()
         loadDefaultPrograms()
-        loadModulations()
     }
 
     func loadData() {
@@ -239,21 +234,6 @@ class WorkoutManager: ObservableObject {
         } else {
             SessionGame.shared.sessionStarted()
         }
-    }
-
-    func loadModulations() {
-        repRangeModulation = UserDefaults.standard.double(forKey: "repRangeModulation") != 0 ? UserDefaults.standard.double(forKey: "repRangeModulation") : 50.0
-        volumeIntensityModulation = UserDefaults.standard.double(forKey: "volumeIntensityModulation") != 0 ? UserDefaults.standard.double(forKey: "volumeIntensityModulation") : 50.0
-        frequencyModulation = UserDefaults.standard.double(forKey: "frequencyModulation") != 0 ? UserDefaults.standard.double(forKey: "frequencyModulation") : 50.0
-        bodybuilderMiniActive = UserDefaults.standard.bool(forKey: "bodybuilderMiniActive")
-    }
-
-    func saveModulations() {
-        UserDefaults.standard.set(repRangeModulation, forKey: "repRangeModulation")
-        UserDefaults.standard.set(volumeIntensityModulation, forKey: "volumeIntensityModulation")
-        UserDefaults.standard.set(frequencyModulation, forKey: "frequencyModulation")
-        UserDefaults.standard.set(bodybuilderMiniActive, forKey: "bodybuilderMiniActive")
-        UserDefaults.standard.synchronize()
     }
 
     func saveData() {
@@ -539,13 +519,6 @@ class WorkoutManager: ObservableObject {
         return streak
     }
 
-    func generateInitialProgram() {
-        guard userProfile != nil else { return }
-
-        // Start with optimal preset by default
-        generateProgramWithPreset(preset: "optimal")
-    }
-
     // MARK: - Program Wizard generation
 
     /// Builds the mesocycle from the full wizard config: chosen weekdays,
@@ -619,7 +592,8 @@ class WorkoutManager: ObservableObject {
             let session = rotation[k % rotation.count]
             let dayLabel: String
             if config.scheduleMode == .rolling {
-                dayLabel = "Day \(k + 1)"
+                // Cycle-local day numbers, so the listed rest days ("Day 5 · Rest Day") line up.
+                dayLabel = length > perCycle ? "Day \(k % perCycle + 1) · Cycle \(k / perCycle + 1)" : "Day \(k + 1)"
             } else {
                 let weekday = days[k % perCycle]
                 dayLabel = length > perCycle ? "\(weekday) · Wk \(k / perCycle + 1)" : weekday
@@ -765,6 +739,11 @@ class WorkoutManager: ObservableObject {
     /// nil when the program has no rest days (7 days a week, or 0 days off).
     var restDayProgram: RestDayPlan? {
         guard !weeklySchedule.isEmpty, hasRestDays() else { return nil }
+        return savedRestDayPlan
+    }
+
+    /// The plan saved with this program, else the default for the saved goal.
+    private var savedRestDayPlan: RestDayPlan {
         if let stored = RestDayPlan.stored(), stored.scheduleSignature == weeklySchedule.first?.id.uuidString { return stored }
         var c = ProgramConfig()
         c.primaryGoal = TrainingGoal(rawValue: UserDefaults.standard.string(forKey: "progressionGoal") ?? "")
@@ -809,6 +788,116 @@ class WorkoutManager: ObservableObject {
                                        weekdays: d.stringArray(forKey: "trainingWeekdays") ?? [], plan: plan)
         }
         return plan
+    }
+
+    // MARK: - Rest days in the schedule list
+
+    /// One page of the schedule as listed: a training entry, or a rest day in
+    /// sequence after the entry it follows. Display only: rest days never enter
+    /// `weeklySchedule`, so training-day indexing, session counts, streaks,
+    /// adherence and XP are unchanged.
+    enum SchedulePageSlot: Equatable {
+        case training(Int)
+        /// `after`: the training entry it follows; `offset`: 0 = the first rest day after it.
+        case rest(after: Int, offset: Int, label: String)
+    }
+
+    static let mondayFirstWeekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    /// Where the rest days fall between the training entries (`labels` = their
+    /// `dayOfWeek`). Rolling: `daysOff` rest days after every `daysOn` entries
+    /// ("Day 5 · Rest Day"). Weekly: the off weekdays between consecutive
+    /// entries, wrapping from the last back to the first ("Tuesday · Rest Day").
+    /// Pure, so the selftest can check it.
+    static func schedulePageSlots(labels: [String], rolling: Bool, daysOn: Int, daysOff: Int) -> [SchedulePageSlot] {
+        let n = labels.count
+        guard n > 0 else { return [] }
+        var out: [SchedulePageSlot] = []
+        if rolling {
+            let on = max(1, daysOn), off = max(0, daysOff)
+            // Programs saved before cycle-local labels number every training day
+            // ("Day 1"..."Day 16"); a "Day 5 · Rest Day" would clash with the next entry.
+            let legacy = n > on && !labels.contains { $0.contains(" · Cycle ") }
+            for k in 0..<n {
+                out.append(.training(k))
+                guard off > 0, (k + 1) % on == 0 else { continue }
+                let cycle = n > on ? " · Cycle \(k / on + 1)" : ""
+                for j in 0..<off {
+                    let label = legacy ? "Rest Day\(off > 1 ? " \(j + 1)" : "") · after \(labels[k])" : "Day \(on + j + 1)\(cycle) · Rest Day"
+                    out.append(.rest(after: k, offset: j, label: label))
+                }
+            }
+            return out
+        }
+        let parsed: [(day: Int, week: String?)?] = labels.map { label in
+            let parts = label.components(separatedBy: " · ")
+            guard let day = mondayFirstWeekdays.firstIndex(of: parts[0]) else { return nil }
+            return (day, parts.dropFirst().first { $0.hasPrefix("Wk ") })
+        }
+        // Labels that are not weekdays (a hand-made list): nothing to place.
+        guard parsed.allSatisfy({ $0 != nil }) else { return (0..<n).map { .training($0) } }
+        for k in 0..<n {
+            out.append(.training(k))
+            let cur = parsed[k]!, next = parsed[(k + 1) % n]!
+            var gap = (next.day - cur.day + 7) % 7
+            if gap == 0 { gap = 7 }  // the same weekday again: a week later
+            guard gap > 1 else { continue }
+            let week = cur.week.map { " · \($0)" } ?? ""
+            for j in 0..<(gap - 1) {
+                out.append(.rest(after: k, offset: j, label: "\(mondayFirstWeekdays[(cur.day + 1 + j) % 7])\(week) · Rest Day"))
+            }
+        }
+        return out
+    }
+
+    /// A rest page's stable id, so "today" can point at it across redraws.
+    static func restPageID(after: Int, offset: Int) -> UUID {
+        UUID(uuidString: String(format: "52455354-0000-0000-%04X-%012X", offset & 0xFFFF, after))!
+    }
+
+    static func isRestPage(_ w: ScheduledWorkout) -> Bool { w.id.uuidString.hasPrefix("52455354-0000-0000-") }
+
+    private func schedulePageSlots() -> [SchedulePageSlot] {
+        let d = UserDefaults.standard
+        return Self.schedulePageSlots(labels: weeklySchedule.map(\.dayOfWeek),
+                                      rolling: d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue,
+                                      daysOn: d.integer(forKey: "cycleDaysOn"), daysOff: d.integer(forKey: "cycleDaysOff"))
+    }
+
+    /// The program as listed in the Workouts tab: each training day, and each
+    /// rest day as its own page carrying the recovery programming.
+    var schedulePages: [ScheduledWorkout] {
+        guard !weeklySchedule.isEmpty else { return [] }
+        let rest = savedRestDayPlan
+        return schedulePageSlots().map { slot in
+            switch slot {
+            case .training(let i): return weeklySchedule[i]
+            case .rest(let after, let offset, let label):
+                var w = rest.asScheduledWorkout
+                w.id = Self.restPageID(after: after, offset: offset)
+                w.dayOfWeek = label
+                return w
+            }
+        }
+    }
+
+    /// Today's page in `schedulePages`: the training entry, or on a rest day
+    /// the rest page that follows the last training day.
+    func todaySchedulePageIndex(in pages: [ScheduledWorkout], date: Date = Date()) -> Int? {
+        if let w = scheduledWorkout(for: date) { return pages.firstIndex { $0.id == w.id } }
+        guard pages.contains(where: Self.isRestPage) else { return nil }
+        let cal = Calendar.current
+        for back in 1...14 {
+            guard let day = cal.date(byAdding: .day, value: -back, to: date), let w = scheduledWorkout(for: day),
+                  let i = weeklySchedule.firstIndex(where: { $0.id == w.id }) else { continue }
+            let exact = Self.restPageID(after: i, offset: back - 1)
+            return pages.firstIndex { $0.id == exact }
+                ?? pages.firstIndex { $0.id == Self.restPageID(after: i, offset: 0) }
+        }
+        // Before the first training day: the rest days that close the block lead into it.
+        let today = Self.mondayFirstWeekdays[(cal.component(.weekday, from: date) + 5) % 7]
+        return pages.lastIndex { Self.isRestPage($0) && $0.dayOfWeek.hasPrefix(today) }
+            ?? pages.lastIndex(where: Self.isRestPage)
     }
 
     /// Today's planned session for either schedule mode.
@@ -885,516 +974,6 @@ class WorkoutManager: ObservableObject {
             }
             return ex
         }
-    }
-
-    // Generate program with specific preset and modulation settings
-    func generateProgramWithPreset(preset: String) {
-        switch preset {
-        case "optimal":
-            generateOptimalProgram()
-        case "time_crunched":
-            generateTimeCrunchedProgram()
-        case "weekend_warrior":
-            generateWeekendWarriorProgram()
-        case "longevity":
-            generateLongevityProgram()
-        case "strength":
-            generateStrengthProgram()
-        case "weight_lifter":
-            generateWeightLifterProgram()
-        case "powerlifting":
-            generatePowerliftingProgram()
-        case "power_building":
-            generatePowerBuildingProgram()
-        case "bodybuilding":
-            generateBodybuildingProgram()
-        case "functional_fitness":
-            generateFunctionalFitnessProgram()
-        case "bodybuilder":
-            generateBodybuilderProgram()
-        default:
-            setPushPullLegsProgram()
-        }
-
-        // Apply bodybuilder mini if active
-        if bodybuilderMiniActive {
-            applyBodybuilderMini()
-        }
-    }
-
-    private func generateOptimalProgram() {
-        // Optimal: Balanced approach - 3-4 days/week, moderate intensity
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 1.0) // Balanced
-        let intensity = volumeIntensityModulation
-        
-        weeklySchedule = generateBalancedSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateTimeCrunchedProgram() {
-        // Time Crunched: Short sessions, high intensity, variable frequency
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.7) // More frequent
-        let intensity = volumeIntensityModulation * 1.3 // Higher intensity
-        
-        weeklySchedule = generateHighIntensitySchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateWeekendWarriorProgram() {
-        // Weekend Warrior: Infrequent, long sessions, high intensity
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.6) // Less frequent
-        let intensity = volumeIntensityModulation * 1.4 // Very high intensity
-        
-        weeklySchedule = generateLowFrequencyHighIntensitySchedule(days: Int(max(2, daysPerWeek)), intensity: intensity)
-    }
-
-    private func generateLongevityProgram() {
-        // Longevity: Safety-focused, recovery-oriented, lower intensity
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.8) // Moderate frequency
-        let intensity = volumeIntensityModulation * 0.7 // Lower intensity
-        
-        weeklySchedule = generateRecoveryFocusedSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateStrengthProgram() {
-        // Strength: Heavy lifting, low reps, compound focus
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.9)
-        let intensity = volumeIntensityModulation * 0.6 // Lower volume, high intensity
-        
-        weeklySchedule = generateStrengthFocusedSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateWeightLifterProgram() {
-        // Weight Lifter: Olympic-style training
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.8)
-        let intensity = volumeIntensityModulation * 0.8
-        
-        weeklySchedule = generateOlympicStyleSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generatePowerliftingProgram() {
-        // Powerlifting: Main lifts focus, low frequency
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.7)
-        let intensity = volumeIntensityModulation * 0.5 // Very high intensity
-        
-        weeklySchedule = generatePowerliftingSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generatePowerBuildingProgram() {
-        // Power Building: Hybrid strength and speed
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.85)
-        let intensity = volumeIntensityModulation * 0.7
-        
-        weeklySchedule = generatePowerBuildingSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateBodybuildingProgram() {
-        // Bodybuilding: High volume hypertrophy
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 1.1)
-        let intensity = volumeIntensityModulation * 1.2 // High volume
-        
-        weeklySchedule = generateHypertrophySchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateFunctionalFitnessProgram() {
-        // Functional Fitness: Multi-joint movements
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 0.95)
-        let intensity = volumeIntensityModulation * 1.1
-        
-        weeklySchedule = generateFunctionalFitnessSchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    private func generateBodybuilderProgram() {
-        // Bodybuilder Maximum: All precautions thrown out for max hypertrophy
-        let daysPerWeek = calculateModulatedDays(frequencyModulation * 1.2)
-        let intensity = volumeIntensityModulation * 1.4 // Maximum volume
-        
-        weeklySchedule = generateMaximumHypertrophySchedule(days: Int(daysPerWeek), intensity: intensity)
-    }
-
-    // Calculate training days per week based on frequency modulation
-    private func calculateModulatedDays(_ frequencyMod: Double) -> Double {
-        let baseDays = 4.0
-        let modulation = (frequencyMod - 50.0) / 50.0 // Convert to -1 to +1 scale
-        let modulatedDays = baseDays + (modulation * 2.0) // ±2 days variation
-        return max(2.0, min(6.0, modulatedDays))
-    }
-
-    // Rep range modulation helper
-    private func modulateReps(_ baseReps: String, _ repModulation: Double) -> String {
-        let modulation = (repModulation - 50.0) / 50.0 // Convert to -1 to +1 scale
-        let parts = baseReps.split(separator: "-").map { String($0) }
-        
-        if parts.count == 2, let low = Int(parts[0]), let high = Int(parts[1]) {
-            let range = high - low
-            let newLow = max(1, Int(Double(low) + modulation * Double(range) * 0.5))
-            let newHigh = max(newLow + 3, Int(Double(high) + modulation * Double(range) * 0.5))
-            return "\(newLow)-\(newHigh)"
-        }
-        
-        return baseReps
-    }
-
-    // Apply bodybuilder mini (additional hypertrophy exercises)
-    private func applyBodybuilderMini() {
-        for i in 0..<weeklySchedule.count {
-            // Add isolation exercises based on the main lifts in each workout
-            var additionalExercises = [String]()
-            
-            for mainExercise in weeklySchedule[i].exercises {
-                switch mainExercise.lowercased() {
-                case let ex where ex.contains("bench"):
-                    additionalExercises.append("Cable Flyes 3x12-15")
-                case let ex where ex.contains("squat"):
-                    additionalExercises.append("Leg Extensions 3x15-20")
-                case let ex where ex.contains("press"):
-                    additionalExercises.append("Tricep Extensions 3x12-15")
-                case let ex where ex.contains("pull"):
-                    additionalExercises.append("Bicep Curls 3x12-15")
-                default:
-                    break
-                }
-            }
-            
-            weeklySchedule[i].exercises.append(contentsOf: additionalExercises)
-            weeklySchedule[i].estimatedDuration += 15 // Extra 15 minutes
-        }
-    }
-
-    // Schedule generation helpers
-    private func generateBalancedSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<days {
-            let dayIndex = i % daysOfWeek.count
-            let exercises = [
-                "Squats \(modulateReps("8-12", repRangeModulation))",
-                "Bench Press \(modulateReps("8-12", repRangeModulation))",
-                "Bent-over Rows \(modulateReps("8-12", repRangeModulation))",
-                "Overhead Press \(modulateReps("10-15", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[dayIndex],
-                workoutType: "Balanced Training",
-                exercises: exercises,
-                estimatedDuration: 60
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateHighIntensitySchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<days {
-            let dayIndex = i % daysOfWeek.count
-            let exercises = [
-                "Squats \(modulateReps("5-8", repRangeModulation))",
-                "Bench Press \(modulateReps("5-8", repRangeModulation))",
-                "Pull-ups \(modulateReps("6-10", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[dayIndex],
-                workoutType: "High Intensity",
-                exercises: exercises,
-                estimatedDuration: 45
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateLowFrequencyHighIntensitySchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let workoutDays = ["Saturday", "Sunday"] // Weekend focused
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, workoutDays.count) {
-            let exercises = [
-                "Squats \(modulateReps("4-6", repRangeModulation))",
-                "Bench Press \(modulateReps("4-6", repRangeModulation))",
-                "Deadlifts \(modulateReps("4-6", repRangeModulation))",
-                "Overhead Press \(modulateReps("6-8", repRangeModulation))",
-                "Pull-ups \(modulateReps("6-8", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: workoutDays[i],
-                workoutType: "Weekend Warrior",
-                exercises: exercises,
-                estimatedDuration: 90
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateRecoveryFocusedSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Wednesday", "Friday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, daysOfWeek.count) {
-            let exercises = [
-                "Goblet Squats \(modulateReps("12-15", repRangeModulation))",
-                "Dumbbell Press \(modulateReps("12-15", repRangeModulation))",
-                "Lat Pulldowns \(modulateReps("12-15", repRangeModulation))",
-                "Planks 3x30s"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i],
-                workoutType: "Recovery Focused",
-                exercises: exercises,
-                estimatedDuration: 50
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateStrengthFocusedSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Thursday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, daysOfWeek.count) {
-            let exercises = [
-                "Squats \(modulateReps("4-6", repRangeModulation))",
-                "Bench Press \(modulateReps("4-6", repRangeModulation))",
-                "Deadlifts \(modulateReps("4-6", repRangeModulation))",
-                "Overhead Press \(modulateReps("4-6", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i],
-                workoutType: "Strength Training",
-                exercises: exercises,
-                estimatedDuration: 75
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateOlympicStyleSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Wednesday", "Friday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, daysOfWeek.count) {
-            let exercises = [
-                "Hang Power Cleans \(modulateReps("5-8", repRangeModulation))",
-                "Front Squats \(modulateReps("5-8", repRangeModulation))",
-                "Push Press \(modulateReps("5-8", repRangeModulation))",
-                "Snatches \(modulateReps("4-6", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i],
-                workoutType: "Olympic Lifting",
-                exercises: exercises,
-                estimatedDuration: 90
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generatePowerliftingSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Wednesday", "Friday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, daysOfWeek.count) {
-            let exercises = [
-                "Squats \(modulateReps("3-5", repRangeModulation))",
-                "Bench Press \(modulateReps("3-5", repRangeModulation))",
-                "Deadlifts \(modulateReps("3-5", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i],
-                workoutType: "Powerlifting",
-                exercises: exercises,
-                estimatedDuration: 80
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generatePowerBuildingSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Tuesday", "Thursday", "Friday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, daysOfWeek.count) {
-            let exercises: [String]
-            if i % 2 == 0 {
-                // Heavy day
-                exercises = [
-                    "Squats \(modulateReps("4-6", repRangeModulation))",
-                    "Bench Press \(modulateReps("4-6", repRangeModulation))",
-                    "Deadlifts \(modulateReps("4-6", repRangeModulation))"
-                ]
-            } else {
-                // Speed day
-                exercises = [
-                    "Box Squats \(modulateReps("6-8", repRangeModulation))",
-                    "Close Grip Bench \(modulateReps("6-8", repRangeModulation))",
-                    "Snatch Grip Pulls \(modulateReps("6-8", repRangeModulation))"
-                ]
-            }
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i],
-                workoutType: "Power Building",
-                exercises: exercises,
-                estimatedDuration: 70
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateHypertrophySchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let bodyParts = ["Chest", "Back", "Legs", "Shoulders", "Arms"]
-        var schedule = [ScheduledWorkout]()
-        let daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        
-        for i in 0..<days {
-            let focusArea = bodyParts[i % bodyParts.count]
-            var exercises = [String]()
-            
-            switch focusArea {
-            case "Chest":
-                exercises = [
-                    "Bench Press \(modulateReps("8-12", repRangeModulation))",
-                    "Incline Dumbbell Press \(modulateReps("8-12", repRangeModulation))",
-                    "Cable Flyes \(modulateReps("10-15", repRangeModulation))"
-                ]
-            case "Back":
-                exercises = [
-                    "Pull-ups \(modulateReps("8-12", repRangeModulation))",
-                    "Lat Pulldowns \(modulateReps("10-15", repRangeModulation))",
-                    "Bent-over Rows \(modulateReps("8-12", repRangeModulation))"
-                ]
-            case "Legs":
-                exercises = [
-                    "Squats \(modulateReps("8-12", repRangeModulation))",
-                    "Leg Press \(modulateReps("10-15", repRangeModulation))",
-                    "Leg Extensions \(modulateReps("12-15", repRangeModulation))"
-                ]
-            case "Shoulders":
-                exercises = [
-                    "Overhead Press \(modulateReps("8-12", repRangeModulation))",
-                    "Lateral Raises \(modulateReps("10-15", repRangeModulation))",
-                    "Rear Delt Flyes \(modulateReps("10-15", repRangeModulation))"
-                ]
-            case "Arms":
-                exercises = [
-                    "Barbell Curls \(modulateReps("8-12", repRangeModulation))",
-                    "Tricep Extensions \(modulateReps("10-15", repRangeModulation))",
-                    "Hammer Curls \(modulateReps("10-15", repRangeModulation))"
-                ]
-            default:
-                exercises = ["Bench Press \(modulateReps("8-12", repRangeModulation))"]
-            }
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i % daysOfWeek.count],
-                workoutType: "\(focusArea) Hypertrophy",
-                exercises: exercises,
-                estimatedDuration: 60
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateFunctionalFitnessSchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Saturday"]
-        var schedule = [ScheduledWorkout]()
-        
-        for i in 0..<min(days, daysOfWeek.count) {
-            let exercises = [
-                "Burpees \(modulateReps("8-12", repRangeModulation))",
-                "Kettlebell Swings \(modulateReps("10-15", repRangeModulation))",
-                "Box Jumps \(modulateReps("8-12", repRangeModulation))",
-                "Farmer's Walk 4x30m",
-                "Medicine Ball Slams \(modulateReps("8-12", repRangeModulation))"
-            ]
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i],
-                workoutType: "Functional Fitness",
-                exercises: exercises,
-                estimatedDuration: 50
-            ))
-        }
-        
-        return schedule
-    }
-
-    private func generateMaximumHypertrophySchedule(days: Int, intensity: Double) -> [ScheduledWorkout] {
-        let bodyParts = ["Chest", "Back", "Legs", "Shoulders", "Arms"]
-        var schedule = [ScheduledWorkout]()
-        let daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        
-        for i in 0..<days {
-            let focusArea1 = bodyParts[i % bodyParts.count]
-            let focusArea2 = bodyParts[(i + 1) % bodyParts.count]
-            var exercises = [String]()
-            
-            // Primary focus area
-            switch focusArea1 {
-            case "Chest":
-                exercises.append(contentsOf: [
-                    "Bench Press \(modulateReps("6-10", repRangeModulation))",
-                    "Incline Bench Press \(modulateReps("8-12", repRangeModulation))",
-                    "Decline Bench Press \(modulateReps("8-12", repRangeModulation))",
-                    "Cable Flyes \(modulateReps("10-15", repRangeModulation))",
-                    "Push-ups \(modulateReps("15-20", repRangeModulation))"
-                ])
-            case "Back":
-                exercises.append(contentsOf: [
-                    "Pull-ups \(modulateReps("6-10", repRangeModulation))",
-                    "Lat Pulldowns \(modulateReps("8-12", repRangeModulation))",
-                    "Bent-over Rows \(modulateReps("8-12", repRangeModulation))",
-                    "Seated Cable Rows \(modulateReps("10-15", repRangeModulation))",
-                    "Face Pulls \(modulateReps("12-15", repRangeModulation))"
-                ])
-            case "Legs":
-                exercises.append(contentsOf: [
-                    "Squats \(modulateReps("8-12", repRangeModulation))",
-                    "Leg Press \(modulateReps("10-15", repRangeModulation))",
-                    "Lunges \(modulateReps("10-15", repRangeModulation))",
-                    "Leg Extensions \(modulateReps("12-15", repRangeModulation))",
-                    "Leg Curls \(modulateReps("12-15", repRangeModulation))"
-                ])
-            default:
-                exercises.append("Rest and Recovery Day")
-            }
-            
-            // Secondary focus area
-            switch focusArea2 {
-            case "Shoulders":
-                exercises.append("Overhead Press \(modulateReps("8-12", repRangeModulation))")
-                exercises.append("Lateral Raises \(modulateReps("10-15", repRangeModulation))")
-            case "Arms":
-                exercises.append("Bicep Curls \(modulateReps("8-12", repRangeModulation))")
-                exercises.append("Tricep Extensions \(modulateReps("10-15", repRangeModulation))")
-            default:
-                break
-            }
-            
-            schedule.append(ScheduledWorkout(
-                dayOfWeek: daysOfWeek[i % daysOfWeek.count],
-                workoutType: "Maximum Hypertrophy",
-                exercises: exercises,
-                estimatedDuration: 90
-            ))
-        }
-        
-        return schedule
     }
 
     func resetProgramming() {
@@ -1905,9 +1484,6 @@ struct ContentView: View {
             CommunityView()
                 .tabItem { Label("Community", systemImage: "person.2.fill") }
                 .tag(7)
-            SocialTabView()
-                .tabItem { Label("Social", systemImage: "person.2.wave.2.fill") }
-                .tag(8)
             TrainingProgressView()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(3)
@@ -1993,14 +1569,6 @@ struct ContentView: View {
             }
 
             SidebarButton(
-                title: "Social",
-                icon: "person.2.wave.2.fill",
-                isSelected: workoutManager.selectedTab == 8
-            ) {
-                workoutManager.selectedTab = 8
-            }
-
-            SidebarButton(
                 title: "Settings",
                 icon: "gear",
                 isSelected: workoutManager.selectedTab == 6
@@ -2053,8 +1621,6 @@ struct ContentView: View {
                 SettingsView()
             case 7:
                 CommunityView()
-            case 8:
-                SocialTabView()
             default:
                 DashboardView()
             }
@@ -2331,17 +1897,14 @@ struct WorkoutView: View {
                     .padding()
                     .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
                 } else {
+                    // Rest days are pages in sequence, with their recovery programming.
+                    let pages = workoutManager.schedulePages
                     ScheduledWorkoutBrowser(
-                        schedule: workoutManager.weeklySchedule,
-                        todayID: workoutManager.scheduledWorkout()?.id,
+                        schedule: pages,
+                        todayID: workoutManager.todaySchedulePageIndex(in: pages).map { pages[$0].id },
                         index: $selectedScheduledWorkoutIndex,
                         onStart: { workoutManager.startScheduledWorkout($0) }
                     )
-                    if let rest = workoutManager.restDayProgram {
-                        RestDayPlanView(plan: rest) { workoutManager.startScheduledWorkout(rest.asScheduledWorkout) }
-                            .padding()
-                            .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
-                    }
                 }
 
                 Button {
@@ -2361,8 +1924,7 @@ struct WorkoutView: View {
     /// Today's entry by the real schedule lookup (rolling "Day 1 · Cycle 1"
     /// and "Monday · Wk 2" labels never match a plain weekday name).
     func getTodaysWorkoutIndex() -> Int? {
-        guard let today = workoutManager.scheduledWorkout() else { return nil }
-        return workoutManager.weeklySchedule.firstIndex { $0.id == today.id }
+        workoutManager.todaySchedulePageIndex(in: workoutManager.schedulePages)
     }
 }
 
@@ -2400,7 +1962,8 @@ struct ScheduledWorkoutBrowser: View {
                 Button {
                     onStart(workout)
                 } label: {
-                    Label("Start This Workout", systemImage: "play.circle.fill")
+                    Label(WorkoutManager.isRestPage(workout) ? "Start Recovery Session" : "Start This Workout",
+                          systemImage: WorkoutManager.isRestPage(workout) ? "figure.walk" : "play.circle.fill")
                         .font(.title3.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -3999,7 +3562,7 @@ struct ProgramRecommendationCard: View {
                         Text("Frequency")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(schedule.count) days/week")
+                        Text("\(Self.formatPerWeek(week.sessions)) days/week")
                             .font(.headline)
                     }
 
@@ -4007,7 +3570,7 @@ struct ProgramRecommendationCard: View {
                         Text("Duration")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(totalWeeklyMinutes) min/week")
+                        Text("\(Int(week.minutes.rounded())) min/week")
                             .font(.headline)
                     }
 
@@ -4033,29 +3596,66 @@ struct ProgramRecommendationCard: View {
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
 
+    /// The program's goal: the one it was built for, else the profile's first.
+    var goal: TrainingGoal {
+        TrainingGoal(rawValue: UserDefaults.standard.string(forKey: "progressionGoal") ?? "")
+            ?? profile.primaryGoals.first ?? .generalFitness
+    }
+
+    var week: (sessions: Double, minutes: Double) {
+        let d = UserDefaults.standard
+        return Self.perWeek(durations: schedule.map(\.estimatedDuration), labels: schedule.map(\.dayOfWeek),
+                            rolling: d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue,
+                            daysOn: d.integer(forKey: "cycleDaysOn"), daysOff: d.integer(forKey: "cycleDaysOff"))
+    }
+
+    /// Real sessions and minutes per 7 days. The schedule holds a whole block
+    /// (several rolling cycles, or "Wk 1"/"Wk 2" weeks), never one week.
+    /// Rolling: daysOn x 7 / (daysOn + daysOff). Pure, for the selftest.
+    static func perWeek(durations: [Int], labels: [String], rolling: Bool, daysOn: Int, daysOff: Int) -> (sessions: Double, minutes: Double) {
+        guard !durations.isEmpty else { return (0, 0) }
+        let avg = Double(durations.reduce(0, +)) / Double(durations.count)
+        let sessions: Double
+        if rolling, daysOn > 0 {
+            sessions = Double(daysOn) * 7 / Double(daysOn + max(0, daysOff))
+        } else {
+            let weeks = labels.compactMap { l in
+                l.components(separatedBy: " · ").first { $0.hasPrefix("Wk ") }.flatMap { Int($0.dropFirst(3)) }
+            }.max() ?? 1
+            sessions = Double(durations.count) / Double(max(1, weeks))
+        }
+        return (sessions, avg * sessions)
+    }
+
+    static func formatPerWeek(_ v: Double) -> String {
+        abs(v - v.rounded()) < 0.05 ? "\(Int(v.rounded()))" : String(format: "%.1f", v)
+    }
+
     var programDescription: String {
         let experienceText = profile.experienceLevel == .beginner ? "beginner-friendly" : profile.experienceLevel == .intermediate ? "intermediate" : "advanced"
-        let goalText = profile.primaryGoals.first?.rawValue.lowercased() ?? "fitness"
+        let goalText = goal == .generalFitness ? "general fitness" : goal.rawValue.lowercased()
+        let article = experienceText.first.map { "aeiou".contains($0) } == true ? "An" : "A"
+        // 5-rep maxes only matter to strength and size programs.
+        guard goal == .getStronger || goal == .buildMuscle, profile.benchPress5RM > 0 else {
+            return "\(article) \(experienceText) \(goalText) program."
+        }
         let unit = TrainingUnits.current
         let bench = TrainingUnits.weight(Double(profile.benchPress5RM), unit)
         let squat = TrainingUnits.weight(Double(profile.squat5RM), unit)
         let deadlift = TrainingUnits.weight(Double(profile.deadlift5RM), unit)
-        return "A \(experienceText) \(goalText) program. Your starting 5-rep maxes: bench \(bench), squat \(squat), deadlift \(deadlift)."
-    }
-
-    var totalWeeklyMinutes: Int {
-        schedule.reduce(0) { $0 + $1.estimatedDuration }
+        return "\(article) \(experienceText) \(goalText) program. Your starting 5-rep maxes: bench \(bench), squat \(squat), deadlift \(deadlift)."
     }
 
     var focusArea: String {
-        if profile.primaryGoals.contains(.buildMuscle) {
-            return "Hypertrophy"
-        } else if profile.primaryGoals.contains(.getStronger) {
-            return "Strength"
-        } else if profile.primaryGoals.contains(.loseWeight) {
-            return "Fat Loss"
+        switch goal {
+        case .buildMuscle: return "Hypertrophy"
+        case .getStronger: return "Strength"
+        case .loseWeight: return "Fat Loss"
+        case .improveEndurance: return "Endurance"
+        case .increaseFlexibility: return "Mobility"
+        case .longevity: return "Longevity"
+        case .generalFitness: return "General Fitness"
         }
-        return "General Fitness"
     }
 }
 
@@ -4465,52 +4065,6 @@ struct ResumeWorkoutBanner: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct PresetButton: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let preset: String
-    let workoutManager: WorkoutManager
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: {
-            workoutManager.generateProgramWithPreset(preset: preset)
-        }) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    Text(icon)
-                        .font(.title)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                            .font(.headline)
-                            .bold()
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(16)
-            .background(Color.gray.opacity(0.05))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.blue, lineWidth: 1)
-            )
-            .cornerRadius(12)
-            .scaleEffect(isHovering ? 1.02 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isHovering = hovering
-            }
-        }
     }
 }
 

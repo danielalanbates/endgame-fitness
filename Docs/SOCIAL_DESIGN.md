@@ -2,7 +2,10 @@
 
 Endgame Fitness runs entirely on the device with local players (see STATUS.md).
 The social layer is built from four pieces that need no Endgame Fitness server
-and no accounts of our own. Everything lives in the **Social** tab (tab 8).
+and no accounts of our own. It lives in the **Community** tab (tab 7) as the Rivals,
+Gym Party, Game Center and Share sections; rival events show under Rivals >
+Rival activity, and the general feed is Community > Feed. (The separate Social
+tab, tab 8, was removed 2026-11-16.)
 
 ## 1. Game Center (GameKit) — optional, `GameCenterService.swift`
 

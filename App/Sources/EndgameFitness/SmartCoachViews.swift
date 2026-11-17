@@ -78,8 +78,9 @@ struct SmartTodayCard: View {
         return lifts.prefix(6).enumerated().compactMap { i, pair in
             let (plan, ex) = pair
             guard let p = SmartCoach.prescribe(exercise: ex, history: history, context: ctx) else {
-                return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "", firstTime: true,
-                           cue: ExerciseGuide.cue(for: plan.name))
+                // Only a weighted lift needs a starting weight picked.
+                return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "",
+                           firstTime: ex.resolvedTracking == .weighted, cue: ExerciseGuide.cue(for: plan.name))
             }
             let load = p.topLoad > 0 ? "\(TrainingUnits.weight(p.topLoad, ctx.unit)) × \(p.topReps)" : "\(p.topReps) reps"
             return Row(id: i, name: plan.name, load: "\(p.sets.count) sets · \(load)", reason: p.reason, firstTime: false,
@@ -192,7 +193,7 @@ struct SmartTodayCard: View {
                     .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                 }
                 if rows.contains(where: \.firstTime) {
-                    Text("New lifts: pick a weight you could lift 2–3 more times.")
+                    Text("New weighted lifts: pick a weight you could lift 2–3 more times.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

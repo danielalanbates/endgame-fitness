@@ -472,7 +472,11 @@ enum EngineSelfTest {
                     if p.reason.contains("2–3 reps short of failure") { bad.append("\(e.name): generic cue repeated per lift") }
                     if p.sets.map(\.weightLb).max() ?? 0 > (e.completedSets.map(\.weight).max() ?? 0) * 1.15 + 10 { bad.append("\(e.name): jump") }
                 }
-                check("coach longevity: 8+ reps, RPE <= 8, no waves, no generic per-lift cue", bad.isEmpty, "\(bad)")
+                check("coach longevity: 8+ reps, RPE <= 8, no waves", bad.isEmpty, "\(bad)")
+                // The "short of failure" cue moved from each lift to the session note.
+                var lpc = ProgramConfig(); lpc.primaryGoal = .longevity
+                check("longevity effort cue is in the session note",
+                      SmartPlanner.loadingNote(SmartPlanner.Ctx(config: lpc))?.contains("short of failure") == true)
                 // Top of the range at only 1 rep in reserve is not a load increase for longevity.
                 lctx.model = .double; lctx.experience = .intermediate
                 let hard = ex("Lon Hard", 8, 12, sets: [(60, 12, 1), (60, 12, 1)])
@@ -1004,6 +1008,61 @@ enum EngineSelfTest {
             check("rest days leave training-day indexing alone",
                   WorkoutManager.trainingDayIndex(on: cal.date(byAdding: .day, value: 5, to: rdStart)!, start: rdStart, rolling: true,
                                                   daysOn: 4, daysOff: 1, weekdays: [], calendar: cal) == 4)
+            // Rest days are listed in sequence, as their own pages, never under a training day.
+            func pageText(_ s: [WorkoutManager.SchedulePageSlot], _ labels: [String]) -> [String] {
+                s.map { if case .training(let i) = $0 { return labels[i] }; if case .rest(_, _, let l) = $0 { return l }; return "" }
+            }
+            func rollLabels(_ on: Int, cycles: Int) -> [String] {
+                (0..<(on * cycles)).map { cycles > 1 ? "Day \($0 % on + 1) · Cycle \($0 / on + 1)" : "Day \($0 + 1)" }
+            }
+            let r41 = rollLabels(4, cycles: 1)
+            check("rest pages: rolling 4/1 = Day 1-4 then Day 5 rest",
+                  pageText(WorkoutManager.schedulePageSlots(labels: r41, rolling: true, daysOn: 4, daysOff: 1), r41)
+                  == ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5 · Rest Day"])
+            let r41c = rollLabels(4, cycles: 3)
+            let p41c = WorkoutManager.schedulePageSlots(labels: r41c, rolling: true, daysOn: 4, daysOff: 1)
+            check("rest pages: rolling 4/1 x3 cycles, a rest after each cycle",
+                  p41c.count == 15 && pageText(p41c, r41c)[4] == "Day 5 · Cycle 1 · Rest Day"
+                  && pageText(p41c, r41c)[14] == "Day 5 · Cycle 3 · Rest Day"
+                  && p41c.compactMap { if case .training(let i) = $0 { return i }; return nil } == Array(0..<12),
+                  "\(pageText(p41c, r41c))")
+            let r31 = rollLabels(3, cycles: 2)
+            check("rest pages: rolling 3/1",
+                  pageText(WorkoutManager.schedulePageSlots(labels: r31, rolling: true, daysOn: 3, daysOff: 1), r31)
+                  == ["Day 1 · Cycle 1", "Day 2 · Cycle 1", "Day 3 · Cycle 1", "Day 4 · Cycle 1 · Rest Day",
+                      "Day 1 · Cycle 2", "Day 2 · Cycle 2", "Day 3 · Cycle 2", "Day 4 · Cycle 2 · Rest Day"])
+            let r52 = rollLabels(5, cycles: 1)
+            check("rest pages: rolling 5/2 = two rest pages",
+                  pageText(WorkoutManager.schedulePageSlots(labels: r52, rolling: true, daysOn: 5, daysOff: 2), r52).suffix(2)
+                  == ["Day 6 · Rest Day", "Day 7 · Rest Day"])
+            let legacyLabels = (0..<8).map { "Day \($0 + 1)" }
+            let pLegacy = pageText(WorkoutManager.schedulePageSlots(labels: legacyLabels, rolling: true, daysOn: 4, daysOff: 1), legacyLabels)
+            check("rest pages: legacy rolling labels (Day 1-8) never reuse a training day's number",
+                  pLegacy.count == 10 && pLegacy[4] == "Rest Day · after Day 4" && pLegacy[5] == "Day 5"
+                  && pLegacy[9] == "Rest Day · after Day 8", "\(pLegacy)")
+            check("rest pages: rolling 7/0 none",
+                  WorkoutManager.schedulePageSlots(labels: rollLabels(7, cycles: 1), rolling: true, daysOn: 7, daysOff: 0).count == 7)
+            let w3 = ["Monday", "Wednesday", "Friday"]
+            check("rest pages: weekly 3/wk = the off weekdays in order",
+                  pageText(WorkoutManager.schedulePageSlots(labels: w3, rolling: false, daysOn: 0, daysOff: 0), w3)
+                  == ["Monday", "Tuesday · Rest Day", "Wednesday", "Thursday · Rest Day", "Friday",
+                      "Saturday · Rest Day", "Sunday · Rest Day"])
+            let w4 = ["Wednesday · Wk 1", "Friday · Wk 1", "Monday · Wk 1", "Tuesday · Wk 1",
+                      "Wednesday · Wk 2", "Friday · Wk 2", "Monday · Wk 2", "Tuesday · Wk 2"]
+            let p4 = pageText(WorkoutManager.schedulePageSlots(labels: w4, rolling: false, daysOn: 0, daysOff: 0), w4)
+            check("rest pages: weekly 4/wk from a Wednesday start, 2-week block",
+                  p4.count == 14 && p4[1] == "Thursday · Wk 1 · Rest Day" && p4[3] == "Saturday · Wk 1 · Rest Day"
+                  && p4[4] == "Sunday · Wk 1 · Rest Day" && p4[5] == "Monday · Wk 1" && p4.last == "Tuesday · Wk 2", "\(p4)")
+            let w7 = WorkoutManager.mondayFirstWeekdays
+            check("rest pages: weekly 7/wk none",
+                  WorkoutManager.schedulePageSlots(labels: w7, rolling: false, daysOn: 0, daysOff: 0) == w7.indices.map { .training($0) })
+            check("rest pages: one day a week = six rest pages",
+                  WorkoutManager.schedulePageSlots(labels: ["Saturday"], rolling: false, daysOn: 0, daysOff: 0).count == 7)
+            check("rest page ids are stable and recognised",
+                  WorkoutManager.restPageID(after: 3, offset: 1) == WorkoutManager.restPageID(after: 3, offset: 1)
+                  && WorkoutManager.isRestPage(ScheduledWorkout(id: WorkoutManager.restPageID(after: 0, offset: 0), dayOfWeek: "x",
+                                                                workoutType: "x", exercises: [], estimatedDuration: 1))
+                  && !WorkoutManager.isRestPage(rdSession))
 
             // 3. Joint-safe longevity: 8+ reps (10+ for beginners), no high-risk moves, a stated effort cap.
             let risky = Set(SP.catalog.filter { $0.longevity < 0 }.map(\.name))
@@ -1155,6 +1214,52 @@ enum EngineSelfTest {
                 }
             }
             check("hand-picked longevity splits: joint-safe, 8+ reps, fit the session, ramp-up only when loaded", exBad.isEmpty, "\(exBad.prefix(5))")
+            // Bodyweight/band-only planner moves: tracked as reps, never "pick a weight"; gyms get machines first.
+            check("bodyweight-only moves are not tracked as weighted",
+                  ["Sliding Leg Curls", "Sliding Leg Curls 3x6-10", "Band Rows", "Band Curls", "Doorframe Rows", "Glute Bridges", "Band-Assisted Pull-ups",
+                   "Hanging Knee Raises", "Pull-ups", "Chin-ups", "Inverted Rows"]
+                    .allSatisfy { ExerciseLibrary.shared.tracking(forID: nil, name: $0) == .bodyweight }
+                  && ExerciseLibrary.shared.tracking(forID: nil, name: "Leg Curls") == .weighted
+                  && SmartPlanner.bodyweightTracking(name: "Weighted Pull-ups") == nil  // loaded variant: library decides
+                  && ExerciseLibrary.shared.tracking(forID: nil, name: "Lat Pulldowns") == .weighted
+                  && ExerciseLibrary.shared.tracking(forID: nil, name: "Wall Sits") == .timed)
+            var gymBad: [String] = []
+            var homeHasBodyweightNote = true
+            for g in [TrainingGoal.longevity, .buildMuscle, .generalFitness] {
+                for e in [ExperienceLevel.beginner, .intermediate] {
+                    for r in [(4, 1), (3, 1)] as [(Int, Int)] {
+                        let names = SP.plan(for: c(g, e, rolling: r, eq: .fullGym)).scheduledWorkouts.flatMap(\.plannedExercises).map(\.name)
+                        for n in names where ["Sliding Leg Curls", "Band-Assisted Pull-ups", "Band Lat Pulldowns", "Band Rows"].contains(n) {
+                            gymBad.append("\(g.rawValue) \(e.rawValue) \(n)")
+                        }
+                    }
+                }
+                let home = SP.plan(for: c(g, .intermediate, rolling: (4, 1), eq: .homeGym)).scheduledWorkouts
+                for w in home where w.plannedExercises.contains(where: { $0.name == "Sliding Leg Curls" }) {
+                    if !(w.notes ?? "").contains("No weight for") { homeHasBodyweightNote = false }
+                }
+            }
+            check("full gym: machine/cable moves, never band or bodyweight substitutes", gymBad.isEmpty, "\(Set(gymBad).sorted().prefix(6))")
+            let lonGym = SP.plan(for: c(.longevity, .intermediate, rolling: (4, 1), eq: .fullGym)).scheduledWorkouts.flatMap(\.plannedExercises).map(\.name)
+            check("full gym longevity uses Leg Curls and a lat pulldown/assisted machine",
+                  lonGym.contains("Leg Curls") && (lonGym.contains("Lat Pulldowns") || lonGym.contains("Assisted Pull-ups")), "\(Set(lonGym).sorted())")
+            check("bodyweight moves come with a no-weight progression note", homeHasBodyweightNote)
+            // Dashboard "Your Program": real per-week numbers, not the whole block.
+            let blk = SP.plan(for: c(.longevity, .intermediate, rolling: (4, 1), len: 75)).scheduledWorkouts
+            let pw41 = ProgramRecommendationCard.perWeek(durations: blk.map(\.estimatedDuration), labels: blk.map(\.dayOfWeek),
+                                                          rolling: true, daysOn: 4, daysOff: 1)
+            check("your program: 4 on/1 off = 5.6 sessions a week, minutes from one week",
+                  abs(pw41.sessions - 5.6) < 0.01 && ProgramRecommendationCard.formatPerWeek(pw41.sessions) == "5.6"
+                  && pw41.minutes <= 5.6 * 75 + 0.5 && blk.count > 6, "\(pw41) of \(blk.count) entries")
+            let wk2 = ["Monday · Wk 1", "Wednesday · Wk 1", "Friday · Wk 1", "Monday · Wk 2", "Wednesday · Wk 2", "Friday · Wk 2"]
+            let pw3 = ProgramRecommendationCard.perWeek(durations: Array(repeating: 60, count: 6), labels: wk2, rolling: false, daysOn: 0, daysOff: 0)
+            let pw3b = ProgramRecommendationCard.perWeek(durations: [45, 45, 45], labels: ["Monday", "Wednesday", "Friday"], rolling: false, daysOn: 0, daysOff: 0)
+            check("your program: weekly 2-week block = 3 a week, 180 min; plain week = 3, 135 min",
+                  pw3.sessions == 3 && pw3.minutes == 180 && pw3b.sessions == 3 && pw3b.minutes == 135
+                  && ProgramRecommendationCard.formatPerWeek(3) == "3", "\(pw3) \(pw3b)")
+            // Social tab folded into Community: its sections live there now.
+            check("community holds the former Social sections",
+                  [CommunitySection.rivals, .party, .gameCenter, .share].allSatisfy { CommunitySection.allCases.contains($0) })
             var phul = c(.getStronger, .intermediate, perWeek: 4); phul.split = .phul
             check("hand-picked splits for other goals keep their heavy days",
                   WorkoutManager.shared.explicitSplitSchedule(config: phul, days: ["Monday", "Tuesday", "Thursday", "Friday"])
@@ -1451,7 +1556,7 @@ extension EngineSelfTest {
                 }
             }
         }
-        scan("WorkoutTrackerMac_Enhanced.swift", from: "func generateProgramWithPreset", to: "func generateCustomWorkout", "old preset generator")
+        // The old preset generators were archived with the Workout Modulator (2026-11-16).
         scan("ProgramsMeso.swift", from: "private static let quickPicks", to: "var body", "custom builder")
         return out
     }

@@ -51,7 +51,10 @@ struct RootView: View {
             // Friend codes: endgamefitness://card/EGF1.… adds or updates a rival.
             .onOpenURL { url in
                 guard url.host == "card" || url.absoluteString.contains("\(PlayerCardCode.prefix).") else { return }
-                if RivalStore.shared.importText(url.absoluteString, source: "link") { workoutManager.selectedTab = 8 }
+                if RivalStore.shared.importText(url.absoluteString, source: "link") {
+                    game.requestedCommunitySection = .rivals
+                    workoutManager.selectedTab = 7
+                }
             }
             .onChange(of: game.profile) { _, _ in
                 RivalStore.shared.reload()
