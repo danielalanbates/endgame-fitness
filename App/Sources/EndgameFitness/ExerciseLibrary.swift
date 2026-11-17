@@ -192,7 +192,9 @@ final class ExerciseLibrary {
         let timedPhrases = ["plank", "hold", "wall sit", "side bridge", "dead hang", "cardio", "mobility",
                             "stretch", "flow", "yoga", "incline walk", "jog", "jogging", "run", "running",
                             "treadmill", "bike", "cycling", "elliptical", "min", "minute",
-                            "battle rope", "battling rope", "sled push", "sled drag", "carry"]
+                            "battle rope", "battling rope", "sled push", "sled drag", "carry",
+                            // Program warm-ups, cool-downs and rest-day recovery: never tracked lifts.
+                            "warm up", "cool down", "brisk walk", "easy walk", "foam rolling", "breathing"]
         if timedPhrases.contains(where: has) { return .timed }
         if force == "static", equipment == nil || equipment == "body only" { return .timed }
         if equipment == "body only" { return .bodyweight }

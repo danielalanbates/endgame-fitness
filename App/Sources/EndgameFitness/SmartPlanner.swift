@@ -24,8 +24,13 @@
 //     the selftest to compare against hand-built splits.
 //  6. One week (or one or two rolling cycles) is planned and repeated, so
 //     every week has the same sessions and set counts. Session length is a
-//     ceiling; when sessions miss the aerobic target, brisk walks outside
-//     the sessions make up the gap.
+//     ceiling; when sessions miss the aerobic target, brisk walks on the
+//     rest-day page (`RestDayPlan`, stored apart from the rotation) make up
+//     the gap.
+//  7. Every session opens with a timed warm-up (pulse raise, dynamic drills
+//     for the day's patterns, ramp-up sets) that counts toward its length.
+//  8. Longevity loads joint-safely: lower-risk variations, 8+ reps (10+ on
+//     beginners' compounds), every set 2-3 reps short of failure.
 //
 
 import Foundation
@@ -64,77 +69,87 @@ enum SmartPlanner {
         var heavyOnly = false
         /// Injuries this move is the preferred swap for (goblet squat for a low back).
         var safeFor: Set<String> = []
+        /// Longevity (joint-safe) ranking: -1 never used, 1 preferred, 0 neutral.
+        var longevity = 0
+        /// A lower-risk variation only offered to longevity plans.
+        var longevityOnly = false
     }
 
     // MARK: - Catalog (names follow the existing generateExercises pools)
 
     static let catalog: [Move] = [
         // Squat
-        Move(name: "Back Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Knee", "Low back"]),
-        Move(name: "Barbell Box Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Low back"]),
-        Move(name: "Front Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee", "Low back"]),
+        Move(name: "Back Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Knee", "Low back"], longevity: -1),
+        Move(name: "Barbell Box Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Low back"], longevity: -1),
+        Move(name: "Front Squats", pattern: .squat, gear: [.barbell], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee", "Low back"], longevity: -1),
         Move(name: "Belt Squats", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, flags: ["Knee"], safeFor: ["Low back"]),
-        Move(name: "Leg Press", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5], safeFor: ["Low back"]),
-        Move(name: "Goblet Squats", pattern: .squat, gear: [.dumbbell, .kettlebell], muscles: ["Quads": 1, "Glutes": 0.5], safeFor: ["Low back"]),
-        Move(name: "Pistol Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee"], reps: "3-6", heavyOnly: true),
+        Move(name: "Leg Press", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5], safeFor: ["Low back"], longevity: 1),
+        Move(name: "Goblet Squats", pattern: .squat, gear: [.dumbbell, .kettlebell], muscles: ["Quads": 1, "Glutes": 0.5], safeFor: ["Low back"], longevity: 1),
+        Move(name: "Safety Bar Squats", pattern: .squat, gear: [.machine], muscles: ["Quads": 1, "Glutes": 0.5], flags: ["Low back"], longevity: 1, longevityOnly: true),
+        Move(name: "Pistol Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], heavy: true, beginner: false, flags: ["Knee"], reps: "3-6", heavyOnly: true, longevity: -1),
         Move(name: "Bodyweight Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], reps: "15-20"),
         Move(name: "Box Squats", pattern: .squat, gear: [.bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], reps: "12-15"),
         // Hinge
-        Move(name: "Deadlifts", pattern: .hinge, gear: [.barbell], muscles: ["Hamstrings": 1, "Glutes": 1, "Back": 0.5], heavy: true, beginner: false, flags: ["Low back"]),
-        Move(name: "Trap Bar Deadlifts", pattern: .hinge, gear: [.machine], muscles: ["Hamstrings": 0.5, "Glutes": 1, "Quads": 0.5], heavy: true, flags: ["Low back"]),
-        Move(name: "Romanian Deadlifts", pattern: .hinge, gear: [.barbell, .dumbbell], muscles: ["Hamstrings": 1, "Glutes": 0.5], flags: ["Low back"]),
-        Move(name: "Kettlebell Swings", pattern: .hinge, gear: [.kettlebell], muscles: ["Hamstrings": 0.5, "Glutes": 1], beginner: false, flags: ["Low back"], reps: "15-20"),
+        Move(name: "Deadlifts", pattern: .hinge, gear: [.barbell], muscles: ["Hamstrings": 1, "Glutes": 1, "Back": 0.5], heavy: true, beginner: false, flags: ["Low back"], longevity: -1),
+        Move(name: "Trap Bar Deadlifts", pattern: .hinge, gear: [.machine], muscles: ["Hamstrings": 0.5, "Glutes": 1, "Quads": 0.5], heavy: true, flags: ["Low back"], longevity: -1),
+        Move(name: "High-Handle Trap Bar Deadlifts", pattern: .hinge, gear: [.machine], muscles: ["Hamstrings": 0.5, "Glutes": 1, "Quads": 0.5], flags: ["Low back"], longevity: 1, longevityOnly: true),
+        Move(name: "Dumbbell Romanian Deadlifts", pattern: .hinge, gear: [.dumbbell, .kettlebell], muscles: ["Hamstrings": 1, "Glutes": 0.5], flags: ["Low back"], longevity: 1, longevityOnly: true),
+        Move(name: "Romanian Deadlifts", pattern: .hinge, gear: [.barbell, .dumbbell], muscles: ["Hamstrings": 1, "Glutes": 0.5], flags: ["Low back"], longevity: -1),
+        Move(name: "Kettlebell Swings", pattern: .hinge, gear: [.kettlebell], muscles: ["Hamstrings": 0.5, "Glutes": 1], beginner: false, flags: ["Low back"], reps: "15-20", longevity: -1),
         Move(name: "Back Extensions", pattern: .hinge, gear: [.machine], muscles: ["Hamstrings": 0.5, "Glutes": 0.5, "Back": 0.5], flags: ["Low back"]),
         Move(name: "Single-Leg Hip Hinges", pattern: .hinge, gear: [.bodyweight], muscles: ["Hamstrings": 0.5, "Glutes": 0.5], reps: "10-12"),
         // Lunge / single leg
         Move(name: "Bulgarian Split Squats", pattern: .lunge, gear: [.dumbbell, .barbell, .bodyweight], muscles: ["Quads": 1, "Glutes": 1], beginner: false, flags: ["Knee"]),
+        Move(name: "Split Squats", pattern: .lunge, gear: [.dumbbell, .kettlebell, .bodyweight], muscles: ["Quads": 1, "Glutes": 1], flags: ["Knee"], longevity: 1, longevityOnly: true),
         Move(name: "Walking Lunges", pattern: .lunge, gear: [.dumbbell, .bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], flags: ["Knee"]),
         Move(name: "Reverse Lunges", pattern: .lunge, gear: [.dumbbell, .kettlebell, .bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], flags: ["Knee"]),
         Move(name: "Step-ups", pattern: .lunge, gear: [.dumbbell, .bodyweight], muscles: ["Quads": 1, "Glutes": 0.5], flags: ["Knee"]),
         // Horizontal push
-        Move(name: "Barbell Bench Press", pattern: .hPush, gear: [.barbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true, flags: ["Shoulder"]),
-        Move(name: "Dumbbell Bench Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5]),
+        Move(name: "Barbell Bench Press", pattern: .hPush, gear: [.barbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true, flags: ["Shoulder"], longevity: -1),
+        Move(name: "Dumbbell Bench Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], longevity: 1),
         Move(name: "Incline Dumbbell Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Shoulders": 0.5, "Triceps": 0.5]),
         Move(name: "Machine Chest Press", pattern: .hPush, gear: [.machine], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5]),
-        Move(name: "Neutral-Grip Dumbbell Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], safeFor: ["Shoulder"]),
+        Move(name: "Neutral-Grip Dumbbell Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], safeFor: ["Shoulder"], longevity: 1),
         Move(name: "Dumbbell Floor Press", pattern: .hPush, gear: [.dumbbell], muscles: ["Chest": 1, "Triceps": 0.5], safeFor: ["Shoulder"]),
-        Move(name: "Weighted Dips", pattern: .hPush, gear: [.machine], muscles: ["Chest": 1, "Triceps": 1, "Shoulders": 0.5], heavy: true, beginner: false, flags: ["Shoulder"], heavyOnly: true),
-        Move(name: "Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], reps: "8-15"),
+        Move(name: "Weighted Dips", pattern: .hPush, gear: [.machine], muscles: ["Chest": 1, "Triceps": 1, "Shoulders": 0.5], heavy: true, beginner: false, flags: ["Shoulder"], heavyOnly: true, longevity: -1),
+        Move(name: "Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], reps: "8-15", longevity: 1),
         Move(name: "Incline Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], reps: "10-15"),
-        Move(name: "Archer Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true, beginner: false, reps: "4-8", heavyOnly: true),
+        Move(name: "Archer Push-ups", pattern: .hPush, gear: [.bodyweight], muscles: ["Chest": 1, "Triceps": 0.5, "Shoulders": 0.5], heavy: true, beginner: false, reps: "4-8", heavyOnly: true, longevity: -1),
         // Vertical push
-        Move(name: "Overhead Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Triceps": 0.5], heavy: true, flags: ["Shoulder"]),
+        Move(name: "Overhead Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Triceps": 0.5], heavy: true, flags: ["Shoulder"], longevity: -1),
         Move(name: "Dumbbell Shoulder Press", pattern: .vPush, gear: [.dumbbell, .kettlebell], muscles: ["Shoulders": 1, "Triceps": 0.5], flags: ["Shoulder"]),
-        Move(name: "Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Chest": 0.5, "Triceps": 0.5], safeFor: ["Shoulder"]),
-        Move(name: "Half-Kneeling Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Triceps": 0.5], safeFor: ["Shoulder"]),
-        Move(name: "Pike Push-ups", pattern: .vPush, gear: [.bodyweight], muscles: ["Shoulders": 1, "Triceps": 0.5], beginner: false, flags: ["Shoulder"], reps: "6-12"),
+        Move(name: "Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Chest": 0.5, "Triceps": 0.5], safeFor: ["Shoulder"], longevity: 1),
+        Move(name: "Half-Kneeling Landmine Press", pattern: .vPush, gear: [.barbell], muscles: ["Shoulders": 1, "Triceps": 0.5], safeFor: ["Shoulder"], longevity: 1),
+        Move(name: "Pike Push-ups", pattern: .vPush, gear: [.bodyweight], muscles: ["Shoulders": 1, "Triceps": 0.5], beginner: false, flags: ["Shoulder"], reps: "6-12", longevity: -1),
         Move(name: "Incline Pike Push-ups", pattern: .vPush, gear: [.bodyweight], muscles: ["Shoulders": 1, "Triceps": 0.5], flags: ["Shoulder"], reps: "6-10"),
         // Horizontal pull
-        Move(name: "Barbell Rows", pattern: .hPull, gear: [.barbell], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, flags: ["Low back"]),
-        Move(name: "Chest-Supported Rows", pattern: .hPull, gear: [.dumbbell, .machine], muscles: ["Back": 1, "Biceps": 0.5]),
+        Move(name: "Barbell Rows", pattern: .hPull, gear: [.barbell], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, flags: ["Low back"], longevity: -1),
+        Move(name: "Chest-Supported Rows", pattern: .hPull, gear: [.dumbbell, .machine], muscles: ["Back": 1, "Biceps": 0.5], longevity: 1),
         Move(name: "One-Arm Dumbbell Rows", pattern: .hPull, gear: [.dumbbell, .kettlebell], muscles: ["Back": 1, "Biceps": 0.5]),
-        Move(name: "Seated Cable Rows", pattern: .hPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5]),
+        Move(name: "Seated Cable Rows", pattern: .hPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5], longevity: 1),
         Move(name: "Inverted Rows", pattern: .hPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5]),
         Move(name: "Band Rows", pattern: .hPull, gear: [.band], muscles: ["Back": 1, "Biceps": 0.5]),
         Move(name: "Doorframe Rows", pattern: .hPull, gear: [.bodyweight], muscles: ["Back": 1, "Biceps": 0.5], reps: "10-15"),
         Move(name: "Towel Rows", pattern: .hPull, gear: [.bodyweight], muscles: ["Back": 1, "Biceps": 0.5], reps: "10-15"),
         // Vertical pull
-        Move(name: "Weighted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, heavyOnly: true),
-        Move(name: "Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], beginner: false, reps: "5-10"),
-        Move(name: "Lat Pulldowns", pattern: .vPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5]),
-        Move(name: "Chin-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 1], beginner: false, reps: "5-10"),
+        Move(name: "Weighted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], heavy: true, beginner: false, heavyOnly: true, longevity: -1),
+        Move(name: "Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], beginner: false, reps: "5-10", longevity: -1),
+        Move(name: "Lat Pulldowns", pattern: .vPull, gear: [.cable], muscles: ["Back": 1, "Biceps": 0.5], longevity: 1),
+        Move(name: "Chin-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 1], beginner: false, reps: "5-10", longevity: -1),
+        Move(name: "Assisted Pull-ups", pattern: .vPull, gear: [.machine], muscles: ["Back": 1, "Biceps": 0.5], longevity: 1, longevityOnly: true),
         Move(name: "Band-Assisted Pull-ups", pattern: .vPull, gear: [.pullupBar], muscles: ["Back": 1, "Biceps": 0.5], reps: "5-8"),
         Move(name: "Band Lat Pulldowns", pattern: .vPull, gear: [.band], muscles: ["Back": 1, "Biceps": 0.5]),
         Move(name: "Prone Lat Pulls", pattern: .vPull, gear: [.bodyweight], muscles: ["Back": 1], reps: "12-15"),
         // Core / carry
         Move(name: "Plank", pattern: .core, gear: [.bodyweight], muscles: ["Core": 1], reps: "40s"),
-        Move(name: "Dead Bug", pattern: .core, gear: [.bodyweight], muscles: ["Core": 1], reps: "10"),
-        Move(name: "Pallof Press", pattern: .core, gear: [.band, .cable], muscles: ["Core": 1], reps: "10"),
-        Move(name: "Hanging Knee Raises", pattern: .core, gear: [.pullupBar], muscles: ["Core": 1], reps: "10-12"),
-        Move(name: "Side Plank", pattern: .core, gear: [.bodyweight], muscles: ["Core": 1], reps: "30s"),
-        Move(name: "Ab Wheel Rollouts", pattern: .core, gear: [.machine], muscles: ["Core": 1], beginner: false, flags: ["Low back"], reps: "8-12"),
-        Move(name: "Farmer's Carry", pattern: .carry, gear: [.dumbbell, .kettlebell], muscles: ["Core": 0.5, "Back": 0.5], reps: "40m"),
-        Move(name: "Suitcase Carry", pattern: .carry, gear: [.dumbbell, .kettlebell], muscles: ["Core": 1], reps: "30m"),
+        Move(name: "Dead Bug", pattern: .core, gear: [.bodyweight], muscles: ["Core": 1], reps: "10", longevity: 1),
+        Move(name: "Pallof Press", pattern: .core, gear: [.band, .cable], muscles: ["Core": 1], reps: "10", longevity: 1),
+        Move(name: "Hanging Knee Raises", pattern: .core, gear: [.pullupBar], muscles: ["Core": 1], reps: "10-12", longevity: -1),
+        Move(name: "Side Plank", pattern: .core, gear: [.bodyweight], muscles: ["Core": 1], reps: "30s", longevity: 1),
+        Move(name: "Bird Dog", pattern: .core, gear: [.bodyweight], muscles: ["Core": 1], reps: "8", longevity: 1, longevityOnly: true),
+        Move(name: "Ab Wheel Rollouts", pattern: .core, gear: [.machine], muscles: ["Core": 1], beginner: false, flags: ["Low back"], reps: "8-12", longevity: -1),
+        Move(name: "Farmer's Carry", pattern: .carry, gear: [.dumbbell, .kettlebell], muscles: ["Core": 0.5, "Back": 0.5], reps: "40m", longevity: 1),
+        Move(name: "Suitcase Carry", pattern: .carry, gear: [.dumbbell, .kettlebell], muscles: ["Core": 1], reps: "30m", longevity: 1),
         // Calves
         Move(name: "Standing Calf Raises", pattern: .calf, gear: [.machine], muscles: ["Calves": 1]),
         Move(name: "Dumbbell Calf Raises", pattern: .calf, gear: [.dumbbell], muscles: ["Calves": 1]),
@@ -170,7 +185,7 @@ enum SmartPlanner {
         Move(name: "Single-Leg Glute Bridges", pattern: .glute, gear: [.bodyweight], muscles: ["Glutes": 1, "Hamstrings": 0.5], reps: "10-12"),
         Move(name: "Leg Curls", pattern: .hamIso, gear: [.machine], muscles: ["Hamstrings": 1]),
         Move(name: "Sliding Leg Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], reps: "8-12"),
-        Move(name: "Nordic Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], beginner: false, reps: "4-6"),
+        Move(name: "Nordic Curls", pattern: .hamIso, gear: [.bodyweight], muscles: ["Hamstrings": 1], beginner: false, reps: "4-6", longevity: -1),
         Move(name: "Leg Extensions", pattern: .quadIso, gear: [.machine], muscles: ["Quads": 1], flags: ["Knee"]),
         Move(name: "Wall Sits", pattern: .quadIso, gear: [.bodyweight], muscles: ["Quads": 1], reps: "45s"),
     ]
@@ -199,7 +214,10 @@ enum SmartPlanner {
     // MARK: - Plan model
 
     struct Item {
-        enum Kind { case lift, cardio, intervals, mobility, balance, stability, walk, restDay }
+        /// `warmup`: the timed warm-up that opens every session (pulse raise,
+        /// dynamic drills, ramp-up sets); never a tracked lift.
+        /// `outside`: done outside the session (an extra daily walk); no session time.
+        enum Kind { case warmup, lift, cardio, intervals, mobility, balance, stability, walk, outside }
         var kind: Kind
         var name: String
         var sets = 1
@@ -215,17 +233,19 @@ enum SmartPlanner {
         var essential = false
         /// Done as an antagonist superset: rest is shared, so each set costs less time.
         var superset = false
+        /// A dynamic warm-up drill (counts as mobility work).
+        var warmDrill = false
         var duration: Double {
             switch kind {
             case .lift: return superset ? Double(sets) * perSet * 0.65 + 0.5 : Double(sets) * perSet + 1
-            case .restDay: return 0
+            case .outside: return 0
             default: return minutes
             }
         }
         var text: String {
             switch kind {
             case .lift: return "\(name) \(sets)x\(reps)"
-            case .cardio, .walk, .restDay: return "\(name) \(Int(minutes)) min"
+            case .warmup, .cardio, .walk, .outside: return "\(name) \(Int(minutes)) min"
             case .intervals, .mobility, .balance, .stability: return "\(name) \(reps)"
             }
         }
@@ -271,10 +291,12 @@ enum SmartPlanner {
         var budget: Double
         var fatigue: [Int] { spec.fatigue }
         var isHard: Bool { spec.isHard }
-        var minutes: Double { items.reduce(0) { $0 + $1.duration } + (items.contains { $0.kind == .lift } ? 5 : 0) }
+        /// Whole session, warm-up included (it is listed as its own items).
+        var minutes: Double { items.reduce(0) { $0 + $1.duration } }
+        var warmupMinutes: Double { items.filter { $0.kind == .warmup }.reduce(0) { $0 + $1.minutes } }
         var hasStrength: Bool { items.contains { $0.kind == .lift } }
         var aerobic: Double { items.reduce(0) { $0 + $1.aerobic } }
-        var mobilityMinutes: Double { items.filter { [.mobility, .balance, .stability].contains($0.kind) }.reduce(0) { $0 + $1.minutes } }
+        var mobilityMinutes: Double { items.filter { [.mobility, .balance, .stability].contains($0.kind) || $0.warmDrill }.reduce(0) { $0 + $1.minutes } }
         var hasBalance: Bool { items.contains { $0.kind == .balance } }
         func sets(of group: String) -> Double {
             items.reduce(0) { $0 + Double($1.sets) * ($1.kind == .lift ? ($1.muscles[group] ?? 0) : 0) }
@@ -296,11 +318,16 @@ enum SmartPlanner {
 
         /// Session length is a ceiling: each entry carries its own time.
         var scheduledWorkouts: [ScheduledWorkout] {
-            zip(slots, sessions).map { slot, s in
+            let note = SmartPlanner.loadingNote(Ctx(config: config))
+            return zip(slots, sessions).map { slot, s in
                 ScheduledWorkout(dayOfWeek: slot.label, workoutType: s.label, exercises: s.items.map(\.text),
-                                 estimatedDuration: max(10, min(config.sessionLength, Int(s.minutes.rounded()))))
+                                 estimatedDuration: max(10, min(config.sessionLength, Int(s.minutes.rounded()))),
+                                 notes: s.hasStrength ? note : nil)
             }
         }
+
+        /// What to do on the days off; stored apart from `scheduledWorkouts`.
+        var restDayPlan: RestDayPlan { SmartPlanner.restDayPlan(config: config, walk: restDayWalk) }
     }
 
     // MARK: - Context
@@ -320,6 +347,8 @@ enum SmartPlanner {
             }
         }
         var healthGoal: Bool { ![.buildMuscle, .getStronger].contains(goal) }
+        /// Longevity: lower-risk variations, 8+ reps, every set 2-3 reps short of failure.
+        var jointSafe: Bool { goal == .longevity }
         var maxExercises: Int {
             switch config.experienceLevel { case .beginner: return 5; case .intermediate: return 7; case .advanced: return 8; case .expert: return 9 }
         }
@@ -392,6 +421,9 @@ enum SmartPlanner {
     /// blocked), injury-preferred swaps first within the tier.
     static func ranked(_ q: Pattern, ctx: Ctx, intensity: Intensity, used: Set<String>) -> [Move] {
         var c = catalog.filter { $0.pattern == q && !$0.gear.isDisjoint(with: ctx.gear) && $0.flags.isDisjoint(with: ctx.injuries) }
+        // Longevity: joint-safe variations only (no barbell back/front squats,
+        // conventional deadlifts, barbell bench/rows, strict pull-ups, ab wheel).
+        c = ctx.jointSafe ? c.filter { $0.longevity >= 0 } : c.filter { !$0.longevityOnly }
         // Beginners never fall back to a move marked not for beginners.
         if ctx.beginner { c = c.filter(\.beginner) }
         if intensity == .heavy { let h = c.filter(\.heavy); if !h.isEmpty { c = h } }
@@ -409,6 +441,7 @@ enum SmartPlanner {
         return c.sorted { a, b in
             let sa = a.safeFor.isDisjoint(with: ctx.injuries) ? 1 : 0, sb = b.safeFor.isDisjoint(with: ctx.injuries) ? 1 : 0
             if sa != sb { return sa < sb }
+            if ctx.jointSafe && a.longevity != b.longevity { return a.longevity > b.longevity }
             let ra = gearRank(a, ctx: ctx), rb = gearRank(b, ctx: ctx)
             if ra != rb { return ra < rb }
             return order[a.name, default: 0] < order[b.name, default: 0]
@@ -438,8 +471,10 @@ enum SmartPlanner {
     static func reps(_ i: Intensity, compound: Bool, ctx: Ctx) -> String {
         switch i {
         case .heavy: return compound ? (ctx.beginner ? "5" : ctx.config.experienceLevel == .intermediate ? "4-6" : "3-5") : "8-12"
-        case .hypertrophy: return compound ? "6-10" : "10-15"
-        case .foundation: return compound ? (ctx.beginner ? "8-12" : "6-10") : "10-15"
+        // Beginners stay at 8+ reps on compounds while they learn the lifts.
+        case .hypertrophy: return compound ? (ctx.beginner ? "8-12" : "6-10") : "10-15"
+        // Longevity: moderate loads, never below 8 reps (10-15 for beginners).
+        case .foundation: return compound ? (ctx.beginner ? "10-15" : "8-12") : (ctx.beginner ? "12-15" : "10-15")
         case .general: return compound ? "8-12" : "10-15"
         case .endurance: return compound ? "12-15" : "15-20"
         case .circuit: return compound ? "10-12" : "12-15"
@@ -471,12 +506,18 @@ enum SmartPlanner {
 
     static func makeItem(_ m: Move, sets: Int, intensity: Intensity, ctx: Ctx) -> Item {
         let compound = m.pattern.isCompound
-        let r = m.reps ?? (intensity == .heavy && compound && !m.heavy ? "6-8" : reps(intensity, compound: compound, ctx: ctx))
+        var r = m.reps ?? (intensity == .heavy && compound && !m.heavy ? "6-8" : reps(intensity, compound: compound, ctx: ctx))
+        // Longevity: no set below 8 reps, 10 on beginners' compounds (band-assisted
+        // pull-ups take more band, push-ups go to an incline when needed).
+        if ctx.jointSafe, let lo = Int(r.split(separator: "-").first ?? ""), lo < (ctx.beginner && compound ? 10 : 8) {
+            r = compound ? reps(.foundation, compound: true, ctx: ctx) : "8-12"
+        }
         return Item(kind: .lift, name: m.name, sets: sets, reps: r, pattern: m.pattern, muscles: m.muscles,
                     perSet: perSet(intensity, compound: compound), heavyLoad: intensity == .heavy && compound && m.heavy, gear: m.gear)
     }
 
-    /// Lifts for one strength block within `budget` minutes (warm-up included).
+    /// Lifts for one strength block within `budget` minutes (the warm-up is
+    /// planned separately and already taken off the budget).
     /// One push, one pull and one lower movement always stay; when time is
     /// short the push and pull become an antagonist superset, then extra sets
     /// and extra lifts go before any of those three movements.
@@ -509,7 +550,7 @@ enum SmartPlanner {
             it.essential = k < ess.count && region(m.pattern) != nil
             items.append(it)
         }
-        func time() -> Double { 5 + items.reduce(0) { $0 + $1.duration } }
+        func time() -> Double { items.reduce(0) { $0 + $1.duration } }
         func superset() {
             guard let pu = items.firstIndex(where: { $0.essential && region($0.pattern) == 0 }),
                   let pl = items.firstIndex(where: { $0.essential && region($0.pattern) == 1 }), !items[pu].superset else { return }
@@ -579,6 +620,11 @@ enum SmartPlanner {
         return "Zone 2 Cardio (brisk walk or easy jog)"
     }
 
+    /// Mobility and recovery days open with a gentle pulse raise.
+    static func gentleRaise(_ minutes: Double) -> Item {
+        Item(kind: .warmup, name: "Warm-up: Gentle Pulse Raise (slow walk, marching, arm swings)", minutes: minutes, aerobic: minutes * 0.5)
+    }
+
     static func zone2(_ minutes: Double, ctx: Ctx) -> Item {
         Item(kind: .cardio, name: zone2Name(ctx), minutes: minutes.rounded(), aerobic: minutes.rounded())
     }
@@ -627,6 +673,93 @@ enum SmartPlanner {
         return "hill run or fast uphill walk"
     }
 
+    // MARK: - Warm-up
+
+    /// A dynamic warm-up drill: (name with its dose, body area, injury flags, gear needed or nil).
+    struct WarmDrill { let name: String; var flags: Set<String> = []; var gear: Set<Gear>? = nil }
+
+    /// Dynamic drills by the area the session loads (0 push, 1 pull, 2 knee-dominant, 3 hip hinge, 4 running/cycling).
+    static let warmDrills: [Int: [WarmDrill]] = [
+        0: [WarmDrill(name: "Scapular Push-ups (10)"), WarmDrill(name: "Wall Slides (10)", flags: ["Shoulder"]),
+            WarmDrill(name: "Band Pull-Aparts (15)", gear: [.band, .cable]), WarmDrill(name: "Arm Circles (10 each way)")],
+        1: [WarmDrill(name: "Open-Book T-Spine Rotations (8 each side)"), WarmDrill(name: "Band Pull-Aparts (15)", gear: [.band, .cable]),
+            WarmDrill(name: "Arm Circles (10 each way)"), WarmDrill(name: "Prone Swimmers (8)")],
+        2: [WarmDrill(name: "Leg Swings (10 each leg)"), WarmDrill(name: "Knee-to-Wall Ankle Rocks (10 each side)"),
+            WarmDrill(name: "Spiderman Lunge with Reach (5 each side)", flags: ["Knee"]), WarmDrill(name: "Slow Bodyweight Box Squats (8)")],
+        3: [WarmDrill(name: "Hip Hinge Drill (10)"), WarmDrill(name: "Bodyweight Glute Bridges (12)"),
+            WarmDrill(name: "Leg Swings (10 each leg)"), WarmDrill(name: "Inchworm Walkouts (5)", flags: ["Low back"])],
+        4: [WarmDrill(name: "Leg Swings (10 each leg)"), WarmDrill(name: "Walking Knee Hugs (8 each leg)"),
+            WarmDrill(name: "Knee-to-Wall Ankle Rocks (10 each side)"), WarmDrill(name: "Build-up Efforts (3 x 20 s, getting faster)")],
+    ]
+
+    /// Warm-up minutes for a strength or Strength + Zone 2 session:
+    /// (pulse raise, number of 1-minute drills, ramp-up sets).
+    static func strengthWarmup(_ len: Double) -> (raise: Double, drills: Int, ramp: Double) {
+        if len >= 45 { return (5, 4, 2) }
+        if len >= 30 { return (3, 3, 1) }
+        return (2, 3, 1)
+    }
+
+    static func pulseRaiseName(_ ctx: Ctx) -> String {
+        if ctx.gear.contains(.machine) { return "Warm-up: Easy Cardio (bike, rower or brisk incline walk)" }
+        if ctx.injuries.contains("Knee") { return "Warm-up: Easy Cardio (bike or brisk walk)" }
+        return "Warm-up: Easy Cardio (brisk walk, marching or easy jog)"
+    }
+
+    /// `count` 1-minute dynamic drills for the given areas, taken in turn.
+    static func warmDrillItems(areas: [Int], count: Int, ctx: Ctx) -> [Item] {
+        var out: [Item] = []
+        var taken = Set<String>()
+        var idx = [Int: Int]()
+        let areas = areas.isEmpty ? [2, 0, 1] : areas
+        var k = 0
+        while out.count < count && k < 40 {
+            let a = areas[k % areas.count]
+            k += 1
+            let pool = (warmDrills[a] ?? []).filter { d in
+                d.flags.isDisjoint(with: ctx.injuries) && (d.gear.map { !$0.isDisjoint(with: ctx.gear) } ?? true) && !taken.contains(d.name)
+            }
+            guard !pool.isEmpty else { continue }
+            let d = pool[min(idx[a, default: 0], pool.count - 1)]
+            idx[a, default: 0] += 1
+            taken.insert(d.name)
+            out.append(Item(kind: .warmup, name: "Warm-up: \(d.name)", minutes: 1, warmDrill: true))
+        }
+        return out
+    }
+
+    /// The warm-up for a lifting session, built from its lifts: an easy
+    /// pulse raise, dynamic drills for the patterns the session loads, and
+    /// ramp-up sets on the first main lift.
+    static func liftWarmup(for lifts: [Item], ctx: Ctx, len: Double) -> [Item] {
+        let w = strengthWarmup(len)
+        var areas: [Int] = []
+        for it in lifts {
+            let a: Int?
+            switch it.pattern {
+            case .hPush?, .vPush?: a = 0
+            case .hPull?, .vPull?: a = 1
+            case .squat?, .lunge?: a = 2
+            case .hinge?: a = 3
+            default: a = nil
+            }
+            if let a, !areas.contains(a) { areas.append(a) }
+        }
+        var items = [Item(kind: .warmup, name: pulseRaiseName(ctx), minutes: w.raise)]
+        items += warmDrillItems(areas: areas, count: w.drills, ctx: ctx)
+        if let first = lifts.first(where: { $0.pattern?.isCompound ?? false }) ?? lifts.first {
+            items.append(Item(kind: .warmup, name: "Warm-up: Ramp-up Sets for \(first.name) (2-3 lighter sets building to your working weight)",
+                              minutes: w.ramp))
+        }
+        return items
+    }
+
+    /// Minutes a lifting session's warm-up takes (planned before the lifts are picked).
+    static func liftWarmupMinutes(_ len: Double) -> Double {
+        let w = strengthWarmup(len)
+        return w.raise + Double(w.drills) + w.ramp
+    }
+
     /// `avoid`: drills (and lifts) from the neighbouring day, not repeated.
     static func build(_ spec: Spec, ctx: Ctx, avoid: Set<String> = []) -> Session {
         let len = sessionCap(spec.kind, ctx: ctx)
@@ -646,10 +779,15 @@ enum SmartPlanner {
                 let lists = groups.map { patterns($0, variant: spec.variant) }
                 for i in 0..<(lists.map(\.count).max() ?? 0) { for l in lists where i < l.count { pats.append(l[i]) } }
             }
-            let finisher = spec.groups.isEmpty ? mobFinisher : 0
-            budget = len - finisher
+            // The warm-up's dynamic drills already cover part of the mobility,
+            // so the closing mobility block is shorter than on other days.
+            // (Flexibility keeps the full block: mobility is its goal.)
+            let finisher = spec.groups.isEmpty ? (mobFinisher >= 10 && ctx.goal != .increaseFlexibility ? 5 : mobFinisher) : 0
+            // The warm-up's time comes off the lifts, never the other way round.
+            budget = len - finisher - liftWarmupMinutes(len)
             items = strengthItems(patterns: pats, variant: spec.variant, intensity: spec.intensity,
                                   budget: budget, ctx: ctx, used: &used)
+            items = liftWarmup(for: items, ctx: ctx, len: len) + items
             items += drills(minutes: finisher, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 3, ctx: ctx, used: &used)
             // "Heavy" only when a heavy-capable lift is actually in the session.
             let shown = spec.intensity == .heavy && !items.contains(where: \.heavyLoad) ? Intensity.endurance : spec.intensity
@@ -657,12 +795,15 @@ enum SmartPlanner {
             if spec.label == nil && items.contains(where: \.superset) { label += " (Push/Pull Superset)" }
         case .mixed:
             let t = spec.template ?? .fullBody
-            budget = max((len * 0.55).rounded(), min(len, 20))
+            let warm = liftWarmupMinutes(len)
+            let fin = len >= 45 ? min(mobFinisher, 8) : 0
+            // Lifts keep their share; at least 10 minutes of Zone 2 stay after them.
+            budget = max(8, min(max((len * 0.55).rounded(), min(len, 20)) - 5, len - warm - fin - 10))
             items = strengthItems(patterns: patterns(t, variant: spec.variant), variant: spec.variant,
                                   intensity: spec.intensity, budget: budget, ctx: ctx, used: &used)
-            let lifted = items.isEmpty ? 0 : 5 + items.reduce(0) { $0 + $1.duration }
-            let fin = len >= 45 ? min(mobFinisher, 8) : 0
-            let rest = max(10, len - lifted - fin)
+            let lifted = items.reduce(0) { $0 + $1.duration }
+            items = liftWarmup(for: items, ctx: ctx, len: len) + items
+            let rest = max(10, len - lifted - items.filter { $0.kind == .warmup }.reduce(0) { $0 + $1.minutes } - fin)
             if ctx.goal == .increaseFlexibility {
                 items += drills(minutes: rest + fin, balance: true, stability: true, offset: spec.variant * 2, ctx: ctx, used: &used)
                 label = "Strength + Mobility \(["A", "B", "C", "D", "E", "F"][spec.variant % 6])"
@@ -673,7 +814,11 @@ enum SmartPlanner {
             }
         case .zone2:
             let mob: Double = len >= 40 ? (ctx.healthGoal ? 10 : 5) : 0
-            items = [zone2(len - mob, ctx: ctx)]
+            // A gradual build into Zone 2 is the warm-up.
+            let build: Double = len >= 30 ? 5 : 3
+            items = [Item(kind: .warmup, name: "Warm-up: Easy Build to Zone 2 (start very easy, raise the pace gradually)",
+                          minutes: build, aerobic: build),
+                     zone2(len - mob - build, ctx: ctx)]
             items += drills(minutes: mob, balance: ctx.goal == .longevity, stability: false, offset: spec.variant * 4 + 1, ctx: ctx, used: &used)
             label = ctx.goal == .longevity && mob > 0 ? "Zone 2 + Mobility & Balance" : (mob > 0 ? "Zone 2 + Mobility" : "Zone 2 Cardio")
         case .intervals:
@@ -685,8 +830,12 @@ enum SmartPlanner {
             let hard = short ? 3 : 4, easy = short ? 2 : 3
             let reps = short ? min(5, max(3, Int((len - warm - cool) / 5))) : min(6, max(4, Int((len - warm - cool - bal) / 7)))
             let block = Double(reps * (hard + easy))
-            items = [Item(kind: .cardio, name: "Easy Warm-up Cardio", minutes: warm, aerobic: warm),
-                     Item(kind: .intervals, name: "VO2max Intervals: \(hard) min hard / \(easy) min easy (\(intervalMode(ctx)))", sets: reps,
+            // Warm-up: easy cardio, then dynamic leg drills and build-ups.
+            let nDrills = short ? 2 : 3
+            let raise = warm - Double(nDrills)
+            items = [Item(kind: .warmup, name: "Warm-up: Easy Cardio (same machine or route as the intervals)", minutes: raise, aerobic: raise)]
+            items += warmDrillItems(areas: [4], count: nDrills, ctx: ctx)
+            items += [Item(kind: .intervals, name: "VO2max Intervals: \(hard) min hard / \(easy) min easy (\(intervalMode(ctx)))", sets: reps,
                           reps: "\(reps)x\(hard * 60)s", minutes: block, aerobic: Double(reps * hard * 2 + reps * easy)),
                      Item(kind: .cardio, name: "Easy Cool-down", minutes: cool, aerobic: cool)]
             items += drills(minutes: min(bal, max(0, len - warm - cool - block)), balance: true, stability: false,
@@ -698,22 +847,27 @@ enum SmartPlanner {
             let bal: Double = ctx.goal == .longevity && !short ? 5 : 0
             let reps = min(10, max(4, Int((len - warm - cool - bal) / 3)))
             let block = Double(reps * 3)
-            items = [Item(kind: .cardio, name: "Brisk Walk Warm-up", minutes: warm, aerobic: warm),
-                     Item(kind: .intervals, name: "Uphill Walk Intervals: 1 min brisk / 2 min easy", sets: reps,
+            let raise = warm - 2
+            items = [Item(kind: .warmup, name: "Warm-up: Easy Walk, building to brisk", minutes: raise, aerobic: raise)]
+            items += warmDrillItems(areas: [4], count: 2, ctx: ctx)
+            items += [Item(kind: .intervals, name: "Uphill Walk Intervals: 1 min brisk / 2 min easy", sets: reps,
                           reps: "\(reps)x60s", minutes: block, aerobic: Double(reps * 4)),
                      Item(kind: .cardio, name: "Easy Cool-down", minutes: cool, aerobic: cool)]
             items += drills(minutes: min(max(bal, 2.5), max(0, len - warm - cool - block)), balance: true, stability: false,
                             offset: spec.variant * 2 + 3, ctx: ctx, used: &used)
             label = items.contains(where: { $0.kind == .balance }) ? "Gentle Intervals + Balance" : "Gentle Intervals"
         case .mobility:
-            let walk: Double = len >= 40 && ctx.goal != .increaseFlexibility ? 15 : 0
+            let raise: Double = 3
+            items = [gentleRaise(raise)]
+            let walk: Double = len >= 40 && ctx.goal != .increaseFlexibility ? 12 : 0
             if walk > 0 { items.append(Item(kind: .walk, name: "Easy Walk", minutes: walk, aerobic: walk * 0.5)) }
-            items += drills(minutes: len - walk, balance: true, stability: true, offset: spec.variant * 5, ctx: ctx, used: &used)
+            items += drills(minutes: len - walk - raise, balance: true, stability: true, offset: spec.variant * 5, ctx: ctx, used: &used)
             label = "Mobility, Balance & Core"
         case .recovery:
-            let walk = (len * 0.6).rounded()
-            items = [Item(kind: .walk, name: "Easy Walk", minutes: walk, aerobic: walk * 0.5)]
-            items += drills(minutes: len - walk, balance: false, stability: false, offset: spec.variant * 5 + 2, ctx: ctx, used: &used)
+            let raise: Double = 3
+            let walk = (len * 0.6).rounded() - raise
+            items = [gentleRaise(raise), Item(kind: .walk, name: "Easy Walk", minutes: walk, aerobic: walk * 0.5)]
+            items += drills(minutes: len - walk - raise, balance: false, stability: false, offset: spec.variant * 5 + 2, ctx: ctx, used: &used)
             label = "Recovery: Easy Walk + Mobility"
         }
         return Session(spec: spec, label: label, items: items, budget: budget)
@@ -1463,10 +1617,37 @@ enum SmartPlanner {
         let per = min(45, max(restOnly ? 20 : 15, (gap / days / 5).rounded(.up) * 5))
         p.restDayWalk = per
         p.walkDaysPerWeek = days
-        let name = restOnly ? "Brisk Walk on rest days" : "Brisk Walk every day (outside the session)"
+        // Rest-day walks live on the rest-day page (`restDayPlan`), never in a
+        // training session. Only when the rest days cannot hold the gap does a
+        // training day carry an extra walk, done outside the session.
+        guard !restOnly else { return }
         for i in p.sessions.indices {
-            p.sessions[i].items.append(Item(kind: .restDay, name: name, minutes: per))
+            p.sessions[i].items.append(Item(kind: .outside, name: "Extra Brisk Walk (any time today, outside this session)", minutes: per))
         }
+    }
+
+    /// The rest-day program: an easy recovery prescription for the days off.
+    /// `walk`: brisk-walk minutes the plan needs on rest days (0 = none needed).
+    static func restDayPlan(config: ProgramConfig, walk: Double = 0) -> RestDayPlan {
+        let ctx = Ctx(config: config)
+        let minutes = Int(min(45, max(walk > 0 ? walk : (ctx.healthGoal ? 25 : 20), 20)))
+        var items = ["Brisk Walk (Zone 1-2, easy enough to talk) \(minutes) min",
+                     "Easy Mobility Flow (hips, spine, shoulders) 10 min",
+                     "Optional: Foam Rolling (calves, quads, upper back) 5 min",
+                     "Optional: Slow Breathing (4 s in, 6 s out) 5 min"]
+        if ctx.injuries.contains("Knee") { items[0] = "Easy Walk or Cycling (Zone 1-2, easy enough to talk) \(minutes) min" }
+        var note = "Recovery, not training: keep everything easy. Skip it if you feel run down."
+        if walk > 0 { note += " The walk counts toward your weekly aerobic minutes." }
+        return RestDayPlan(title: "Rest Day: Active Recovery", exercises: items, note: note, estimatedDuration: minutes + 10)
+    }
+
+    /// Coaching cue shown with a session's lifts.
+    static func loadingNote(_ ctx: Ctx) -> String? {
+        if ctx.jointSafe {
+            return "Joint-safe loading: stop every working set 2-3 reps short of failure (RPE 7-8), never below 8 reps, controlled tempo (about 3 s down). No max-effort sets."
+        }
+        if ctx.beginner { return "Stop every set with 2-3 good reps left (RPE 7-8). Form first; add weight only when every set looks the same." }
+        return nil
     }
 
     /// Planning units: a week (weekly) or 1-2 whole cycles (rolling). The
@@ -1563,10 +1744,9 @@ enum SmartPlanner {
 }
 
 extension SmartPlanner.Session {
-    /// Minutes the lifting part takes (warm-up included).
+    /// Minutes the lifts take (the warm-up is its own items, outside `budget`).
     var strengthMinutes: Double {
-        let lifts = items.filter { $0.kind == .lift }
-        return lifts.isEmpty ? 0 : lifts.reduce(5) { $0 + $1.duration }
+        items.filter { $0.kind == .lift }.reduce(0) { $0 + $1.duration }
     }
 }
 
@@ -1608,11 +1788,64 @@ extension SmartPlanner {
                 print("  [\(slot.restBefore)] \(slot.label): \(s.label) (\(Int(s.minutes)) min) \(s.isHard ? "HARD" : "")")
                 print("      " + s.items.map(\.text).joined(separator: " | "))
             }
+            if let note = p.scheduledWorkouts.first(where: { $0.notes != nil })?.notes { print("  lifting note: \(note)") }
+            let rd = p.restDayPlan
+            print("  rest day: \(rd.title): " + rd.exercises.joined(separator: " | ") + " (\(rd.note))")
             print("  volume: " + volumeReport(p).map { "\($0.group) \(String(format: "%.1f", $0.sets)) [\($0.target.lowerBound)-\($0.target.upperBound)]" }.joined(separator: ", "))
             for split in ProgramSplit.allCases where split != .auto {
                 let nq = qualityScore(naivePlan(for: c, split: split))
                 print("  naive \(split.rawValue): \(String(format: "%.1f", nq.total)) f\(String(format: "%.2f", nq.frequency)) v\(String(format: "%.2f", nq.volume)) r\(String(format: "%.2f", nq.recovery)) c\(String(format: "%.2f", nq.coverage)) b\(String(format: "%.2f", nq.balance))")
             }
         }
+    }
+}
+
+// MARK: - Rest-day program
+
+/// What to do on a rest day: an easy recovery prescription. Stored on its own
+/// (UserDefaults) when a program is built, never as an entry in
+/// `weeklySchedule`, so training-day indexing, session counts, streaks and
+/// adherence are unchanged. `scheduleSignature` ties it to the program it was
+/// built for; any other program gets the default plan for the saved goal.
+struct RestDayPlan: Codable, Equatable {
+    var title: String
+    /// Entries with their scheme ("Brisk Walk ... 25 min"), like `ScheduledWorkout.exercises`.
+    var exercises: [String]
+    var note: String
+    var estimatedDuration: Int
+    var scheduleSignature: String? = nil
+
+    var plannedExercises: [PlannedExercise] { exercises.map(ProgramTargetParser.parse) }
+
+    /// The plan as an optional session that can be started and logged.
+    var asScheduledWorkout: ScheduledWorkout {
+        var w = ScheduledWorkout(dayOfWeek: "Rest Day", workoutType: title, exercises: exercises,
+                                 estimatedDuration: estimatedDuration, notes: note)
+        w.normalizePlan()
+        return w
+    }
+
+    static let storageKey = "restDayPlan.v1"
+
+    static func stored(_ d: UserDefaults = .standard) -> RestDayPlan? {
+        d.data(forKey: storageKey).flatMap { try? JSONDecoder().decode(RestDayPlan.self, from: $0) }
+    }
+
+    func save(_ d: UserDefaults = .standard) {
+        if let data = try? JSONEncoder().encode(self) { d.set(data, forKey: Self.storageKey) }
+    }
+
+    static func clear(_ d: UserDefaults = .standard) { d.removeObject(forKey: storageKey) }
+
+    /// The rest-day plan for `date`, or nil on a training day. Pure, so the
+    /// selftest can check both schedule modes.
+    static func forDate(_ date: Date, start: Date, rolling: Bool, daysOn: Int, daysOff: Int, weekdays: [String],
+                        plan: RestDayPlan?, calendar: Calendar = .current) -> RestDayPlan? {
+        guard let plan else { return nil }
+        let idx = WorkoutManager.trainingDayIndex(on: date, start: start, rolling: rolling, daysOn: daysOn,
+                                                  daysOff: daysOff, weekdays: weekdays, calendar: calendar)
+        // Before the program starts nothing is scheduled: not a rest day either.
+        guard idx == nil, calendar.startOfDay(for: date) >= calendar.startOfDay(for: start) else { return nil }
+        return plan
     }
 }

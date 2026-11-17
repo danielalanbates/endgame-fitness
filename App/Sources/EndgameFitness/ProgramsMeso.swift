@@ -158,6 +158,7 @@ extension WorkoutManager {
     /// Stop following a program. History and game progress are untouched.
     func dropCurrentProgram() {
         weeklySchedule = []
+        RestDayPlan.clear()
         currentProgramName = nil
         UserDefaults.standard.set(ScheduleMode.weekly.rawValue, forKey: "scheduleMode")
         UserDefaults.standard.set(false, forKey: "rotationIndexed")
@@ -344,6 +345,17 @@ struct ProgramsView: View {
 
                 if hasActiveProgram {
                     currentProgramBanner
+                    if let rest = workoutManager.restDayProgram {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Training days: \(workoutManager.weeklySchedule.count) in the rotation. Rest days:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            RestDayPlanView(plan: rest)
+                        }
+                        .padding()
+                        .background(Color.brandYellow.opacity(0.08))
+                        .cornerRadius(12)
+                    }
                 }
 
                 actionButtons

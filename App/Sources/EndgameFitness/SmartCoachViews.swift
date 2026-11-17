@@ -60,17 +60,31 @@ struct SmartTodayCard: View {
         guard let todaysWorkout else { return [] }
         let ctx = context
         let history = workoutManager.loggedSessions
-        return todaysWorkout.plannedExercises.prefix(6).enumerated().compactMap { i, plan in
+        // Warm-ups, cardio and drills are timed: only lifts get a prescription.
+        let lifts = todaysWorkout.plannedExercises.compactMap { plan -> (PlannedExercise, Exercise)? in
             var ex = Exercise(name: plan.name, targetSets: plan.sets, targetRepMin: plan.repMin,
                               targetRepMax: plan.repMax, targetSeconds: plan.seconds, targetLoadLb: plan.loadLb)
             WorkoutManager.attachLibraryMatch(&ex)
-            if ex.resolvedTracking == .timed { return nil }
+            let timedTarget = plan.seconds != nil && plan.repMin == nil && plan.repMax == nil
+            if timedTarget || ex.resolvedTracking == .timed { return nil }
+            return (plan, ex)
+        }
+        return lifts.prefix(6).enumerated().compactMap { i, pair in
+            let (plan, ex) = pair
             guard let p = SmartCoach.prescribe(exercise: ex, history: history, context: ctx) else {
                 return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "First time: pick a weight you could lift 2–3 more times.")
             }
             let load = p.topLoad > 0 ? "\(TrainingUnits.weight(p.topLoad, ctx.unit)) × \(p.topReps)" : "\(p.topReps) reps"
             return Row(id: i, name: plan.name, load: "\(p.sets.count) sets · \(load)", reason: p.reason)
         }
+    }
+
+    /// "Warm-up: 11 min (cardio, 4 drills, ramp-up sets)".
+    private func warmupSummary(_ w: ScheduledWorkout) -> String? {
+        let warm = w.plannedExercises.filter { $0.name.hasPrefix("Warm-up") }
+        guard !warm.isEmpty else { return nil }
+        let minutes = warm.reduce(0) { $0 + ($1.seconds ?? 0) } / 60
+        return "Starts with a \(minutes)-min warm-up (\(warm.count) steps)"
     }
 
     private var cycleText: String {
@@ -117,6 +131,17 @@ struct SmartTodayCard: View {
             if let todaysWorkout {
                 Text(todaysWorkout.workoutType)
                     .font(.subheadline.bold())
+                if let warm = warmupSummary(todaysWorkout) {
+                    Label(warm, systemImage: "flame")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let notes = todaysWorkout.notes {
+                    Text(notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ForEach(rows) { row in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline) {
@@ -132,6 +157,10 @@ struct SmartTodayCard: View {
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+            } else if let rest = workoutManager.restDayPlan() {
+                RestDayPlanView(plan: rest) {
+                    workoutManager.startScheduledWorkout(rest.asScheduledWorkout)
                 }
             } else {
                 Text("Rest day. Nothing scheduled.")
@@ -160,5 +189,47 @@ struct SmartTodayCard: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// A rest day's recovery plan: what to do, why, and an optional start button
+/// that logs it as a light recovery session.
+struct RestDayPlanView: View {
+    let plan: RestDayPlan
+    var onStart: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(plan.title, systemImage: "bed.double.fill")
+                .font(.subheadline.bold())
+            ForEach(Array(plan.plannedExercises.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline) {
+                    Image(systemName: item.name.hasPrefix("Optional") ? "circle.dotted" : "circle")
+                        .font(.caption)
+                        .foregroundStyle(Color.brandGreen)
+                    Text(item.name)
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    if item.hasTarget {
+                        Text(item.schemeText)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Text(plan.note)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let onStart {
+                Button(action: onStart) {
+                    Label("Start Recovery Session", systemImage: "figure.walk")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -300,6 +300,8 @@ enum SmartCoach {
     /// Which concrete model Auto runs, from experience, goal and how much
     /// history this exercise has.
     static func resolvedModel(_ ctx: CoachContext, state: ExerciseState?) -> ProgressionStyle {
+        // Longevity never runs percentage waves (heavy singles near a max).
+        if ctx.goal == .longevity && ctx.model == .waves { return .double }
         guard ctx.model == .auto else { return ctx.model }
         let exposures = state?.exposures.count ?? 0
         switch ctx.experience {
@@ -385,7 +387,13 @@ enum SmartCoach {
                           context ctx: CoachContext, now: Date = Date()) -> Prescription? {
         let tracking = exercise.resolvedTracking
         guard tracking != .timed else { return nil }
-        let range = ProgressionEngine.repRange(for: exercise)
+        // Longevity: joint-safe loading. Never below 8 reps, every set 2-3
+        // reps short of failure, no top sets or max attempts.
+        let jointSafe = ctx.goal == .longevity
+        var range = ProgressionEngine.repRange(for: exercise)
+        if jointSafe && range.lowerBound < 8 { range = 8...max(12, range.upperBound) }
+        let effortCap: Double? = jointSafe ? 7.5 : nil
+        let cue = jointSafe ? " Stop 2–3 reps short of failure." : ""
         let st = state(key: exercise.identityKey, history: history, repRange: range, excluding: excluding, now: now)
         let model = resolvedModel(ctx, state: st)
         let unit = ctx.unit
@@ -427,7 +435,8 @@ enum SmartCoach {
         }
 
         let working = last.workingSets
-        let allHitTop = working.allSatisfy { $0.reps >= range.upperBound && ($0.rir ?? 1) >= 1 }
+        // Longevity: the top only counts with 2+ reps in reserve (when logged).
+        let allHitTop = working.allSatisfy { $0.reps >= range.upperBound && ($0.rir ?? 2) >= (jointSafe ? 2 : 1) }
 
         switch model {
         case .linear, .auto:
@@ -435,41 +444,41 @@ enum SmartCoach {
             if bodyweightOnly {
                 let best = working.map(\.reps).max() ?? reps
                 return Prescription(model: .linear, kind: .bodyweight, sets: rows(min(best + 1, range.upperBound + 5), 0),
-                                    targetRPE: nil, reason: "Bodyweight: add a rep per set. Last best \(best).")
+                                    targetRPE: effortCap, reason: "Bodyweight: add a rep per set. Last best \(best).\(cue)")
             }
             if st.isStalled {
                 let load = rnd(top * 0.9)
-                return Prescription(model: .linear, kind: .reset, sets: rows(reps, load), targetRPE: nil,
-                                    reason: "Reset −10% to \(w(load, unit)): no gain in 3 sessions. You'll pass the old weight in a few weeks.")
+                return Prescription(model: .linear, kind: .reset, sets: rows(reps, load), targetRPE: effortCap,
+                                    reason: "Reset −10% to \(w(load, unit)): no gain in 3 sessions. You'll pass the old weight in a few weeks.\(cue)")
             }
             let hit = working.allSatisfy { $0.reps >= reps }
             if hit {
                 let load = rnd(top + jump)
-                return Prescription(model: .linear, kind: .increase, sets: rows(reps, load), targetRPE: nil,
-                                    reason: "+\(step(load - top, unit)): hit \(working.count)×\(reps) at \(w(top, unit)) last time.")
+                return Prescription(model: .linear, kind: .increase, sets: rows(reps, load), targetRPE: effortCap,
+                                    reason: "+\(step(load - top, unit)): hit \(working.count)×\(reps) at \(w(top, unit)) last time.\(cue)")
             }
-            return Prescription(model: .linear, kind: .hold, sets: rows(reps, top), targetRPE: nil,
-                                reason: "Same weight: last time fell short of \(reps) on a set. Complete every set to move up.")
+            return Prescription(model: .linear, kind: .hold, sets: rows(reps, top), targetRPE: effortCap,
+                                reason: "Same weight: last time fell short of \(reps) on a set. Complete every set to move up.\(cue)")
 
         case .double:
             if st.isStalled && !bodyweightOnly {
                 let load = rnd(top * 0.9)
-                return Prescription(model: .double, kind: .reset, sets: rows(range.lowerBound, load), targetRPE: nil,
-                                    reason: "Reset −10% to \(w(load, unit)): no gain in 3 sessions. Work back up the \(range.lowerBound)–\(range.upperBound) range.")
+                return Prescription(model: .double, kind: .reset, sets: rows(range.lowerBound, load), targetRPE: effortCap,
+                                    reason: "Reset −10% to \(w(load, unit)): no gain in 3 sessions. Work back up the \(range.lowerBound)–\(range.upperBound) range.\(cue)")
             }
             if allHitTop {
                 if bodyweightOnly {
-                    return Prescription(model: .double, kind: .bodyweight, sets: rows(range.upperBound, 0), targetRPE: nil,
-                                        reason: "Top of the range on every set: add load or a harder variation.")
+                    return Prescription(model: .double, kind: .bodyweight, sets: rows(range.upperBound, 0), targetRPE: effortCap,
+                                        reason: "Top of the range on every set: add load or a harder variation.\(cue)")
                 }
                 let load = rnd(top + jump)
-                return Prescription(model: .double, kind: .increase, sets: rows(range.lowerBound, load), targetRPE: nil,
-                                    reason: "+\(step(load - top, unit)): every set reached \(range.upperBound) last time. Back to \(range.lowerBound) reps.")
+                return Prescription(model: .double, kind: .increase, sets: rows(range.lowerBound, load), targetRPE: effortCap,
+                                    reason: "+\(step(load - top, unit)): every set reached \(range.upperBound) last time. Back to \(range.lowerBound) reps.\(cue)")
             }
             let best = working.map(\.reps).max() ?? range.lowerBound
             let next = min(max(best + 1, range.lowerBound), range.upperBound)
-            return Prescription(model: .double, kind: .addReps, sets: rows(next, top), targetRPE: nil,
-                                reason: "Same weight, aim for \(next) reps. Reach \(range.upperBound) on every set and the load goes up.")
+            return Prescription(model: .double, kind: .addReps, sets: rows(next, top), targetRPE: effortCap,
+                                reason: "Same weight, aim for \(next) reps. Reach \(range.upperBound) on every set and the load goes up.\(cue)")
 
         case .rpe:
             if bodyweightOnly {
@@ -482,7 +491,7 @@ enum SmartCoach {
             let load = rnd(load(e1RM: st.e1RM, reps: reps, rpe: rpe))
             let stallNote = st.isStalled ? " Stalled 3 sessions, so one point easier this time." : ""
             return Prescription(model: .rpe, kind: .autoregulated, sets: rows(reps, load), targetRPE: rpe,
-                                reason: "\(reps) reps @ RPE \(TrainingUnits.number(rpe)) from e1RM \(w(st.e1RM, unit)).\(stallNote) Log RIR so the next load adjusts.")
+                                reason: "\(reps) reps @ RPE \(TrainingUnits.number(rpe)) from e1RM \(w(st.e1RM, unit)).\(stallNote) Log RIR so the next load adjusts.\(cue)")
 
         case .waves:
             if bodyweightOnly {

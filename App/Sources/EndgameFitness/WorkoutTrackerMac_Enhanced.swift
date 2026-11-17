@@ -332,7 +332,10 @@ class WorkoutManager: ObservableObject {
         var exercise = Exercise(name: plan.name, targetSets: plan.sets, targetRepMin: plan.repMin,
                                 targetRepMax: plan.repMax, targetSeconds: plan.seconds, targetLoadLb: plan.loadLb)
         Self.attachLibraryMatch(&exercise)
-        exercise.tracking = exercise.resolvedTracking
+        // A duration-only target ("Warm-up: Easy Cardio 5 min") is timed work,
+        // never a lift the coach progresses.
+        let timedTarget = plan.seconds != nil && plan.repMin == nil && plan.repMax == nil
+        exercise.tracking = timedTarget ? .timed : exercise.resolvedTracking
         exercise.sets = ProgressionEngine.plannedSets(for: exercise, history: history)
         return exercise
     }
@@ -561,12 +564,19 @@ class WorkoutManager: ObservableObject {
             days = (1...max(1, config.daysOn)).map { "Day \($0)" }
         }
 
+        var restDay: RestDayPlan
         if config.split == .auto {
             // Smart Advisor: session types placed by the recovery model.
-            weeklySchedule = SmartPlanner.plan(for: config, start: Date()).scheduledWorkouts
+            let plan = SmartPlanner.plan(for: config, start: Date())
+            weeklySchedule = plan.scheduledWorkouts
+            restDay = plan.restDayPlan
         } else {
             weeklySchedule = explicitSplitSchedule(config: config, days: days)
+            restDay = SmartPlanner.restDayPlan(config: config)
         }
+        // The rest-day program is kept apart from the training rotation.
+        restDay.scheduleSignature = weeklySchedule.first?.id.uuidString
+        restDay.save()
 
         // Persist the cycle-level knobs for the coaching/mesocycle views.
         let d = UserDefaults.standard
@@ -608,12 +618,15 @@ class WorkoutManager: ObservableObject {
                 dayLabel = length > perCycle ? "\(weekday) · Wk \(k / perCycle + 1)" : weekday
             }
             let focus = session.focus ?? goalFocus
-            let share = config.sessionLength / max(1, session.groups.count)
+            // The warm-up's time comes out of the lifting time.
+            let warm = Self.explicitWarmup(sessionLength: config.sessionLength)
+            let share = (config.sessionLength - warm.minutes) / max(1, session.groups.count)
             var exercises: [String] = []
             for group in session.groups {
                 exercises += Self.generateExercises(for: group, duration: max(15, share), focus: focus)
             }
             exercises = injurySafe(exercises, injuries: config.injuries)
+            exercises = warm.items(exercises.first.map { ProgramTargetParser.parse($0).name }) + exercises
             if config.primaryGoal == .longevity {
                 exercises.append("Mobility Flow 10 min")
                 exercises.append("Zone 2 Cardio 15 min")
@@ -622,6 +635,19 @@ class WorkoutManager: ObservableObject {
                                              exercises: exercises, estimatedDuration: config.sessionLength))
         }
         return schedule
+    }
+
+    /// A hand-picked split's warm-up: easy cardio, dynamic drills, ramp-up
+    /// sets on the first lift (timed entries, never tracked as lifts).
+    static func explicitWarmup(sessionLength: Int) -> (minutes: Int, items: (String?) -> [String]) {
+        let long = sessionLength >= 45
+        let minutes = long ? 10 : 6
+        return (minutes, { first in
+            var out = ["Warm-up: Easy Cardio (bike, rower or brisk walk) \(long ? 5 : 3) min",
+                       "Warm-up: Dynamic Drills (leg swings, arm circles, hip openers, T-spine rotations) \(long ? 3 : 2) min"]
+            if let first { out.append("Warm-up: Ramp-up Sets for \(first) (2-3 lighter sets building to your working weight) \(long ? 2 : 1) min") }
+            return out
+        })
     }
 
     /// Rolling "X on / Y off" programs: which training day (0-based) `date`
@@ -662,6 +688,30 @@ class WorkoutManager: ObservableObject {
             if let day = calendar.date(byAdding: .day, value: i, to: s), isTraining(day) { count += 1 }
         }
         return count
+    }
+
+    /// The rest-day program while a program is running: the one saved with
+    /// this program, else the default for the saved goal.
+    var restDayProgram: RestDayPlan? {
+        guard !weeklySchedule.isEmpty else { return nil }
+        if let stored = RestDayPlan.stored(), stored.scheduleSignature == weeklySchedule.first?.id.uuidString { return stored }
+        var c = ProgramConfig()
+        c.primaryGoal = TrainingGoal(rawValue: UserDefaults.standard.string(forKey: "progressionGoal") ?? "")
+            ?? userProfile?.primaryGoals.first ?? .generalFitness
+        return SmartPlanner.restDayPlan(config: c)
+    }
+
+    /// The rest-day program when `date` is a rest day of the current program.
+    func restDayPlan(for date: Date = Date()) -> RestDayPlan? {
+        guard let plan = restDayProgram, scheduledWorkout(for: date) == nil else { return nil }
+        let d = UserDefaults.standard
+        if d.bool(forKey: "rotationIndexed") {
+            return RestDayPlan.forDate(date, start: Date(timeIntervalSince1970: d.double(forKey: "cycleStartDay")),
+                                       rolling: d.string(forKey: "scheduleMode") == ScheduleMode.rolling.rawValue,
+                                       daysOn: d.integer(forKey: "cycleDaysOn"), daysOff: d.integer(forKey: "cycleDaysOff"),
+                                       weekdays: d.stringArray(forKey: "trainingWeekdays") ?? [], plan: plan)
+        }
+        return plan
     }
 
     /// Today's planned session for either schedule mode.
@@ -1252,6 +1302,7 @@ class WorkoutManager: ObservableObject {
 
     func resetProgramming() {
         weeklySchedule = []
+        RestDayPlan.clear()
         saveData()
     }
 
@@ -2182,6 +2233,11 @@ struct WorkoutView: View {
                         index: $selectedScheduledWorkoutIndex,
                         onStart: { workoutManager.startScheduledWorkout($0) }
                     )
+                    if let rest = workoutManager.restDayProgram {
+                        RestDayPlanView(plan: rest) { workoutManager.startScheduledWorkout(rest.asScheduledWorkout) }
+                            .padding()
+                            .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
+                    }
                 }
 
                 Button {
@@ -2226,6 +2282,12 @@ struct ScheduledWorkoutBrowser: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Exercises")
                         .font(.title3.bold())
+                    if let notes = workout.notes {
+                        Label(notes, systemImage: "info.circle")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     ForEach(Array(workout.plannedExercises.enumerated()), id: \.offset) { _, planned in
                         HStack(alignment: .firstTextBaseline) {
                             Image(systemName: "circle")
@@ -3993,8 +4055,27 @@ struct WorkoutScheduleCard: View {
                         isHovering = hovering
                     }
                 }
+            } else if !hidesToday, let rest = workoutManager.restDayPlan() {
+                // Rest day: the recovery plan, then what comes next.
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "bed.double.fill")
+                            .foregroundColor(.brandYellow)
+                        Text("Rest Day")
+                            .font(.headline)
+                    }
+                    RestDayPlanView(plan: rest)
+                    if let nextWorkout = getNextWorkout() {
+                        Text("Your next workout is \(nextWorkout.dayOfWeek): \(nextWorkout.workoutType)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding()
+                .background(Color.brandYellow.opacity(0.08))
+                .cornerRadius(12)
             } else if let nextWorkout = getNextWorkout() {
-                // Next workout (rest day today)
+                // Next workout
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: hidesToday ? "calendar" : "bed.double.fill")
@@ -4082,8 +4163,7 @@ struct WorkoutScheduleCard: View {
     }
 
     func getTodaysWorkout() -> ScheduledWorkout? {
-        let todayName = getTodayName()
-        return workoutManager.weeklySchedule.first { $0.dayOfWeek == todayName }
+        workoutManager.scheduledWorkout()
     }
 
     func getTodayName() -> String {
@@ -4093,6 +4173,11 @@ struct WorkoutScheduleCard: View {
     }
 
     func getNextWorkout() -> ScheduledWorkout? {
+        // Works for weekly and rolling programs alike.
+        for i in 1...14 {
+            if let date = Calendar.current.date(byAdding: .day, value: i, to: Date()),
+               let workout = workoutManager.scheduledWorkout(for: date) { return workout }
+        }
         let today = Calendar.current.component(.weekday, from: Date())
         let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -5541,9 +5626,11 @@ struct ScheduledWorkout: Identifiable, Codable {
     var date: Date?
     /// The prescription for each exercise, aligned with `exercises`.
     var plan: [PlannedExercise]? = nil
+    /// Coaching cue for the whole session ("stop 2-3 reps short of failure").
+    var notes: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, dayOfWeek, workoutType, exercises, estimatedDuration, completed, date, plan
+        case id, dayOfWeek, workoutType, exercises, estimatedDuration, completed, date, plan, notes
     }
 
     /// One entry per exercise: the stored prescription when it still matches
@@ -5576,5 +5663,6 @@ extension ScheduledWorkout {
         completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? false
         date = try? c.decodeIfPresent(Date.self, forKey: .date)
         plan = try? c.decodeIfPresent([PlannedExercise].self, forKey: .plan)
+        notes = try? c.decodeIfPresent(String.self, forKey: .notes)
     }
 }
