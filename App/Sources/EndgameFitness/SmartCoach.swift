@@ -397,7 +397,8 @@ enum SmartCoach {
         var range = ProgressionEngine.repRange(for: exercise)
         if jointSafe && range.lowerBound < 8 { range = 8...max(12, range.upperBound) }
         let effortCap: Double? = jointSafe ? 7.5 : nil
-        let cue = jointSafe ? " Stop 2–3 reps short of failure." : ""
+        // The effort rule is shown once per workout (program notes), not per lift.
+        let cue = ""
         let st = state(key: exercise.identityKey, history: history, repRange: range, excluding: excluding, now: now)
         let model = resolvedModel(ctx, state: st)
         let unit = ctx.unit

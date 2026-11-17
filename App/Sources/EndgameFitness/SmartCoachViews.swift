@@ -46,6 +46,9 @@ extension WorkoutManager {
 struct SmartTodayCard: View {
     @ObservedObject var workoutManager: WorkoutManager
     let todaysWorkout: ScheduledWorkout?
+    /// The dashboard leaves today's session to the "Up next" tile and the
+    /// Workouts tab; this card then only carries the coach's guidance.
+    var showsWorkout = true
 
     private var context: CoachContext { .current(profile: workoutManager.userProfile) }
 
@@ -54,6 +57,7 @@ struct SmartTodayCard: View {
         let name: String
         let load: String
         let reason: String
+        let firstTime: Bool
     }
 
     private var rows: [Row] {
@@ -72,19 +76,20 @@ struct SmartTodayCard: View {
         return lifts.prefix(6).enumerated().compactMap { i, pair in
             let (plan, ex) = pair
             guard let p = SmartCoach.prescribe(exercise: ex, history: history, context: ctx) else {
-                return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "First time: pick a weight you could lift 2–3 more times.")
+                return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "", firstTime: true)
             }
             let load = p.topLoad > 0 ? "\(TrainingUnits.weight(p.topLoad, ctx.unit)) × \(p.topReps)" : "\(p.topReps) reps"
-            return Row(id: i, name: plan.name, load: "\(p.sets.count) sets · \(load)", reason: p.reason)
+            return Row(id: i, name: plan.name, load: "\(p.sets.count) sets · \(load)", reason: p.reason, firstTime: false)
         }
     }
 
-    /// "Warm-up: 11 min (cardio, 4 drills, ramp-up sets)".
-    private func warmupSummary(_ w: ScheduledWorkout) -> String? {
-        let warm = w.plannedExercises.filter { $0.name.hasPrefix("Warm-up") }
-        guard !warm.isEmpty else { return nil }
-        let minutes = warm.reduce(0) { $0 + ($1.seconds ?? 0) } / 60
-        return "Starts with a \(minutes)-min warm-up (\(warm.count) steps)"
+    /// The warm-up steps, in order, with their minutes.
+    private func warmupSteps(_ w: ScheduledWorkout) -> [(id: Int, name: String, time: String)] {
+        w.plannedExercises.filter { $0.name.hasPrefix("Warm-up") }.enumerated().map { i, p in
+            let name = p.name.replacingOccurrences(of: "Warm-up: ", with: "")
+            let secs = p.seconds ?? 0
+            return (i, name, secs >= 60 ? "\(secs / 60) min" : (secs > 0 ? "\(secs)s" : ""))
+        }
     }
 
     private var cycleText: String {
@@ -98,7 +103,9 @@ struct SmartTodayCard: View {
         let volume = SmartCoach.weeklyVolume(from: workoutManager.loggedSessions)
             .filter { $0.level == .under || $0.level == .over }
         let trained = !workoutManager.loggedSessions.isEmpty
+        let nudge = workoutManager.adherenceNudge()
 
+        if showsWorkout || nudge != nil || trained {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Label("Today", systemImage: "scope")
@@ -109,7 +116,7 @@ struct SmartTodayCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let nudge = workoutManager.adherenceNudge() {
+            if let nudge {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(nudge.text)
                         .font(.caption)
@@ -128,11 +135,36 @@ struct SmartTodayCard: View {
                 .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
             }
 
-            if let todaysWorkout {
+            if !showsWorkout {
+                EmptyView()
+            } else if let todaysWorkout {
                 Text(todaysWorkout.workoutType)
                     .font(.subheadline.bold())
-                if let warm = warmupSummary(todaysWorkout) {
-                    Label(warm, systemImage: "flame")
+                let warm = warmupSteps(todaysWorkout)
+                if !warm.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Warm-up", systemImage: "flame")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.orange)
+                        ForEach(warm, id: \.id) { step in
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(step.name)
+                                    .font(.caption)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 8)
+                                Text(step.time)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
+                if rows.contains(where: \.firstTime) {
+                    Text("New lifts: pick a weight you could lift 2–3 more times.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -151,11 +183,13 @@ struct SmartTodayCard: View {
                                 .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(Color.brandBlue)
                         }
+                        if !row.reason.isEmpty {
                         Text(row.reason)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             } else if let rest = workoutManager.restDayPlan() {
@@ -189,6 +223,7 @@ struct SmartTodayCard: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
+        }
     }
 }
 

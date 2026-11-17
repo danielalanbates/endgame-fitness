@@ -2181,8 +2181,9 @@ struct DashboardView: View {
                                         onDismiss: { programNotice = "" })
                 }
 
-                // Today's prescribed loads, missed-day nudge and weekly volume
-                SmartTodayCard(workoutManager: workoutManager, todaysWorkout: todaysScheduledWorkout)
+                // Missed-day nudge and weekly volume. Today's session itself lives
+                // in the "Up next" tile and the Workouts tab, not repeated here.
+                SmartTodayCard(workoutManager: workoutManager, todaysWorkout: todaysScheduledWorkout, showsWorkout: false)
 
                 // Training insight from your own logged history
                 TrainingInsightCard(workoutManager: workoutManager)
@@ -2193,9 +2194,8 @@ struct DashboardView: View {
                 }
 
                 // Today's Workout / Next Workout
-                // The Today card already shows today's session or today's rest-day plan.
-                WorkoutScheduleCard(workoutManager: workoutManager,
-                                    hidesToday: todaysScheduledWorkout != nil || workoutManager.restDayPlan() != nil)
+                // Today's session is in the "Up next" tile; this card shows what's next.
+                WorkoutScheduleCard(workoutManager: workoutManager, hidesToday: true)
 
                 // Today's Quests (server-generated; jumps to Community → Quests)
                 TodaysQuestsCard { workoutManager.selectedTab = 7 }
