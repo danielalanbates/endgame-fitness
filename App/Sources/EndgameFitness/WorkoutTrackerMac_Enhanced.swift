@@ -11,19 +11,7 @@ import Combine
 import Charts
 import UniformTypeIdentifiers
 
-// MARK: - Brand Colors
-extension Color {
-    static let brandPurple = Color(red: 0.58, green: 0.40, blue: 0.93)
-    static let brandBlue = Color(red: 0.33, green: 0.67, blue: 0.93)
-    static let brandGreen = Color(red: 0.40, green: 0.87, blue: 0.67)
-    static let brandOrange = Color(red: 1.0, green: 0.60, blue: 0.40)
-    static let brandYellow = Color(red: 1.0, green: 0.87, blue: 0.40)
-
-    static let lightPurpleBg = Color(red: 0.95, green: 0.93, blue: 0.98)
-    static let lightBlueBg = Color(red: 0.93, green: 0.96, blue: 0.99)
-    static let lightGreenBg = Color(red: 0.93, green: 0.98, blue: 0.96)
-    static let lightOrangeBg = Color(red: 1.0, green: 0.96, blue: 0.93)
-}
+// Brand colours and gradients live in BrandStyle.swift.
 
 // MARK: - Main App
 @main
@@ -1507,15 +1495,23 @@ struct ContentView: View {
     private var sidebar: some View {
         // Sidebar
         VStack(alignment: .leading, spacing: 10) {
-            Text("Endgame Fitness")
-                .font(.title2)
-                .bold()
-                .padding(.bottom)
+            HStack(spacing: 8) {
+                DragonLogo()
+                    .frame(width: 30, height: 30)
+                Text("Endgame Fitness")
+                    .font(.title2)
+                    .bold()
+                    .brandTitle()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.bottom)
 
             SidebarButton(
                 title: "Dashboard",
                 icon: "dumbbell.fill",
-                isSelected: workoutManager.selectedTab == 0
+                isSelected: workoutManager.selectedTab == 0,
+                color: Brand.Tab.dashboard
             ) {
                 workoutManager.selectedTab = 0
             }
@@ -1523,7 +1519,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Workouts",
                 icon: "figure.strengthtraining.traditional",
-                isSelected: workoutManager.selectedTab == 1
+                isSelected: workoutManager.selectedTab == 1,
+                color: Brand.Tab.workouts
             ) {
                 workoutManager.selectedTab = 1
             }
@@ -1531,7 +1528,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Programs",
                 icon: "doc.text",
-                isSelected: workoutManager.selectedTab == 2
+                isSelected: workoutManager.selectedTab == 2,
+                color: Brand.Tab.programs
             ) {
                 workoutManager.selectedTab = 2
             }
@@ -1539,7 +1537,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Progress",
                 icon: "chart.line.uptrend.xyaxis",
-                isSelected: workoutManager.selectedTab == 3
+                isSelected: workoutManager.selectedTab == 3,
+                color: Brand.Tab.progress
             ) {
                 workoutManager.selectedTab = 3
             }
@@ -1547,7 +1546,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Mesocycle",
                 icon: "calendar.badge.clock",
-                isSelected: workoutManager.selectedTab == 4
+                isSelected: workoutManager.selectedTab == 4,
+                color: Brand.Tab.mesocycle
             ) {
                 workoutManager.selectedTab = 4
             }
@@ -1555,7 +1555,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Tools",
                 icon: "wrench.and.screwdriver.fill",
-                isSelected: workoutManager.selectedTab == 5
+                isSelected: workoutManager.selectedTab == 5,
+                color: Brand.Tab.tools
             ) {
                 workoutManager.selectedTab = 5
             }
@@ -1563,7 +1564,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Community",
                 icon: "person.2.fill",
-                isSelected: workoutManager.selectedTab == 7
+                isSelected: workoutManager.selectedTab == 7,
+                color: Brand.Tab.community
             ) {
                 workoutManager.selectedTab = 7
             }
@@ -1571,7 +1573,8 @@ struct ContentView: View {
             SidebarButton(
                 title: "Settings",
                 icon: "gear",
-                isSelected: workoutManager.selectedTab == 6
+                isSelected: workoutManager.selectedTab == 6,
+                color: Brand.Tab.settings
             ) {
                 workoutManager.selectedTab = 6
             }
@@ -1598,7 +1601,7 @@ struct ContentView: View {
         }
         .padding()
         .frame(width: 220)
-        .background(Color.platformControlBackground)
+        .background(Brand.sidebar)
     }
 
     /// The selected destination, used by the macOS split layout.
@@ -1634,6 +1637,7 @@ struct SidebarButton: View {
     let title: String
     let icon: String
     let isSelected: Bool
+    var color: Color = .brandPurple
     let action: () -> Void
 
     @State private var isHovering = false
@@ -1644,18 +1648,24 @@ struct SidebarButton: View {
                 Image(systemName: icon)
                     .frame(width: 24)
                     .font(.title2)
+                    .foregroundStyle(isSelected ? color : .primary)
                 Text(title)
                     .font(.body)
+                    .fontWeight(isSelected ? .semibold : .regular)
                 Spacer()
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .background(isSelected ? Color.accentColor.opacity(0.2) : (isHovering ? Color.gray.opacity(0.1) : Color.clear))
-            .cornerRadius(8)
+            .padding(.vertical, 14)
+            .background(isSelected ? color.opacity(0.15) : (isHovering ? color.opacity(0.08) : Color.clear))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? color.opacity(0.5) : Color.clear, lineWidth: 2)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .contentShape(Rectangle())
-        .foregroundColor(isSelected ? .accentColor : .primary)
+        .foregroundColor(isSelected ? color : .primary)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
                 isHovering = hovering
@@ -1704,10 +1714,12 @@ struct DashboardView: View {
                     Text("Welcome back, \(name)")
                         .font(.screenTitle)
                         .bold()
+                        .brandTitle()
                 } else {
                     Text("Dashboard")
                         .font(.screenTitle)
                         .bold()
+                        .brandTitle()
                 }
 
                 if let issue = workoutManager.storeIssue {
@@ -1716,6 +1728,15 @@ struct DashboardView: View {
 
                 if workoutManager.isWorkoutActive, let workout = workoutManager.currentWorkout {
                     ResumeWorkoutBanner(workout: workout) { workoutManager.selectedTab = 1 }
+                }
+
+                // No program yet (history but no schedule): the primary call-to-action.
+                if workoutManager.weeklySchedule.isEmpty {
+                    BrandHeroCard(icon: "wand.and.stars",
+                                  title: "Build Your Program",
+                                  subtitle: "A short setup: days, split, cycle length and goals") {
+                        showProgramWizard = true
+                    }
                 }
 
                 // Today: streak, XP ring, today's workout CTA, friends strip, live duel
@@ -1881,6 +1902,7 @@ struct WorkoutView: View {
                 Text("Workouts")
                     .font(.screenTitle)
                     .bold()
+                    .brandTitle()
 
                 if workoutManager.weeklySchedule.isEmpty {
                     VStack(spacing: 12) {
@@ -2057,6 +2079,7 @@ struct QuickProgramQuestionnaireView: View {
                 Text("Quick Program Builder")
                     .font(.screenTitle)
                     .bold()
+                    .brandTitle()
 
                 Spacer()
 
@@ -2298,6 +2321,7 @@ struct TrainingProgressView: View {
                 Text("Progress")
                     .font(.screenTitle)
                     .bold()
+                    .brandTitle()
                 Spacer()
                 NavigationLink {
                     HistoryListView()
@@ -2535,6 +2559,7 @@ struct ToolsView: View {
                 Text("Fitness Tools")
                     .font(.screenTitle)
                     .bold()
+                    .brandTitle()
 
                 Text("Calculators and utilities to help track your fitness journey")
                     .font(.subheadline)
@@ -3223,6 +3248,7 @@ struct SettingsView: View {
             Text("Settings")
                 .font(.screenTitle)
                 .bold()
+                .brandTitle()
 
             Form {
                 Section("Account") {
@@ -3428,8 +3454,7 @@ struct MicrocycleProgressCard: View {
             }
         }
         .padding()
-        .background(Color.blue.opacity(0.05))
-        .cornerRadius(12)
+        .brandSoftCard()
     }
 }
 
@@ -3524,15 +3549,7 @@ struct TrainingInsightCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding()
-        .background(
-            LinearGradient(
-                colors: [Color.blue.opacity(0.1), Color.purple.opacity(0.1)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        .brandSoftCard()
     }
 }
 
@@ -3585,15 +3602,7 @@ struct ProgramRecommendationCard: View {
             }
         }
         .padding()
-        .background(
-            LinearGradient(
-                colors: [Color.brandPurple.opacity(0.1), Color.brandBlue.opacity(0.1)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        .brandSoftCard()
     }
 
     /// The program's goal: the one it was built for, else the profile's first.

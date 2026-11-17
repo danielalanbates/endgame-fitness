@@ -515,28 +515,31 @@ struct TodayCardCluster: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: workoutDoneToday ? "checkmark.circle.fill" : "play.circle.fill")
-                        .foregroundStyle(workoutDoneToday ? Color.brandGreen : Color.brandBlue)
                     Text(workoutDoneToday ? "Done today" : (todaysWorkout == nil ? "Rest day" : "Up next"))
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 0)
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title3)
                 }
                 Text(todaysWorkout?.workoutType ?? "Free session")
-                    .font(.subheadline.bold())
+                    .font(.headline)
                     .lineLimit(2)
                 if let w = todaysWorkout {
                     Text("\(w.exercises.count) exercises · \(w.estimatedDuration) min")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .opacity(0.9)
                 } else {
                     Text("Tap to log anything")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .opacity(0.9)
                 }
             }
+            .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(10)
-            .background((workoutDoneToday ? Color.brandGreen : Color.brandBlue).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(12)
+            .background(workoutDoneToday ? Brand.heroDone : Brand.hero, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .brandPurple.opacity(0.25), radius: 8, y: 4)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }

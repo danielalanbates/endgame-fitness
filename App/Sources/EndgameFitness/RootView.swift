@@ -23,6 +23,8 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var celebratingLevel: Int?
+    /// The gradient launch splash, first window only (BrandStyle.swift).
+    @State private var showLaunchSplash = BrandSplashView.claimLaunch()
     @State private var onboardedAccounts = AccountFlags(key: "ef.onboardedAccounts")
     #if DEBUG
     private struct DebugSheet: Identifiable { let id: String }
@@ -85,6 +87,14 @@ struct RootView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: celebratingLevel)
+            // Drawn over the picker/onboarding/app, which load underneath it.
+            .overlay {
+                if showLaunchSplash {
+                    BrandSplashView { showLaunchSplash = false }
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.35), value: showLaunchSplash)
     }
 
     /// Points are only worth announcing while the tree has room for them.

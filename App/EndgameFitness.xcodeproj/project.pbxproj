@@ -30,6 +30,7 @@
 		61EB973C07B8B31A0677E6E4 /* SafetyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7978326BA4EE8C8137124B7 /* SafetyViews.swift */; };
 		656553B125C3F91D698FB065 /* CelebrationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FEFE8651C24567E1E364D07 /* CelebrationViews.swift */; };
 		6F3B8703EEB7658EB620896D /* WorkoutSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695DF64108F4EB0D293656CF /* WorkoutSyncBridge.swift */; };
+		706A12B90AECDDEB7958A7E3 /* BrandStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA2F4DD7DB40637720F21E4 /* BrandStyle.swift */; };
 		766DD7499E8F3D86B1B660B5 /* QuestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC59F06D0943992C800DD58 /* QuestViews.swift */; };
 		7EC430933E958A5E1D9B068B /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF72E2066BCBAE1BE4C35A24 /* CommentsView.swift */; };
 		8195A5C92DF6554EE927DBD1 /* LocalPlayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31453536801AEDFAA9354FAF /* LocalPlayers.swift */; };
@@ -77,6 +78,7 @@
 		2DD85BA9625E7BD26DF9BACD /* GameProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProfileService.swift; sourceTree = "<group>"; };
 		31453536801AEDFAA9354FAF /* LocalPlayers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPlayers.swift; sourceTree = "<group>"; };
 		49C1FFB17E4CDBDC03406F24 /* WorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutStore.swift; sourceTree = "<group>"; };
+		4AA2F4DD7DB40637720F21E4 /* BrandStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandStyle.swift; sourceTree = "<group>"; };
 		4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarSystem.swift; sourceTree = "<group>"; };
 		5483094B001F034CD09101C6 /* ProgramWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramWizard.swift; sourceTree = "<group>"; };
 		567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTrackerMac_Enhanced.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 				6D01CBD884905DA9095FD305 /* ActiveWorkoutViews.swift */,
 				4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */,
 				C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */,
+				4AA2F4DD7DB40637720F21E4 /* BrandStyle.swift */,
 				8FEFE8651C24567E1E364D07 /* CelebrationViews.swift */,
 				7A00FF687D610286E92EF090 /* ChallengeViews.swift */,
 				DF72E2066BCBAE1BE4C35A24 /* CommentsView.swift */,
@@ -289,6 +292,7 @@
 				4C2F363CBAB44F664FC37DC0 /* ActiveWorkoutViews.swift in Sources */,
 				FDDFCC51B23A92CFE38FF8E0 /* AvatarSystem.swift in Sources */,
 				426152B504F7980CBFEB1665 /* AvatarViews.swift in Sources */,
+				706A12B90AECDDEB7958A7E3 /* BrandStyle.swift in Sources */,
 				656553B125C3F91D698FB065 /* CelebrationViews.swift in Sources */,
 				50FC4855FC6E5084EFE49DAC /* ChallengeViews.swift in Sources */,
 				7EC430933E958A5E1D9B068B /* CommentsView.swift in Sources */,

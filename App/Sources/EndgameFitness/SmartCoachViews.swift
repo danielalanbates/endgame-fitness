@@ -276,7 +276,7 @@ struct SmartTodayCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
+        .brandSoftCard()
         }
     }
 }

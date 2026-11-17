@@ -169,9 +169,10 @@ struct GetSetUpView: View {
             VStack(spacing: 10) {
                 Image(systemName: "figure.strengthtraining.traditional")
                     .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(Color.brandPurple)
+                    .foregroundStyle(Brand.title)
                 Text("Welcome, \(firstName)")
                     .font(.screenTitle.bold())
+                    .brandTitle()
                     .adaptiveHeading()
                 Text("One step left: build the program you'll train on.")
                     .font(.subheadline)
@@ -179,31 +180,11 @@ struct GetSetUpView: View {
             }
 
             // Single primary call-to-action.
-            Button(action: onBuildProgram) {
-                HStack(spacing: 14) {
-                    Image(systemName: "wand.and.stars")
-                        .font(.title2)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Build your program")
-                            .font(.title3.bold())
-                        Text("A short setup: days, split, cycle length and goals")
-                            .font(.caption)
-                            .opacity(0.85)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                }
-                .foregroundColor(.white)
-                .padding(20)
-                .background(
-                    LinearGradient(colors: [.brandPurple, .brandBlue],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 16)
-                )
-                .shadow(color: .brandPurple.opacity(0.3), radius: 10, y: 5)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: 480)
+            BrandHeroCard(icon: "wand.and.stars",
+                          title: "Build your program",
+                          subtitle: "A short setup: days, split, cycle length and goals",
+                          action: onBuildProgram)
+                .frame(maxWidth: 520)
 
             // Just the two light chips — no grid, no cards.
             HStack(spacing: 12) {

@@ -433,6 +433,7 @@ struct ProgramsView: View {
                 Text("Choose Your Program")
                     .font(.screenTitle)
                     .bold()
+                    .brandTitle()
 
                 if hasActiveProgram {
                     currentProgramBanner
@@ -678,6 +679,7 @@ struct CustomWorkoutBuilderView: View {
                     Text(editingCurrent ? "Edit Your Program" : "Create Your Own Workout")
                         .font(.screenTitle)
                         .bold()
+                        .brandTitle()
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
                     Spacer()
@@ -887,6 +889,7 @@ struct MesocycleView: View {
                 Text("Mesocycle Training")
                     .font(.screenTitle)
                     .bold()
+                    .brandTitle()
 
                 // Current phase + progress
                 VStack(alignment: .leading, spacing: 16) {

@@ -129,7 +129,8 @@ struct RaidBossPanel: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            RaidBossArt(symbol: raid.boss.symbol, gradient: gradient, defeated: raid.defeated)
+            RaidBossArt(symbol: raid.boss.symbol, gradient: gradient, defeated: raid.defeated,
+                        asset: raid.boss.artAsset)
                 .frame(width: 72, height: 72)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -251,6 +252,8 @@ struct RaidBossArt: View {
     let symbol: String
     let gradient: LinearGradient
     let defeated: Bool
+    /// Asset-catalog art drawn instead of the SF Symbol (template image, white).
+    var asset: String? = nil
 
     @State private var breathe = false
 
@@ -260,12 +263,23 @@ struct RaidBossArt: View {
                 .fill(gradient)
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.white.opacity(0.18), lineWidth: 1)
-            Image(systemName: symbol)
-                .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-                .scaleEffect(breathe ? 1.06 : 0.96)
-                .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: breathe)
+            Group {
+                if let asset {
+                    Image(asset)
+                        .renderingMode(.template)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(10)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 32, weight: .bold))
+                }
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+            .scaleEffect(breathe ? 1.06 : 0.96)
+            .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: breathe)
             if defeated {
                 Image(systemName: "xmark")
                     .font(.system(size: 46, weight: .black))
@@ -394,5 +408,12 @@ extension Color {
             green: Double((value >> 8) & 0xFF) / 255,
             blue: Double(value & 0xFF) / 255
         )
+    }
+}
+
+extension RaidBoss {
+    /// Bosses with their own artwork in the asset catalog.
+    var artAsset: String? {
+        id == "doms_dragon" ? Brand.dragonLogo : nil
     }
 }
