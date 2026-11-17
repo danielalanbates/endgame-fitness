@@ -62,7 +62,9 @@ making the displayed consecutive-day streak a requirement to train every day.
 | 5 tabs × 4 widths (320/390/768/1280) | No horizontal overflow |
 | Reload recovery, profile changes, backup round trip | Passed |
 | Corrupt local storage preservation + restore | Passed |
-| Native Apple platform compilation / runtime | Not available on Linux; pending CI/Xcode |
+| Native iOS Simulator + macOS compilation | Passed in GitHub run 44148464570 at 93a2ac1 |
+| Native runtime and device flows | Not exercised |
+| Production web offline reload + draft persistence | Passed; unrelated site caches preserved |
 | HealthKit, notifications, haptics, native sharing | Not exercised |
 | Facebook integration / account-free multiplayer | Not implemented |
 
@@ -92,8 +94,9 @@ it is not an automated takeover or repeating test loop.
    connections second. Facebook linking requires credentials and product review.
 5. Add local data conflict handling for simultaneous browser tabs and IndexedDB
    for larger histories; localStorage is currently synchronous and device scoped.
-6. Keep public releases separate from betas. No release or native .app is
-   claimed until native build and feature validation complete. No private mirror
+6. Keep public releases separate from betas. No stable release is
+   claimed until device feature validation completes. A compiled macOS beta is
+   available as the Endgame-Fitness-macOS-beta artifact in run 44148464570. No private mirror
    was created or overwritten because no current private app target was established.
 
 ## CI and deployment findings
@@ -112,3 +115,16 @@ it is not an automated takeover or repeating test loop.
   Local wrangler also reports no authentication. Live publication is blocked;
   no successful production deployment is claimed. The website workflow requires
   CLOUDFLARE_API_TOKEN in that repo's Actions secrets once billing is resolved.
+
+
+### Final verification outcome
+
+Run 44148464570 passed all four jobs: iOS, macOS, web, and backend. The macOS
+beta artifact is at https://github.com/danielalanbates/endgame-fitness/actions/runs/44148464570/artifacts/14357812363
+and contains a ZIP preserving the .app bundle. It is an unsigned development
+build, not an installed or device-tested production release. No native app was
+launched on the user's Mac. Web production offline verification also passed.
+
+Website PR #14 is merged (e72130d7). Its production deployment remains blocked
+by GitHub billing; source availability must not be described as a live deploy.
+Endgame Fitness PR #6 contains the app work and detailed validation.
