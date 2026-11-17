@@ -191,14 +191,15 @@ struct BrandSplashView: View {
     /// Visible time before it fades on its own.
     static let duration: TimeInterval = 1.5
 
-    private static var claimed = false
-    /// True the first time it is called in this process, so only the first
-    /// window shows the splash. `-ef.noSplash` turns it off.
-    static func claimLaunch() -> Bool {
-        guard !claimed, !CommandLine.arguments.contains("-ef.noSplash") else { return false }
-        claimed = true
-        return true
-    }
+    private static var finished = CommandLine.arguments.contains("-ef.noSplash")
+    /// True until the launch splash has been dismissed once, so windows opened
+    /// later skip it. Reading it has no side effect: SwiftUI may build a view's
+    /// struct (and evaluate its @State initial value) more than once before the
+    /// state is stored, and a "claim on read" could hand the splash to a copy
+    /// that is thrown away. `-ef.noSplash` turns it off.
+    static var isPending: Bool { !finished }
+    /// Called when the splash goes away (timer or click).
+    static func markFinished() { finished = true }
 
     var body: some View {
         ZStack {
@@ -226,6 +227,7 @@ struct BrandSplashView: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Click to continue")
+        .accessibilityAction { onFinish() }
         .task {
             withAnimation(reduceMotion ? .none : .easeOut(duration: 0.6)) { shown = true }
             try? await Task.sleep(nanoseconds: UInt64(Self.duration * 1_000_000_000))

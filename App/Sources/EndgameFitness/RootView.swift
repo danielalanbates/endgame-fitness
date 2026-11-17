@@ -24,7 +24,7 @@ struct RootView: View {
 
     @State private var celebratingLevel: Int?
     /// The gradient launch splash, first window only (BrandStyle.swift).
-    @State private var showLaunchSplash = BrandSplashView.claimLaunch()
+    @State private var showLaunchSplash = BrandSplashView.isPending
     @State private var onboardedAccounts = AccountFlags(key: "ef.onboardedAccounts")
     #if DEBUG
     private struct DebugSheet: Identifiable { let id: String }
@@ -90,7 +90,7 @@ struct RootView: View {
             // Drawn over the picker/onboarding/app, which load underneath it.
             .overlay {
                 if showLaunchSplash {
-                    BrandSplashView { showLaunchSplash = false }
+                    BrandSplashView { BrandSplashView.markFinished(); showLaunchSplash = false }
                         .transition(.opacity)
                 }
             }
