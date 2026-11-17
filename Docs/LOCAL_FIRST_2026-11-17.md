@@ -95,3 +95,20 @@ it is not an automated takeover or repeating test loop.
 6. Keep public releases separate from betas. No release or native .app is
    claimed until native build and feature validation complete. No private mirror
    was created or overwritten because no current private app target was established.
+
+## CI and deployment findings
+
+- Native CI initially exposed a Swift type-check timeout in Community. The view
+  is split into smaller properties, and its macOS path now uses the shared
+  platform background instead of an iOS-only color initializer.
+- iOS CI then exposed an obsolete Xcode 16.2 pin whose simulator SDK no longer
+  matches installed runner runtimes. CI now uses the runner's default Xcode,
+  builds each target once, and packages a macOS beta .app artifact on success.
+- The website source/build was merged in website PR #14. The original cross-repo
+  deployment failed to read the private website repo; a workflow in website
+  removes that cross-repo dependency.
+- The replacement website deployment run 44147908316 did not start: GitHub's
+  annotation reports failed account payments or an exhausted spending limit.
+  Local wrangler also reports no authentication. Live publication is blocked;
+  no successful production deployment is claimed. The website workflow requires
+  CLOUDFLARE_API_TOKEN in that repo's Actions secrets once billing is resolved.

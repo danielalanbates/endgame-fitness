@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+        run: xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -52,20 +52,25 @@ jobs:
             -project EndgameFitness.xcodeproj \
             -scheme "${{ matrix.scheme }}" \
             -destination "${{ matrix.destination }}" \
+            -derivedDataPath build/DerivedData \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            | xcbeautify || xcodebuild build \
-            -project EndgameFitness.xcodeproj \
-            -scheme "${{ matrix.scheme }}" \
-            -destination "${{ matrix.destination }}" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM=""
+            | xcbeautify
+
+      - name: Package macOS beta
+        if: matrix.name == 'macOS'
+        working-directory: App
+        run: ditto -c -k --keepParent "build/DerivedData/Build/Products/Debug/Endgame Fitness.app" build/Endgame-Fitness-macOS-beta.zip
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.name == 'macOS'
+        with:
+          name: Endgame-Fitness-macOS-beta
+          path: App/build/Endgame-Fitness-macOS-beta.zip
+          retention-days: 14
 
   backend:
     name: Backend checks
