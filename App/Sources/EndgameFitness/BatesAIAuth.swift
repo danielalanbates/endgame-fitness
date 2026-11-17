@@ -201,7 +201,12 @@ final class BatesAIAuth: NSObject, ObservableObject {
                 }
             }
 
-            var body: [String: Any] = ["identity_token": identityToken, "nonce": nonce]
+            // Apple echoes back the SHA-256 we set on the request, and the server
+            // compares its `nonce` field to the token's claim verbatim — so send
+            // the HASHED nonce, not the raw one. Sending the raw nonce made every
+            // real-device sign-in fail with 401 "Nonce mismatch" (simulator tokens
+            // omit the nonce claim, which is why it only broke on hardware).
+            var body: [String: Any] = ["identity_token": identityToken, "nonce": Self.sha256(nonce)]
             if let fullName { body["full_name"] = fullName }
 
             let response: SessionResponse = try await request(

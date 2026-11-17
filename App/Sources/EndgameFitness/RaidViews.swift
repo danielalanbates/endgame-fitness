@@ -325,6 +325,11 @@ struct RaidDamageToast: View {
                 if hit.justDefeated {
                     Text("+\(hit.rewardXP) XP for every contributor")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let title = hit.rewardTitle, !title.isEmpty {
+                        Text("Title unlocked: \(title)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.brandYellow)
+                    }
                 } else if hit.defeated {
                     Text("Boss already defeated — still counted")
                         .font(.caption).foregroundStyle(.secondary)

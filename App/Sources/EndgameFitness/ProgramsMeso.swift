@@ -1006,6 +1006,15 @@ struct AIMesocycleBuilderView: View {
 
     private static let goals = ["Build muscle", "Get stronger", "Lose fat", "Athletic performance", "General fitness", "Longevity"]
 
+    /// Six segments share 390pt on an iPhone, so the control shows abbreviated
+    /// titles while the full string is what gets sent to the model.
+    private static let goalLabels = ["Muscle", "Strength", "Fat loss", "Athletic", "General", "Longevity"]
+
+    private static func goalLabel(_ goal: String) -> String {
+        guard let index = goals.firstIndex(of: goal) else { return goal }
+        return goalLabels[index]
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -1018,9 +1027,9 @@ struct AIMesocycleBuilderView: View {
                 }
 
                 Picker("Goal", selection: $goal) {
-                    ForEach(Self.goals, id: \.self) { Text($0) }
+                    ForEach(Self.goals, id: \.self) { Text(Self.goalLabel($0)) }
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
 
                 Stepper("Cycle length: \(weeks) weeks", value: $weeks, in: 4...24, step: 2)
 

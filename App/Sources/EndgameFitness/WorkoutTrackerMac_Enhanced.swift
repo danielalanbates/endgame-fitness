@@ -2428,61 +2428,129 @@ struct ExerciseCard: View {
             ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
                 if editingSetId == set.id {
                     // Edit mode
-                    HStack {
-                        Text("Set \(index + 1)")
-                            .frame(width: 60, alignment: .leading)
-                        TextField("Reps", value: $editReps, format: .number)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .frame(width: 60)
-                        Text("×")
-                        TextField("Weight", value: $editWeight, format: .number)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .frame(width: 80)
-                        Text("lbs")
+                    if Platform.isDesktop {
+                        HStack {
+                            Text("Set \(index + 1)")
+                                .frame(width: 60, alignment: .leading)
+                            TextField("Reps", value: $editReps, format: .number)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 60)
+                            Text("×")
+                            TextField("Weight", value: $editWeight, format: .number)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 80)
+                            Text("lbs")
 
-                        Spacer()
+                            Spacer()
 
-                        Button("Save") {
-                            WorkoutManager.shared.updateSet(exerciseId: exercise.id, setId: set.id, reps: editReps, weight: editWeight)
-                            editingSetId = nil
+                            Button("Save") {
+                                WorkoutManager.shared.updateSet(exerciseId: exercise.id, setId: set.id, reps: editReps, weight: editWeight)
+                                editingSetId = nil
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button("Cancel") {
+                                editingSetId = nil
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                        .padding(.vertical, 4)
+                    } else {
+                        // iPhone: stacked edit layout
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Set \(index + 1)")
+                                .font(.caption.weight(.semibold))
+                            HStack(spacing: 8) {
+                                TextField("Reps", value: $editReps, format: .number)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(maxWidth: 60)
+                                Text("×")
+                                    .frame(maxWidth: 20)
+                                TextField("Weight", value: $editWeight, format: .number)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(maxWidth: 70)
+                                Text("lbs")
+                                    .font(.caption)
+                            }
+                            HStack(spacing: 8) {
+                                Button("Save") {
+                                    WorkoutManager.shared.updateSet(exerciseId: exercise.id, setId: set.id, reps: editReps, weight: editWeight)
+                                    editingSetId = nil
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .frame(maxWidth: .infinity)
 
-                        Button("Cancel") {
-                            editingSetId = nil
+                                Button("Cancel") {
+                                    editingSetId = nil
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .frame(maxWidth: .infinity)
+                            }
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 4)
                 } else {
                     // View mode
-                    HStack {
-                        Text("Set \(index + 1)")
-                            .frame(width: 60, alignment: .leading)
-                        Text("\(set.reps) reps")
-                            .frame(width: 80, alignment: .leading)
-                        Text("\(Int(set.weight)) lbs")
-                            .frame(width: 80, alignment: .leading)
-                        Spacer()
+                    if Platform.isDesktop {
+                        HStack {
+                            Text("Set \(index + 1)")
+                                .frame(width: 60, alignment: .leading)
+                            Text("\(set.reps) reps")
+                                .frame(width: 80, alignment: .leading)
+                            Text("\(Int(set.weight)) lbs")
+                                .frame(width: 80, alignment: .leading)
+                            Spacer()
 
-                        Button(action: {
-                            editingSetId = set.id
-                            editReps = set.reps
-                            editWeight = set.weight
-                        }) {
-                            Image(systemName: "pencil.circle")
-                                .foregroundColor(.blue)
-                        }
-                        .buttonStyle(.plain)
+                            Button(action: {
+                                editingSetId = set.id
+                                editReps = set.reps
+                                editWeight = set.weight
+                            }) {
+                                Image(systemName: "pencil.circle")
+                                    .foregroundColor(.blue)
+                            }
+                            .buttonStyle(.plain)
 
-                        if set.completed {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
+                            if set.completed {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                            }
                         }
+                        .padding(.vertical, 4)
+                    } else {
+                        // iPhone: compact layout
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Set \(index + 1)")
+                                    .font(.caption.weight(.semibold))
+                                Spacer()
+                                if set.completed {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.callout)
+                                }
+                            }
+                            HStack(spacing: 12) {
+                                Text("\(set.reps) × \(Int(set.weight)) lbs")
+                                    .font(.callout)
+                                Spacer()
+                                Button(action: {
+                                    editingSetId = set.id
+                                    editReps = set.reps
+                                    editWeight = set.weight
+                                }) {
+                                    Image(systemName: "pencil.circle")
+                                        .foregroundColor(.blue)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 4)
                 }
             }
 
@@ -3606,7 +3674,7 @@ struct TDEECalculatorView: View {
                     Text("Male").tag("Male")
                     Text("Female").tag("Female")
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
 
                 Picker("Activity Level", selection: $activityLevel) {
                     ForEach(activityLevels, id: \.self) { level in
@@ -5679,7 +5747,7 @@ struct BasicInfoStep: View {
                     Text("Imperial").tag("imperial")
                     Text("Metric").tag("metric")
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
                 .frame(maxWidth: 240)
 

@@ -1,0 +1,287 @@
+{
+  "grid": 32,
+  "output": "256x256",
+  "count": 40,
+  "sprites": [
+    {
+      "name": "fire_wizard",
+      "category": "wizards",
+      "file": "wizards_fire_wizard.png",
+      "description": "Chibi fire mage in a red robe with a flame-tipped staff",
+      "pixels": 446
+    },
+    {
+      "name": "ice_wizard",
+      "category": "wizards",
+      "file": "wizards_ice_wizard.png",
+      "description": "Blue-robed ice mage with crystal shards orbiting a frost staff",
+      "pixels": 434
+    },
+    {
+      "name": "storm_wizard",
+      "category": "wizards",
+      "file": "wizards_storm_wizard.png",
+      "description": "Purple storm sorcerer hurling a forked lightning bolt",
+      "pixels": 433
+    },
+    {
+      "name": "necro_wizard",
+      "category": "wizards",
+      "file": "wizards_necro_wizard.png",
+      "description": "Hollow-hooded necromancer with a skull staff and green soul wisps",
+      "pixels": 461
+    },
+    {
+      "name": "paladin",
+      "category": "knights",
+      "file": "knights_paladin.png",
+      "description": "Gleaming chibi paladin with a winged helm and holy sword",
+      "pixels": 482
+    },
+    {
+      "name": "dark_knight",
+      "category": "knights",
+      "file": "knights_dark_knight.png",
+      "description": "Black-armoured dark knight with horned helm and a jagged greatsword",
+      "pixels": 476
+    },
+    {
+      "name": "shield_bearer",
+      "category": "knights",
+      "file": "knights_shield_bearer.png",
+      "description": "Stout shield-bearer crouched behind a huge kite shield",
+      "pixels": 458
+    },
+    {
+      "name": "lancer",
+      "category": "knights",
+      "file": "knights_lancer.png",
+      "description": "Blue lancer leaning forward behind a long diagonal lance",
+      "pixels": 473
+    },
+    {
+      "name": "goblin_grunt",
+      "category": "goblins",
+      "file": "goblins_goblin_grunt.png",
+      "description": "Hunched green goblin grunt with a rusty dagger and loincloth",
+      "pixels": 378
+    },
+    {
+      "name": "goblin_shaman",
+      "category": "goblins",
+      "file": "goblins_goblin_shaman.png",
+      "description": "Goblin shaman in a bone mask waving a totem rattle",
+      "pixels": 494
+    },
+    {
+      "name": "goblin_archer",
+      "category": "goblins",
+      "file": "goblins_goblin_archer.png",
+      "description": "Lean goblin archer drawing a bent shortbow",
+      "pixels": 401
+    },
+    {
+      "name": "goblin_king",
+      "category": "goblins",
+      "file": "goblins_goblin_king.png",
+      "description": "Fat goblin king on a gold crown with a jewelled sceptre",
+      "pixels": 532
+    },
+    {
+      "name": "gargoyle",
+      "category": "monsters",
+      "file": "monsters_gargoyle.png",
+      "description": "Stone gargoyle perched with folded bat wings and horns",
+      "pixels": 520
+    },
+    {
+      "name": "slime",
+      "category": "monsters",
+      "file": "monsters_slime.png",
+      "description": "Glossy green blob slime with a wobbling flat base and shine spot",
+      "pixels": 438
+    },
+    {
+      "name": "bat",
+      "category": "monsters",
+      "file": "monsters_bat.png",
+      "description": "Purple cave bat mid-flap with wide membrane wings and fangs",
+      "pixels": 355
+    },
+    {
+      "name": "skeleton",
+      "category": "monsters",
+      "file": "monsters_skeleton.png",
+      "description": "Grinning skeleton warrior with visible ribcage and a bone club",
+      "pixels": 332
+    },
+    {
+      "name": "zombie",
+      "category": "monsters",
+      "file": "monsters_zombie.png",
+      "description": "Lurching green zombie with arms out, stitches and a lolling tongue",
+      "pixels": 461
+    },
+    {
+      "name": "dragon_whelp",
+      "category": "monsters",
+      "file": "monsters_dragon_whelp.png",
+      "description": "Baby red dragon whelp with stubby wings, snout and tail",
+      "pixels": 504
+    },
+    {
+      "name": "wolf",
+      "category": "monsters",
+      "file": "monsters_wolf.png",
+      "description": "Grey dire wolf in profile, snarling with a bushy raised tail",
+      "pixels": 480
+    },
+    {
+      "name": "spider",
+      "category": "monsters",
+      "file": "monsters_spider.png",
+      "description": "Fat black spider with eight jointed legs and red eyes",
+      "pixels": 413
+    },
+    {
+      "name": "minotaur",
+      "category": "monsters",
+      "file": "monsters_minotaur.png",
+      "description": "Hulking minotaur with a bull head, nose ring and battleaxe",
+      "pixels": 676
+    },
+    {
+      "name": "imp",
+      "category": "monsters",
+      "file": "monsters_imp.png",
+      "description": "Tiny red imp with a forked tail, trident and cheeky grin",
+      "pixels": 447
+    },
+    {
+      "name": "golem",
+      "category": "monsters",
+      "file": "monsters_golem.png",
+      "description": "Blocky stone golem built from rough rectangular slabs with a glowing core",
+      "pixels": 532
+    },
+    {
+      "name": "ghost",
+      "category": "monsters",
+      "file": "monsters_ghost.png",
+      "description": "Translucent white ghost with a wavy tattered hem and hollow eyes",
+      "pixels": 388
+    },
+    {
+      "name": "sword",
+      "category": "items",
+      "file": "items_sword.png",
+      "description": "Straight steel longsword with a gold crossguard, point up",
+      "pixels": 266
+    },
+    {
+      "name": "axe",
+      "category": "items",
+      "file": "items_axe.png",
+      "description": "Heavy double-bearded battleaxe on a wrapped wooden haft",
+      "pixels": 438
+    },
+    {
+      "name": "potion",
+      "category": "items",
+      "file": "items_potion.png",
+      "description": "Round red healing potion in a corked flask with a shine highlight",
+      "pixels": 328
+    },
+    {
+      "name": "shield",
+      "category": "items",
+      "file": "items_shield.png",
+      "description": "Round wooden shield with iron rim, boss and cross bands",
+      "pixels": 616
+    },
+    {
+      "name": "chest",
+      "category": "items",
+      "file": "items_chest.png",
+      "description": "Wooden treasure chest with a domed lid, iron bands and gold lock",
+      "pixels": 522
+    },
+    {
+      "name": "scroll",
+      "category": "items",
+      "file": "items_scroll.png",
+      "description": "Rolled parchment scroll with wooden dowels and ink lines",
+      "pixels": 604
+    },
+    {
+      "name": "gem",
+      "category": "items",
+      "file": "items_gem.png",
+      "description": "Faceted purple gemstone cut as a brilliant with light facets",
+      "pixels": 372
+    },
+    {
+      "name": "coin",
+      "category": "items",
+      "file": "items_coin.png",
+      "description": "Stacked gold coins, the front one stamped with a star",
+      "pixels": 474
+    },
+    {
+      "name": "bow",
+      "category": "items",
+      "file": "items_bow.png",
+      "description": "Recurve longbow strung taut with a nocked arrow",
+      "pixels": 289
+    },
+    {
+      "name": "helm",
+      "category": "items",
+      "file": "items_helm.png",
+      "description": "Crested iron great helm seen in profile with a T visor",
+      "pixels": 519
+    },
+    {
+      "name": "boots",
+      "category": "items",
+      "file": "items_boots.png",
+      "description": "Pair of brown leather travel boots with turned cuffs",
+      "pixels": 609
+    },
+    {
+      "name": "ring",
+      "category": "items",
+      "file": "items_ring.png",
+      "description": "Gold band ring set with a glowing blue stone and side filigree",
+      "pixels": 378
+    },
+    {
+      "name": "orc_berserker",
+      "category": "monsters",
+      "file": "monsters_orc_berserker.png",
+      "description": "Grey-green orc berserker mid-roar with a spiked pauldron and cleaver",
+      "pixels": 572
+    },
+    {
+      "name": "harpy",
+      "category": "monsters",
+      "file": "monsters_harpy.png",
+      "description": "Winged harpy with feathered arms, talons and a plumed crest",
+      "pixels": 538
+    },
+    {
+      "name": "mimic",
+      "category": "monsters",
+      "file": "monsters_mimic.png",
+      "description": "Treasure chest mimic with a hinged jaw of teeth and a pink tongue",
+      "pixels": 706
+    },
+    {
+      "name": "wand",
+      "category": "items",
+      "file": "items_wand.png",
+      "description": "Slender wizard wand with a star tip and trailing sparkles",
+      "pixels": 242
+    }
+  ]
+}

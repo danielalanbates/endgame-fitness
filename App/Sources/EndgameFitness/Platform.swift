@@ -298,7 +298,11 @@ extension View {
         if Platform.isDesktop {
             self
         } else {
-            ScrollView(.vertical, showsIndicators: false) { self }
+            // iOS 26 floats the tab bar over the content, so the last rows
+            // of any scroll view are clipped without extra bottom inset.
+            ScrollView(.vertical, showsIndicators: false) {
+                self.padding(.bottom, 96)
+            }
         }
     }
 
@@ -329,4 +333,57 @@ struct AdaptiveHStack<Content: View>: View {
 /// Fixed column count on the Mac, fewer on iPhone.
 func adaptiveColumns(desktop: Int, phone: Int, spacing: CGFloat? = nil) -> [GridItem] {
     Array(repeating: GridItem(.flexible(), spacing: spacing), count: Platform.isDesktop ? desktop : phone)
+}
+
+// MARK: - Segmented controls
+
+#if !os(macOS)
+/// `UISegmentedControl` truncates its titles with a tail ellipsis instead of
+/// shrinking them, so on a 390pt-wide iPhone (14/15 base width) a three- or
+/// four-segment control silently eats whole words. None of that is reachable
+/// from SwiftUI — `.font`/`.minimumScaleFactor` on the `Text` inside a
+/// `Picker(.segmented)` are dropped, because the labels are turned into plain
+/// title strings. The fix has to happen on the UIKit appearance proxy.
+@MainActor
+enum SegmentedControlAppearance {
+    private static var configured = false
+
+    /// Idempotent; safe to call from a view body.
+    static func configure() {
+        guard !configured else { return }
+        configured = true
+
+        let proxy = UISegmentedControl.appearance()
+        // Size each segment to its own title rather than forcing width/count,
+        // so one long label no longer clips every other segment.
+        proxy.apportionsSegmentWidthsByContent = true
+
+        let base = UIFont.preferredFont(forTextStyle: .footnote)
+        proxy.setTitleTextAttributes([.font: base], for: .normal)
+        let boldDescriptor = base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor
+        proxy.setTitleTextAttributes(
+            [.font: UIFont(descriptor: boldDescriptor, size: base.pointSize)],
+            for: .selected
+        )
+    }
+}
+#endif
+
+extension View {
+    /// `.pickerStyle(.segmented)` that stays readable at 390pt on iPhone.
+    ///
+    /// Use this instead of `.pickerStyle(.segmented)` everywhere in the app so
+    /// segmented controls are sized and typeset consistently on both platforms.
+    func compactSegmentedPicker() -> some View {
+        #if os(macOS)
+        return self.pickerStyle(.segmented)
+        #else
+        SegmentedControlAppearance.configure()
+        return self
+            .pickerStyle(.segmented)
+            .font(.footnote)
+            .minimumScaleFactor(0.75)
+            .lineLimit(1)
+        #endif
+    }
 }

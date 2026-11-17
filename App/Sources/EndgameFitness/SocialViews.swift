@@ -271,6 +271,13 @@ struct PlayerCardView: View {
             Text("\(profile.level)")
                 .font((compact ? Font.headline : Font.title2).bold())
                 .foregroundStyle(.white)
+
+            // Cosmetic aura indicator
+            if let cosmetic = profile.cosmetic, !cosmetic.isEmpty {
+                Circle()
+                    .strokeBorder(cosmetic.auraColor, lineWidth: 2)
+                    .padding(-3)
+            }
         }
         .frame(width: compact ? 38 : 52, height: compact ? 38 : 52)
     }
@@ -360,14 +367,58 @@ struct CommunityView: View {
                     .padding([.horizontal, .top], 16)
             }
 
-            Picker("", selection: $section) {
-                ForEach(Section.allCases) { item in
-                    Label(item.rawValue, systemImage: item.icon).tag(item)
+            #if os(iOS)
+            // Six segments don't fit a 390pt screen ("Leader…", "Challe…"), so
+            // iOS gets a horizontally scrollable chip row with icon + full label.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Section.allCases) { item in
+                        Button {
+                            section = item
+                        } label: {
+                            Label(item.rawValue, systemImage: item.icon)
+                                .font(.system(size: 13, weight: section == item ? .semibold : .regular))
+                                .fixedSize()
+                                .padding(.horizontal, 12)
+                                .frame(height: 28)
+                                .background(
+                                    Capsule().fill(section == item
+                                        ? Color.accentColor.opacity(0.2)
+                                        : Color(.secondarySystemBackground))
+                                )
+                                .foregroundStyle(section == item ? Color.accentColor : .primary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(item.rawValue)  // Accessibility tooltip
+                    }
                 }
+                .padding(.horizontal, 16)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding(.vertical, 12)
+            #else
+            // macOS: use icon-only segmented control, same as iOS chip buttons
+            HStack(spacing: 8) {
+                ForEach(Section.allCases) { item in
+                    Button {
+                        section = item
+                    } label: {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 14, weight: section == item ? .semibold : .regular))
+                            .frame(width: 28, height: 28)
+                            .background(
+                                Capsule().fill(section == item
+                                    ? Color.accentColor.opacity(0.2)
+                                    : Color(.secondarySystemBackground))
+                            )
+                            .foregroundStyle(section == item ? Color.accentColor : .primary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(item.rawValue)  // Accessibility tooltip
+                }
+                Spacer()
+            }
             .padding(16)
+            #endif
 
             Divider()
 
@@ -411,9 +462,13 @@ struct CommunityView: View {
                     )
                 }
                 ForEach(game.feed) { item in
-                    ActivityRow(item: item) { emoji in
-                        Task { await game.react(to: item.id, emoji: emoji) }
-                    }
+                    ActivityRow(
+                        item: item,
+                        onReact: { emoji in
+                            Task { await game.react(to: item.id, emoji: emoji) }
+                        },
+                        cosmetic: item.isSelf ? game.profile?.cosmetic : nil
+                    )
                 }
             }
             .padding(16)
@@ -430,7 +485,7 @@ struct CommunityView: View {
                     Text("Friends").tag("friends")
                     Text("Guild").tag("guild")
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
 
                 Picker("Metric", selection: $leaderboardMetric) {
@@ -630,6 +685,9 @@ struct CommunityView: View {
 struct ActivityRow: View {
     let item: ActivityItem
     let onReact: (String) -> Void
+    /// Equipped cosmetic of the author, when known. Only our own rows carry one
+    /// today, because the feed payload has no per-author cosmetic field yet.
+    var cosmetic: String?
 
     private static let reactions = ["💪", "🔥", "👏"]
 
@@ -641,6 +699,13 @@ struct ActivityRow: View {
                 .frame(width: 30, height: 30)
                 .background(item.tint.opacity(0.12))
                 .clipShape(Circle())
+                .overlay {
+                    if let cosmetic, !cosmetic.isEmpty {
+                        Circle()
+                            .strokeBorder(cosmetic.auraColor, lineWidth: 2)
+                            .padding(-2.5)
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 4) {
                 (
@@ -814,6 +879,30 @@ struct LevelUpOverlay: View {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) { scale = 1 }
             glow = true
             Platform.success()
+        }
+    }
+}
+
+// MARK: - Cosmetic helpers
+
+extension String {
+    /// Human-readable name for an equipped aura cosmetic ("aura_gold" → "Gold Aura").
+    var auraDisplayName: String {
+        guard hasPrefix("aura_") else { return self }
+        return dropFirst("aura_".count).capitalized + " Aura"
+    }
+
+    var auraColor: Color {
+        switch self {
+        case "aura_iron":    return Color(red: 0.7, green: 0.7, blue: 0.8)
+        case "aura_mist":    return Color(red: 0.6, green: 0.8, blue: 0.9)
+        case "aura_chalk":   return Color(red: 0.9, green: 0.9, blue: 0.95)
+        case "aura_ember":   return Color.brandOrange
+        case "aura_crimson": return Color(red: 1.0, green: 0.2, blue: 0.2)
+        case "aura_verdant": return Color(red: 0.2, green: 0.8, blue: 0.4)
+        case "aura_violet":  return Color(red: 0.8, green: 0.4, blue: 0.9)
+        case "aura_gold":    return Color.brandYellow
+        default:             return Color.clear
         }
     }
 }
