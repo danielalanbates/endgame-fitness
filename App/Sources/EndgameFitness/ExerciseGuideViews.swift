@@ -52,7 +52,6 @@ struct ExerciseHowToInline: View {
                             .foregroundStyle(Color.brandBlue)
                         Text(step)
                             .font(.caption)
-                            .lineLimit(4)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }

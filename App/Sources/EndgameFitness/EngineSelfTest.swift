@@ -1268,6 +1268,48 @@ enum EngineSelfTest {
             check("directions: Zone 2 explains the talk test, 60-70% max HR and nasal breathing",
                   z2?.steps.joined().contains("60-70%") == true && z2?.steps.joined().contains("nose") == true
                   && z2?.cue.contains("talk") == true)
+            // Review fixes: right variation, consistent cues, joint-appropriate safety.
+            let stiff = G.directions(for: "Stiff-Leg Deadlift")
+            check("directions: stiff-leg deadlift is the barbell version, not dumbbell RDLs",
+                  stiff?.steps.joined().contains("barbell") == true && stiff?.steps.joined().contains("dumbbells") == false
+                  && stiff?.stepsFromLibrary == false && G.directions(for: "Dumbbell Romanian Deadlifts")?.cue.contains("Dumbbells") == true)
+            let practice = G.directions(for: "Warm-up: Practice Set of Goblet Squats (1 easy set at half your reps)")
+            check("directions: ramp-up and practice cues name the lift, never 'your first lift'",
+                  ramp?.cue.contains("your first lift") == false && practice?.cue.contains("Goblet Squats") == true
+                  && practice?.steps.contains { $0.contains("your first lift") } == false, practice?.cue ?? "nil")
+            check("directions: leg press cue stops at about 90 degrees",
+                  G.directions(for: "Leg Press")?.cue.contains("90 degrees") == true
+                  && G.directions(for: "Leg Press")?.cue.contains("chest") == false)
+            check("directions: easier dips are assisted, not bench dips",
+                  G.directions(for: "Dips")?.easier?.lowercased().contains("bench dips") == false)
+            check("directions: back squat cue says between your heels",
+                  G.directions(for: "Back Squats")?.cue.contains("between your heels") == true)
+            let ohe = G.directions(for: "Overhead Dumbbell Extensions")
+            check("directions: overhead extension steps match its two-hand guide",
+                  ohe?.stepsFromLibrary == false && ohe?.steps.first?.contains("both hands") == true)
+            let timed = ["Wall Sits", "Farmer's Carry", "Suitcase Carry", "Sled Push", "Burpees", "Jumping Jacks", "Jump Squats",
+                         "Mountain Climbers", "Jump Rope", "Kettlebell Swings"]
+            let repsNote = timed.filter { G.directions(for: $0)?.effortNote?.contains("reps in reserve") != false }
+            check("directions: timed, carry and power items get their own effort note (or none), not reps in reserve",
+                  repsNote.isEmpty && G.directions(for: "Farmer's Carry")?.effortNote?.contains("grip") == true,
+                  repsNote.joined(separator: ", "))
+            check("directions: leg extension and wall sit safety fits the movement",
+                  G.directions(for: "Leg Extensions")?.safety.contains("pivot") == true
+                  && G.directions(for: "Leg Extensions")?.safety.contains("over your toes") == false
+                  && G.directions(for: "Wall Sits")?.safety.contains("Knees track over your toes") == false)
+            check("directions: Romanian deadlifts stop before the back rounds",
+                  G.entry(for: "Romanian Deadlifts")?.steps.contains { $0.contains("fully stretched") } == false
+                  && G.entry(for: "Romanian Deadlifts")?.steps.joined().contains("back starts to round") == true
+                  && G.directions(for: "Romanian Deadlifts")?.inlineSteps.joined().contains("fully stretched") == false)
+            let ohs = G.directions(for: "Overhead Squats")?.safety ?? ""
+            check("directions: overhead squat safety covers shoulder, back and knees and says advanced",
+                  ohs.contains(G.shoulderSafe) && ohs.contains(G.backSafe) && ohs.contains(G.kneeSafe) && ohs.contains("goblet"))
+            let own = ["Mountain Climbers", "Jump Rope"].filter { G.entry(for: $0) == nil || G.directions(for: $0)?.easier == nil }
+            check("guide: mountain climbers and jump rope have their own guide with options", own.isEmpty, own.joined(separator: ", "))
+            let libOnly = names.keys.filter { G.entry(for: $0) == nil }.sorted()
+            check("guide: every program item has its own guide, not library steps alone", libOnly.isEmpty, libOnly.joined(separator: " | "))
+            let a1 = G.directions(for: "Goblet Squats"), a2 = G.directions(for: "Goblet Squats")
+            check("directions: results are cached and stable per name", a1 == a2 && a1 != nil)
             let rest = SmartPlanner.restDayPlan(config: SmartPlanner.sampleConfig(.longevity, inj: ["Knee"]))
             let restCues = rest.plannedExercises.compactMap { G.cue(for: $0.name) }
             check("directions: every rest-day item has a one-line cue", restCues.count == rest.exercises.count && !restCues.isEmpty,
@@ -1313,11 +1355,13 @@ extension EngineSelfTest {
         add("Warm-up: \(SP.buildUps)", "planner warm-up drill")
         // Real Smart Advisor plans and explicit splits over the wizard's answers.
         let goals = TrainingGoal.allCases
-        let levels: [ExperienceLevel] = [.beginner, .intermediate, .advanced]
+        let levels: [ExperienceLevel] = [.beginner, .intermediate, .advanced, .expert]
         let gear: [EquipmentLevel] = [.fullGym, .homeGym, .minimal, .bodyweight]
-        let injuries: [Set<String>] = [[], ["Knee"], ["Low back"], ["Shoulder"], ["Knee", "Low back", "Shoulder"]]
+        let injuries: [Set<String>] = [[], ["Knee"], ["Low back"], ["Shoulder"], ["Knee", "Low back"], ["Knee", "Shoulder"],
+                                        ["Low back", "Shoulder"], ["Knee", "Low back", "Shoulder"]]
         let shapes: [(rolling: (Int, Int)?, perWeek: Int, len: Int)] = [
-            (nil, 2, 30), (nil, 3, 45), (nil, 4, 60), (nil, 5, 20), (nil, 6, 90), ((4, 1), 4, 60), ((3, 1), 3, 30), ((2, 1), 2, 45),
+            (nil, 2, 30), (nil, 3, 45), (nil, 4, 60), (nil, 5, 20), (nil, 6, 90), (nil, 4, 120), ((4, 1), 4, 60), ((3, 1), 3, 30), ((2, 1), 2, 45),
+            ((5, 2), 5, 60), ((5, 2), 5, 120),
         ]
         let splits = ProgramSplit.allCases.filter { $0 != .auto }
         func run(_ g: TrainingGoal, _ e: ExperienceLevel, _ q: EquipmentLevel, _ inj: Set<String>,
@@ -1349,6 +1393,13 @@ extension EngineSelfTest {
                 n += 1
             } } }
             for g in goals { for s in shapes { run(g, levels[n % levels.count], .fullGym, [], s, splitsToo: false); n += 1 } }
+            // Every level x shape (expert, 120 min and rolling 5/2 included) under a
+            // rotating combined injury set, goal and equipment.
+            let combined = injuries.filter { $0.count > 1 }
+            for e in levels { for s in shapes {
+                run(goals[n % goals.count], e, gear[n % gear.count], combined[n % combined.count], s, splitsToo: n % 4 == 0)
+                n += 1
+            } }
         }
         // Old template pools.
         for group in ["Push", "Pull", "Legs", "Upper", "Lower", "Chest", "Back", "Shoulders", "Arms", "Full Body", "Other"] {

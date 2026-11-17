@@ -41,8 +41,10 @@ struct ExerciseDirections: Equatable {
     /// The first steps for an inline "How to" (short ones first).
     var inlineSteps: [String] { Array((quickSteps.isEmpty ? steps : quickSteps).prefix(2)) }
 
-    /// Plain-language effort note for lifts ("2-3 reps short of failure").
-    var effortNote: String? { kind == .lift ? ExerciseGuide.effortNote : nil }
+    /// Plain-language effort note: "2-3 reps short of failure" for rep lifts,
+    /// posture/grip for carries and holds, pace for conditioning, speed for
+    /// jumps and throws; nil for warm-ups, cardio, drills and recovery.
+    var effortNote: String? = nil
 }
 
 enum ExerciseGuide {
@@ -56,9 +58,19 @@ enum ExerciseGuide {
         let harder: String
         /// The library's entry for this name is a different variation (or empty).
         var preferOverLibrary = false
+        /// Effort wording for lifts that are not counted in reps to near-failure
+        /// (carries, holds, conditioning, jumps); nil = the reps-in-reserve note.
+        var effort: String? = nil
     }
 
     static let effortNote = "How hard: stop each working set with 2-3 good reps still left in you (RPE 7-8, also called 2-3 reps in reserve). The last reps should feel slow and hard, but look exactly like the first one. If your form changes, the set is over, even if you could grind out more."
+
+    /// Carries, holds and sled work: timed or distance, not reps.
+    static let holdEffort = "How hard: end each set while your posture and grip are still solid, with about 10 s (or a few steps) left in you. Stop as soon as your back starts to round, you lean, or your grip starts to fail."
+    /// Bodyweight conditioning done for time or many reps.
+    static let conditioningEffort = "How hard: pick a pace you can keep for the whole set with clean form; breathing hard but under control. Slow down, or step instead of jumping, as soon as your landings get heavy or sloppy."
+    /// Jumps, throws and other speed work.
+    static let powerEffort = "How hard: every rep should be fast and crisp. End the set as soon as a rep slows down or a landing gets heavy, well before you feel tired."
 
     static let genericSafety = "Use a load you can control through the whole movement. Stop if you feel sharp or joint pain."
 
@@ -112,8 +124,28 @@ enum ExerciseGuide {
         return nil
     }
 
+    /// Results by name and library ID. The live logging card asks on every
+    /// redraw (every keystroke in a set field), so each name is resolved once.
+    private final class Cache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var map: [String: ExerciseDirections?] = [:]
+        func value(_ key: String, _ make: () -> ExerciseDirections?) -> ExerciseDirections? {
+            lock.lock()
+            if let hit = map[key] { lock.unlock(); return hit }
+            lock.unlock()
+            let made = make()
+            lock.lock(); map[key] = made; lock.unlock()
+            return made
+        }
+    }
+    private static let cache = Cache()
+
     /// Directions for `name`, or nil when neither the guide nor the library knows it.
     static func directions(for name: String, libraryID: String? = nil) -> ExerciseDirections? {
+        cache.value(name + "\u{1F}" + (libraryID ?? "")) { resolve(name, libraryID: libraryID) }
+    }
+
+    private static func resolve(_ name: String, libraryID: String?) -> ExerciseDirections? {
         let display = ProgramTargetParser.parse(name).name
         let guide = entry(for: name)
         // Warm-ups, cardio and recovery items are never library lifts.
@@ -126,22 +158,26 @@ enum ExerciseGuide {
 
         if let guide {
             var steps = guide.steps
-            // A ramp-up / practice set names its lift.
+            var cue = guide.cue
+            // A ramp-up / practice set names its lift, in the steps and the one-line cue.
             if let target = warmupTarget(of: name), !target.isEmpty {
                 steps = steps.map { $0.replacingOccurrences(of: "your first lift", with: target) }
+                cue = cue.replacingOccurrences(of: "your first lift", with: target)
             }
-            return ExerciseDirections(name: display, kind: guide.kind, cue: guide.cue,
+            return ExerciseDirections(name: display, kind: guide.kind, cue: cue,
                                       steps: libraryUsable ? libSteps : steps, safety: guide.safety,
                                       easier: guide.easier, harder: guide.harder,
                                       libraryID: libraryUsable ? lib?.id : nil, stepsFromLibrary: libraryUsable,
-                                      quickSteps: libraryUsable ? steps : [])
+                                      quickSteps: libraryUsable ? steps : [],
+                                      effortNote: guide.kind == .lift ? (guide.effort ?? effortNote) : nil)
         }
         guard let lib, !libSteps.isEmpty else { return nil }
         let kind: ExerciseDirections.Kind = lib.tracking == .timed
             ? (lib.category == "cardio" ? .cardio : .drill) : .lift
         return ExerciseDirections(name: display, kind: kind, cue: shortCue(libSteps[0]), steps: libSteps,
                                   safety: genericSafety, easier: nil, harder: nil, libraryID: lib.id,
-                                  stepsFromLibrary: true, quickSteps: [])
+                                  stepsFromLibrary: true, quickSteps: [],
+                                  effortNote: kind == .lift ? effortNote : nil)
     }
 
     /// One-line cue for a list row (the guide's cue, else the first library step, shortened).
@@ -160,8 +196,9 @@ enum ExerciseGuide {
     // MARK: - Entries
 
     private static func lift(_ names: [String], cue: String, steps: [String], safe: String, easier: String, harder: String,
-                             prefer: Bool = false) -> Entry {
-        Entry(names: names, kind: .lift, cue: cue, steps: steps, safety: safe, easier: easier, harder: harder, preferOverLibrary: prefer)
+                             prefer: Bool = false, effort: String? = nil) -> Entry {
+        Entry(names: names, kind: .lift, cue: cue, steps: steps, safety: safe, easier: easier, harder: harder,
+              preferOverLibrary: prefer, effort: effort)
     }
 
     private static func drill(_ names: [String], cue: String, steps: [String], safe: String, easier: String, harder: String,
@@ -425,7 +462,7 @@ enum ExerciseGuide {
 
     static let squats: [Entry] = [
         lift(["Back Squats", "Squats", "Squat"],
-             cue: "Bar on your upper back, sit down between your hips, stand up driving through the floor.",
+             cue: "Bar on your upper back, sit down between your heels, stand up driving through the floor.",
              steps: ["Set the bar on your upper back, feet about shoulder width, toes slightly out.",
                      "Brace your core, then bend hips and knees together to sit down between your heels.",
                      "Go as deep as you can with a flat back, then drive up through your whole foot."],
@@ -457,7 +494,7 @@ enum ExerciseGuide {
              easier: "Lighter load and a shallower depth.",
              harder: "Slow 3 s lowering."),
         lift(["Leg Press"],
-             cue: "Feet shoulder width on the platform, lower until knees are near your chest, press away.",
+             cue: "Feet shoulder width, lower to about 90 degrees at the knee, lower back on the pad, press away.",
              steps: ["Sit with your back flat against the pad, feet shoulder width in the middle of the platform.",
                      "Release the safeties and lower the platform until your knees are bent to about 90 degrees.",
                      "Press it away without locking your knees hard at the top."],
@@ -520,7 +557,7 @@ enum ExerciseGuide {
              steps: ["Hold the bar overhead with a wide grip, arms locked.",
                      "Keep the bar over the middle of your feet as you squat down.",
                      "Stand up with the bar still over your feet."],
-             safe: shoulderSafe,
+             safe: "Advanced lift: master the goblet squat first. " + shoulderSafe + " " + backSafe + " " + kneeSafe,
              easier: "A broomstick or empty bar.",
              harder: "Add load slowly."),
         lift(["Wall Sits"],
@@ -528,9 +565,9 @@ enum ExerciseGuide {
              steps: ["Lean your back flat against a wall, feet about two feet out.",
                      "Slide down until your knees are bent to about 90 degrees.",
                      "Hold, breathing steadily, then slide back up."],
-             safe: kneeSafe,
+             safe: "Keep your knees above your ankles, not past your toes, and press your back into the wall; stop if you feel pain at the front of the knee.",
              easier: "Sit higher on the wall.",
-             harder: "Hold longer or rest a weight on your thighs."),
+             harder: "Hold longer or rest a weight on your thighs.", effort: holdEffort),
     ]
 
     // MARK: Hinge pattern
@@ -562,7 +599,17 @@ enum ExerciseGuide {
              safe: backSafe + " Raised handles shorten the pull, so stay tight anyway.",
              easier: "Lighter load, or dumbbell Romanian deadlifts.",
              harder: "Low handles, or a 3 s lowering."),
-        lift(["Dumbbell Romanian Deadlifts", "Stiff-Leg Deadlift", "Stiff-Legged Deadlift"],
+        lift(["Stiff-Leg Deadlift", "Stiff-Legged Deadlift", "Stiff-Leg Deadlifts", "Stiff-Legged Deadlifts"],
+             cue: "Bar at your hips, knees almost straight, hinge forward with a flat back, stand up.",
+             steps: ["Hold a barbell at your hips with an overhand grip, feet hip-width, knees only slightly soft.",
+                     "Keep your knees nearly straight and push your hips back, letting the bar slide down your thighs close to your legs.",
+                     "Lower only until you feel a strong hamstring stretch or your back starts to round, usually around mid-shin or just below the knee. This is a shorter range than a deadlift.",
+                     "Squeeze your glutes and drive your hips forward to stand tall."],
+             safe: backSafe + " Use lighter weights than your deadlift; the straight-knee position puts more load on your hamstrings and lower back.",
+             easier: "Romanian deadlifts with more knee bend, or dumbbells and a shorter range.",
+             harder: "A 3 s lowering, or a 1 s pause at the bottom.",
+             prefer: true),
+        lift(["Dumbbell Romanian Deadlifts"],
              cue: "Dumbbells in front of your legs, push hips back with a flat back, stand up.",
              steps: ["Stand holding dumbbells in front of your thighs, knees slightly bent.",
                      "Push your hips back and slide the dumbbells down your legs, keeping your back flat.",
@@ -576,7 +623,7 @@ enum ExerciseGuide {
              cue: "Bar at your hips, push hips back with a flat back to below the knees, stand up.",
              steps: ["Start standing with the bar at your hips, knees slightly bent.",
                      "Push your hips back and let the bar slide down your thighs, back flat.",
-                     "Stop when your hamstrings are fully stretched, then drive your hips forward to stand."],
+                     "Stop when you feel a strong hamstring stretch or your back starts to round, usually just below the knees, then drive your hips forward to stand."],
              safe: backSafe,
              easier: "Dumbbells and a shorter range.",
              harder: "Pause 1 s at the bottom."),
@@ -589,7 +636,7 @@ enum ExerciseGuide {
              safe: "The power comes from your hips, not your arms or lower back. " + backSafe,
              easier: "A lighter bell and practising hip hinges first.",
              harder: "A heavier bell.",
-             prefer: true),
+             prefer: true, effort: powerEffort),
         lift(["Back Extensions"],
              cue: "Hips on the pad, lower your chest with a flat back, rise until your body is straight.",
              steps: ["Set the pad just below your hip bones and hook your ankles under the rollers.",
@@ -663,7 +710,7 @@ enum ExerciseGuide {
                      "Finish by extending your hips and shrugging, then lower under control."],
              safe: backSafe,
              easier: "Start from blocks or just above the knee.",
-             harder: "Add load slowly."),
+             harder: "Add load slowly.", effort: powerEffort),
     ]
 
     // MARK: Lunge pattern
@@ -777,7 +824,7 @@ enum ExerciseGuide {
                      "Lower by bending your elbows until your upper arms are about level with the floor.",
                      "Press back up to straight arms. Add weight only once bodyweight sets are easy."],
              safe: "Do not sink lower than is comfortable. " + shoulderSafe,
-             easier: "Bench dips or band-assisted dips.",
+             easier: "Band-assisted or machine-assisted dips, or close-grip push-ups.",
              harder: "Add weight with a belt."),
         lift(["Push-ups"],
              cue: "Hands under your shoulders, body straight, chest to the floor, push up.",
@@ -1055,7 +1102,7 @@ enum ExerciseGuide {
                      "Pull yourself under and catch the bar on the front of your shoulders with elbows high."],
              safe: "Learn it with light weight or coaching first. " + backSafe,
              easier: "An empty bar or high pulls.",
-             harder: "From the floor."),
+             harder: "From the floor.", effort: powerEffort),
         lift(["Snatches", "Snatch", "Hang Snatch"],
              cue: "Wide grip, jump and pull the bar overhead in one move, catch in a squat.",
              steps: ["Take a wide grip with the bar at your thighs or on the floor.",
@@ -1063,7 +1110,7 @@ enum ExerciseGuide {
                      "Pull yourself under and catch it overhead with locked arms, then stand."],
              safe: "Technical lift: learn it with a broomstick or coaching first. " + shoulderSafe,
              easier: "Power snatch from the hang with an empty bar.",
-             harder: "Add load slowly."),
+             harder: "Add load slowly.", effort: powerEffort),
         lift(["Clean and Jerk", "Jerk Dips"],
              cue: "Clean the bar to your shoulders, dip and drive, punch it overhead.",
              steps: ["Clean the bar to the front of your shoulders.",
@@ -1071,7 +1118,7 @@ enum ExerciseGuide {
                      "Drive up hard and punch the bar overhead, landing in a split or with feet apart."],
              safe: "Learn it with light weight or coaching first. " + shoulderSafe,
              easier: "Push press.",
-             harder: "Add load slowly."),
+             harder: "Add load slowly.", effort: powerEffort),
         lift(["Medicine Ball Throws", "Medicine Ball Slams"],
              cue: "Load your hips, then throw the ball explosively at a wall or the floor.",
              steps: ["Hold the ball at your chest with feet shoulder width.",
@@ -1079,7 +1126,7 @@ enum ExerciseGuide {
                      "Catch or pick it up and reset before the next rep."],
              safe: "Use a ball made for throwing; keep clear of the rebound.",
              easier: "A lighter ball.",
-             harder: "A heavier ball."),
+             harder: "A heavier ball.", effort: powerEffort),
     ]
 
     // MARK: Core and carries
@@ -1176,7 +1223,7 @@ enum ExerciseGuide {
                      "Walk with short, steady steps for the distance or time, then set them down carefully."],
              safe: "Lift and set down with a flat back; stop if your grip fails.",
              easier: "Lighter weights or a shorter distance.",
-             harder: "Heavier weights or a longer distance."),
+             harder: "Heavier weights or a longer distance.", effort: holdEffort),
         lift(["Suitcase Carry"],
              cue: "Weight in one hand only, stand perfectly tall, walk without leaning.",
              steps: ["Pick up one heavy dumbbell or kettlebell in one hand, like a suitcase.",
@@ -1184,7 +1231,7 @@ enum ExerciseGuide {
                      "Walk with short steady steps, then switch hands for the next set or the way back."],
              safe: "Lift and set down with a flat back. Stop if you cannot stay upright.",
              easier: "A lighter weight.",
-             harder: "A heavier weight or a longer walk."),
+             harder: "A heavier weight or a longer walk.", effort: holdEffort),
         lift(["Sled Push"],
              cue: "Hands on the poles, lean in, drive with short powerful steps.",
              steps: ["Grip the sled poles with straight arms and lean in.",
@@ -1192,7 +1239,7 @@ enum ExerciseGuide {
                      "Keep your back flat throughout."],
              safe: backSafe,
              easier: "Lighter sled.",
-             harder: "Heavier sled."),
+             harder: "Heavier sled.", effort: holdEffort),
     ]
 
     // MARK: Smaller lifts (calves, arms, shoulders, chest)
@@ -1285,7 +1332,8 @@ enum ExerciseGuide {
                      "Extend back up."],
              safe: "Use a weight you control behind your head. " + shoulderSafe,
              easier: "Lighter dumbbell, seated.",
-             harder: "Slow lowering."),
+             harder: "Slow lowering.",
+             prefer: true),
         lift(["Tricep Kickbacks"],
              cue: "Hinge forward, upper arm still, straighten your elbow back.",
              steps: ["Hinge forward with a flat back, upper arm along your side.",
@@ -1411,7 +1459,7 @@ enum ExerciseGuide {
              steps: ["Sit with the pad just above your ankles.",
                      "Straighten your knees.",
                      "Lower slowly."],
-             safe: kneeSafe,
+             safe: "Line your knee up with the machine's pivot point; stop if you feel pain at the front of the knee.",
              easier: "Lighter weight.",
              harder: "Pause at the top."),
         lift(["Burpees"],
@@ -1421,7 +1469,7 @@ enum ExerciseGuide {
                      "Jump or step your feet in and stand or jump up."],
              safe: "Land softly; step instead of jumping if your knees or back complain.",
              easier: "Step back and in, no jump.",
-             harder: "Add a push-up."),
+             harder: "Add a push-up.", effort: conditioningEffort),
         lift(["Jumping Jacks"],
              cue: "Jump your feet out as your arms go up, jump back in.",
              steps: ["Stand with feet together, arms at your sides.",
@@ -1429,7 +1477,7 @@ enum ExerciseGuide {
                      "Jump back to the start."],
              safe: "Land softly on the balls of your feet.",
              easier: "Step side to side instead of jumping.",
-             harder: "Speed up."),
+             harder: "Speed up.", effort: conditioningEffort),
         lift(["Jump Squats"],
              cue: "Squat down, jump up explosively, land softly into the next squat.",
              steps: ["Stand with feet shoulder width.",
@@ -1437,7 +1485,85 @@ enum ExerciseGuide {
                      "Land softly with bent knees and go into the next rep."],
              safe: "Land softly. " + kneeSafe,
              easier: "Bodyweight squats.",
-             harder: "Higher jumps."),
+             harder: "Higher jumps.", effort: powerEffort),
+        lift(["Mountain Climbers", "Mountain Climber"],
+             cue: "Hold a straight-arm plank and drive your knees toward your chest one at a time.",
+             steps: ["Start in a high plank: hands under your shoulders, body in a straight line from head to heels.",
+                     "Pull one knee toward your chest, then switch legs, keeping your hips level and low.",
+                     "Keep a steady rhythm you can hold for the whole set, breathing throughout."],
+             safe: "Keep your hips from sagging or piking up. " + shoulderSafe,
+             easier: "Hands on a bench or wall, and step each knee in slowly.",
+             harder: "Move faster, or bring each knee toward the opposite elbow.",
+             prefer: true, effort: conditioningEffort),
+        lift(["Jump Rope", "Rope Jumping", "Skipping Rope"],
+             cue: "Small, quiet hops on the balls of your feet; turn the rope with your wrists.",
+             steps: ["Hold the handles at hip height, elbows close to your sides.",
+                     "Turn the rope with your wrists, not your whole arms.",
+                     "Jump just high enough to clear the rope, landing softly on the balls of your feet.",
+                     "Keep a steady rhythm; if you trip, reset and start again calmly."],
+             safe: "Use a flat, forgiving surface and good shoes. Stop if your calves, shins or knees hurt.",
+             easier: "Practice the hop and the turn without a rope, or skip in short bursts with rests.",
+             harder: "Longer rounds, alternate feet, or a faster pace.",
+             prefer: true, effort: conditioningEffort),
+        lift(["Battle Ropes"],
+             cue: "Athletic half-squat, make fast waves in the ropes with your arms, keep your back flat.",
+             steps: ["Hold one rope end in each hand and step back until the ropes have a little slack.",
+                     "Stand with feet shoulder width, knees bent and hips back, chest up.",
+                     "Move your arms up and down quickly, together or alternating, to send waves down the ropes.",
+                     "Keep breathing and keep your back flat for the whole round."],
+             safe: backSafe + " " + shoulderSafe,
+             easier: "Slower waves, shorter rounds, or lighter ropes.",
+             harder: "Longer rounds, bigger waves, or add a squat or lunge.",
+             prefer: true, effort: conditioningEffort),
+        lift(["Box Jumps"],
+             cue: "Swing your arms, jump onto the box, land softly in a squat, step down.",
+             steps: ["Stand facing a sturdy box about a foot away, feet hip-width.",
+                     "Dip your hips, swing your arms back, then jump up onto the box.",
+                     "Land softly with both feet flat on the box, knees bent and pointing over your toes, then stand tall.",
+                     "Step down one foot at a time; do not jump down."],
+             safe: "Pick a low box you can clear easily; height is not the goal. " + kneeSafe,
+             easier: "A lower box, or squat jumps on the floor.",
+             harder: "A slightly higher box, or a pause in a half-squat before each jump.",
+             prefer: true, effort: powerEffort),
+        lift(["Decline Bench Press"],
+             cue: "Lie on a decline bench, lower the bar to your lower chest, press it back up.",
+             steps: ["Hook your legs under the pads of a decline bench and lie back with your eyes under the bar.",
+                     "Grip a little wider than shoulder width, unrack with straight arms over your lower chest.",
+                     "Lower the bar with control to your lower chest, elbows at a slight angle from your body.",
+                     "Press back up to straight arms over your chest."],
+             safe: "Use a spotter or safety arms. " + shoulderSafe,
+             easier: "Lighter load, or decline push-ups with your feet on the floor and hands raised.",
+             harder: "A 2 s pause on the chest.",
+             prefer: true),
+        lift(["Deficit Deadlifts"],
+             cue: "Stand on a low platform and deadlift from a deeper start, back flat.",
+             steps: ["Stand on a sturdy plate or platform 2-5 cm high with the bar over your mid-foot.",
+                     "Bend your knees and hips to grip the bar; this start is deeper, so keep your chest up and back flat.",
+                     "Brace and push the floor away, keeping the bar close until you stand tall.",
+                     "Lower it the same way with control."],
+             safe: backSafe + " Use clearly less weight than your normal deadlift.",
+             easier: "A regular deadlift from the floor, or a smaller deficit.",
+             harder: "A slightly higher platform or a 3 s lowering.",
+             prefer: true),
+        lift(["Rack Pulls"],
+             cue: "Bar on the rack pins about knee height, flat back, stand up tall.",
+             steps: ["Set the safety pins so the bar sits around knee height.",
+                     "Stand close with the bar over your mid-foot, hinge to grip it with a flat back.",
+                     "Brace and drive your hips forward to stand tall, squeezing your glutes.",
+                     "Lower the bar back to the pins with control; do not drop it."],
+             safe: backSafe + " Do not lean back at the top.",
+             easier: "Lighter load or higher pins.",
+             harder: "Lower pins, or a 1 s pause at the top.",
+             prefer: true),
+        lift(["Renegade Rows"],
+             cue: "Plank on two dumbbells, row one to your hip without twisting, switch sides.",
+             steps: ["Set up in a high plank holding two dumbbells, feet wider than your hips.",
+                     "Brace your stomach and glutes so your hips stay level.",
+                     "Row one dumbbell to your hip, lower it with control, then row the other.",
+                     "Keep your hips square to the floor the whole set."],
+             safe: "Use hex dumbbells that cannot roll. Keep your hips from sagging or twisting. " + shoulderSafe,
+             easier: "Knees on the floor, or a plank with no row.",
+             harder: "Heavier dumbbells or a push-up between rows."),
     ]
 
     // MARK: Mobility and balance drills
