@@ -43,6 +43,19 @@ struct AccountView: View {
                 TextField("Title (e.g. Iron Disciple)", text: $title)
                 if let profile = game.profile {
                     LabeledContent("Level", value: "\(profile.level) · \(profile.rankTitle)")
+                    // Raid reward cosmetics are equipped locally by
+                    // GameProfileService.applyRaidRewards; show what's on.
+                    if let cosmetic = profile.cosmetic, !cosmetic.isEmpty {
+                        LabeledContent("Aura") {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .strokeBorder(cosmetic.auraColor, lineWidth: 2)
+                                    .frame(width: 14, height: 14)
+                                Text(cosmetic.auraDisplayName)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                     Button {
                         showTalents = true
                     } label: {

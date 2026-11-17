@@ -100,11 +100,13 @@ struct TalentTreeView: View {
     private func branchPicker(_ state: TalentState) -> some View {
         Picker("", selection: $selectedBranch) {
             ForEach(state.tree.branches) { branch in
-                Label("\(branch.name) (\(state.spentInBranch(branch.id)))", systemImage: branch.icon)
+                // Name plus point count; the parenthesised total is what makes
+                // this clip on a 390pt phone, so it is rendered compactly.
+                Label("\(branch.name) \(state.spentInBranch(branch.id))", systemImage: branch.icon)
                     .tag(branch.id)
             }
         }
-        .pickerStyle(.segmented)
+        .compactSegmentedPicker()
         .labelsHidden()
         .padding(16)
     }

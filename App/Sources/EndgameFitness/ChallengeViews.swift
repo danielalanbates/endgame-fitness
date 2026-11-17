@@ -333,10 +333,11 @@ struct CreateChallengeSheet: View {
             Text("New challenge").font(.title2.bold())
 
             Picker("Type", selection: $kind) {
-                Text("Duel a friend").tag("duel")
-                if game.guild != nil { Text("Guild challenge").tag("guild") }
+                // Short labels: the full phrases clip on a 390pt-wide iPhone.
+                Text("Duel").tag("duel")
+                if game.guild != nil { Text("Guild").tag("guild") }
             }
-            .pickerStyle(.segmented)
+            .compactSegmentedPicker()
             .labelsHidden()
 
             if kind == "duel" {
@@ -367,19 +368,19 @@ struct CreateChallengeSheet: View {
                     Text("Workouts").tag("workouts")
                     Text("Streak").tag("streak")
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Length").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Picker("Length", selection: $days) {
-                    Text("3 days").tag(3)
-                    Text("7 days").tag(7)
-                    Text("14 days").tag(14)
-                    Text("30 days").tag(30)
+                    Text("3d").tag(3)
+                    Text("7d").tag(7)
+                    Text("14d").tag(14)
+                    Text("30d").tag(30)
                 }
-                .pickerStyle(.segmented)
+                .compactSegmentedPicker()
                 .labelsHidden()
             }
 

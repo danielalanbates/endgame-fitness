@@ -1569,6 +1569,10 @@ async function applyRaidDamage(env, userId, damage) {
     defeated: damageDone >= raid.hp,
     just_defeated: justDefeated,
     reward_xp: rewardXp,
+    // Reward cosmetics ride along on the killing sync so the client can equip
+    // them immediately (RaidHit.reward_title / reward_cosmetic).
+    reward_title: justDefeated ? boss.reward_title : null,
+    reward_cosmetic: justDefeated ? boss.reward_cosmetic : null,
   };
 }
 
