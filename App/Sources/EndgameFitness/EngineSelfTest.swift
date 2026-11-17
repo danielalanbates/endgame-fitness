@@ -16,11 +16,14 @@ import Foundation
 enum EngineSelfTest {
     static func runIfRequested() {
         if CommandLine.arguments.contains("-ef.plandump") { SmartPlanner.dumpSamples(); exit(0) }
+        if CommandLine.arguments.contains("-ef.guidedump") { dumpDirections(); exit(0) }
         guard CommandLine.arguments.contains("-ef.selftest") else { return }
         exit(run())
     }
 
     static func run() -> Int32 {
+        // The bare selftest executable has no bundle: read the library from the repo.
+        ExerciseLibrary.fallbackResourceDirectory = repoResources
         var failures = 0
         var count = 0
         func check(_ name: String, _ ok: @autoclosure () -> Bool, _ detail: @autoclosure () -> String = "") {
@@ -1202,7 +1205,215 @@ enum EngineSelfTest {
                     .flatMap { $0.2.sessions.flatMap(lifts) }.contains { catalogByName[$0.name]?.longevityOnly == true })
         }
 
+
+        // MARK: Directions for every program item
+        do {
+            typealias G = ExerciseGuide
+            let names = programItemNames()
+            var missing: [String] = [], thin: [String] = []
+            var before = 0, fromGuide = 0
+            for name in names.keys.sorted() {
+                if let lib = ExerciseLibrary.shared.match(name: name), !lib.instructions.isEmpty { before += 1 }
+                guard let d = G.directions(for: name) else { missing.append("\(name) [\(names[name] ?? "")]"); continue }
+                if d.steps.isEmpty || d.cue.isEmpty || d.safety.isEmpty || d.inlineSteps.isEmpty { thin.append(name) }
+                if !d.stepsFromLibrary { fromGuide += 1 }
+            }
+            check("library readable for the directions test", ExerciseLibrary.shared.count > 800, "\(ExerciseLibrary.shared.count)")
+            check("directions: every program item has directions (\(names.count) names: \(before) from the library alone before the guide, \(names.count - missing.count) now, \(fromGuide) with guide steps)",
+                  missing.isEmpty && names.count > 250, missing.joined(separator: " | "))
+            check("directions: every item has a cue, steps and a safety cue", thin.isEmpty, thin.joined(separator: " | "))
+            var bad: [String] = [], dup: [String] = []
+            var owner: [String: String] = [:]
+            for e in G.entries {
+                if !(2...4).contains(e.steps.count) || e.safety.isEmpty || e.easier.isEmpty || e.harder.isEmpty || e.cue.isEmpty || e.cue.count > 110 {
+                    bad.append(e.names[0])
+                }
+                for n in e.names {
+                    let k = G.key(for: n)
+                    if let o = owner[k], o != e.names[0] { dup.append("\(n) (\(o))") }
+                    owner[k] = e.names[0]
+                }
+            }
+            check("guide: 2-4 steps, safety cue, easier and harder options, short cue (\(G.entries.count) guides)", bad.isEmpty, bad.joined(separator: ", "))
+            check("guide: no name maps to two guides", dup.isEmpty, dup.joined(separator: ", "))
+            let plannerNames = SmartPlanner.catalog.map(\.name)
+                + (SmartPlanner.mobilityPool + SmartPlanner.balancePool + SmartPlanner.stabilityPool).map(\.name)
+                + SmartPlanner.warmDrills.values.flatMap { $0.map { "Warm-up: \($0.name)" } }
+            let unguided = plannerNames.filter { G.entry(for: $0) == nil }
+            check("guide: every Smart Advisor move, drill and warm-up has its own guide (safety + options)", unguided.isEmpty, unguided.joined(separator: ", "))
+            check("guide keys drop prefixes, doses and schemes",
+                  G.key(for: "Warm-up: Leg Swings (10 each leg) 1 min") == G.key(for: "Leg Swings")
+                  && G.key(for: "Warm-up: Ramp-up Sets for Back Squats (2-3 lighter sets building to your working weight) 4 min") == "ramp up set"
+                  && G.key(for: "Optional: Foam Rolling (calves, quads, upper back) 5 min") == G.key(for: "Foam Rolling")
+                  && G.key(for: "VO2max Intervals: 4 min hard / 3 min easy (bike or rower) 5x240s") == G.key(for: "VO2max Intervals")
+                  && G.key(for: "Zone 2 Cardio (brisk walk or easy jog) 35 min") == G.key(for: "Zone 2 Cardio"),
+                  G.key(for: "Warm-up: Leg Swings (10 each leg) 1 min"))
+            let guideFirst = ["Pallof Press", "Bird Dog", "Goblet Squats", "Box Squats", "Split Squats", "Side Plank",
+                              "Kettlebell Swings", "Dumbbell Romanian Deadlifts", "Hip Thrusts"]
+            let wrong = guideFirst.filter { G.directions(for: $0)?.stepsFromLibrary != false }
+            check("directions: poor or empty library matches use the guide's steps", wrong.isEmpty, wrong.joined(separator: ", "))
+            let bench = G.directions(for: "Barbell Bench Press 3x8")
+            check("directions: a good library match keeps its steps plus the guide's cue, safety and options",
+                  bench?.stepsFromLibrary == true && bench?.libraryID != nil && bench?.easier != nil
+                  && (bench?.quickSteps.count ?? 0) >= 2 && bench?.inlineSteps == Array(bench?.quickSteps.prefix(2) ?? []))
+            let ramp = G.directions(for: "Warm-up: Ramp-up Sets for Goblet Squats (2-3 lighter sets building to your working weight) 3 min")
+            check("directions: ramp-up sets name their lift and give the percentages",
+                  ramp?.kind == .warmup && ramp?.steps.contains { $0.contains("Goblet Squats") } == true
+                  && ramp?.cue.contains("50%") == true, "\(String(describing: ramp?.steps))")
+            check("directions: effort note on lifts only",
+                  G.directions(for: "Goblet Squats")?.effortNote?.contains("2-3") == true
+                  && G.directions(for: "Zone 2 Cardio (brisk walk or easy jog) 35 min")?.effortNote == nil)
+            let z2 = G.directions(for: "Zone 2 Cardio (bike, rower or incline walk) 30 min")
+            check("directions: Zone 2 explains the talk test, 60-70% max HR and nasal breathing",
+                  z2?.steps.joined().contains("60-70%") == true && z2?.steps.joined().contains("nose") == true
+                  && z2?.cue.contains("talk") == true)
+            let rest = SmartPlanner.restDayPlan(config: SmartPlanner.sampleConfig(.longevity, inj: ["Knee"]))
+            let restCues = rest.plannedExercises.compactMap { G.cue(for: $0.name) }
+            check("directions: every rest-day item has a one-line cue", restCues.count == rest.exercises.count && !restCues.isEmpty,
+                  "\(restCues.count)/\(rest.exercises.count)")
+        }
         print(failures == 0 ? "SELFTEST PASS \(count)/\(count)" : "SELFTEST FAIL \(failures) of \(count)")
         return failures == 0 ? 0 : 1
+    }
+}
+
+// MARK: - Directions coverage
+
+extension EngineSelfTest {
+    /// The repo's App/Resources folder. The command-line selftest is a bare
+    /// executable with no bundle, so it reads the bundled JSON from the repo.
+    static var repoResources: URL {
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Resources")
+    }
+
+    /// Every exercise name any program can put in front of a user, with where
+    /// it came from: the Smart Advisor (its catalog, drill pools and warm-ups,
+    /// and real plans over a matrix of wizard answers), the explicit splits,
+    /// the old template pools and preset generators, the in-app program
+    /// catalog, the bundled preset JSON and the custom builder's quick picks.
+    static func programItemNames(full: Bool = false) -> [String: String] {
+        var out: [String: String] = [:]
+        func add(_ raw: String, _ origin: String) {
+            let name = ProgramTargetParser.parse(raw).name.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, out[name] == nil else { return }
+            out[name] = origin
+        }
+        typealias SP = SmartPlanner
+        // Static pools.
+        for m in SP.catalog {
+            add(m.name, "planner move")
+            // Any move can open a session, as ramp-up sets (loaded) or a practice set (bodyweight).
+            add("Warm-up: Ramp-up Sets for \(m.name) (2-3 lighter sets building to your working weight)", "planner ramp-up")
+            add("Warm-up: Practice Set of \(m.name) (1 easy set at half your reps)", "planner ramp-up")
+        }
+        for d in SP.mobilityPool + SP.balancePool + SP.stabilityPool { add(d.name, "planner drill") }
+        for (_, list) in SP.warmDrills { for d in list { add("Warm-up: \(d.name)", "planner warm-up drill") } }
+        add("Warm-up: \(SP.buildUps)", "planner warm-up drill")
+        // Real Smart Advisor plans and explicit splits over the wizard's answers.
+        let goals = TrainingGoal.allCases
+        let levels: [ExperienceLevel] = [.beginner, .intermediate, .advanced]
+        let gear: [EquipmentLevel] = [.fullGym, .homeGym, .minimal, .bodyweight]
+        let injuries: [Set<String>] = [[], ["Knee"], ["Low back"], ["Shoulder"], ["Knee", "Low back", "Shoulder"]]
+        let shapes: [(rolling: (Int, Int)?, perWeek: Int, len: Int)] = [
+            (nil, 2, 30), (nil, 3, 45), (nil, 4, 60), (nil, 5, 20), (nil, 6, 90), ((4, 1), 4, 60), ((3, 1), 3, 30), ((2, 1), 2, 45),
+        ]
+        let splits = ProgramSplit.allCases.filter { $0 != .auto }
+        func run(_ g: TrainingGoal, _ e: ExperienceLevel, _ q: EquipmentLevel, _ inj: Set<String>,
+                 _ s: (rolling: (Int, Int)?, perWeek: Int, len: Int), splitsToo: Bool) {
+            let c = SP.sampleConfig(g, e, rolling: s.rolling, perWeek: s.perWeek, len: s.len, eq: q, inj: inj)
+            let p = SP.plan(for: c)
+            for w in p.scheduledWorkouts { for x in w.exercises { add(x, "planner plan") } }
+            for x in p.restDayPlan.exercises { add(x, "rest day") }
+            guard splitsToo else { return }
+            for split in splits {
+                var sc = c
+                sc.split = split
+                let days = s.rolling == nil ? SP.weekdays(for: sc) : (1...max(1, sc.daysOn)).map { "Day \($0)" }
+                for w in WorkoutManager.shared.explicitSplitSchedule(config: sc, days: days) {
+                    for x in w.exercises { add(x, "explicit split") }
+                }
+            }
+        }
+        if full {
+            for g in goals { for e in levels { for q in gear { for inj in injuries {
+                for (k, s) in shapes.enumerated() { run(g, e, q, inj, s, splitsToo: k % 3 == 0) }
+            } } } }
+        } else {
+            // Every goal x equipment x injury set (rotating shape and level), then
+            // every goal x shape x level on a full gym. Matches the full matrix's names.
+            var n = 0
+            for g in goals { for q in gear { for inj in injuries {
+                run(g, levels[n % levels.count], q, inj, shapes[n % shapes.count], splitsToo: n % 2 == 0)
+                n += 1
+            } } }
+            for g in goals { for s in shapes { run(g, levels[n % levels.count], .fullGym, [], s, splitsToo: false); n += 1 } }
+        }
+        // Old template pools.
+        for group in ["Push", "Pull", "Legs", "Upper", "Lower", "Chest", "Back", "Shoulders", "Arms", "Full Body", "Other"] {
+            for focus in ["strength", "muscle building", "fat loss", "endurance", "general"] {
+                for minutes in [15, 45, 90, 120] {
+                    for x in WorkoutManager.generateExercises(for: group, duration: minutes, focus: focus) { add(x, "template pool") }
+                }
+            }
+        }
+        // In-app program catalog.
+        for prog in ProgramCatalog.all { for d in prog.days { for x in d.exercises { add(x, "program catalog") } } }
+        // Bundled preset JSON.
+        if let data = try? Data(contentsOf: repoResources.appendingPathComponent("preset_workout_programs.json")),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let programs = json["programs"] as? [[String: Any]] {
+            for prog in programs {
+                for week in (prog["schedule"] as? [String: Any] ?? [:]).values {
+                    for day in (week as? [String: Any] ?? [:]).values {
+                        for ex in (day as? [String: Any])?["exercises"] as? [[String: Any]] ?? [] {
+                            if let n = ex["name"] as? String { add(n, "preset JSON") }
+                        }
+                    }
+                }
+            }
+        } else {
+            out["<preset_workout_programs.json unreadable>"] = "preset JSON"
+        }
+        // The old preset generators and the builder's quick picks, read from
+        // source (they are private and write straight into the schedule).
+        let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        func scan(_ file: String, from: String, to: String, _ origin: String) {
+            guard let text = try? String(contentsOf: src.appendingPathComponent(file), encoding: .utf8),
+                  let a = text.range(of: from), let b = text.range(of: to, range: a.upperBound..<text.endIndex) else {
+                out["<\(file) unreadable>"] = origin
+                return
+            }
+            let region = String(text[a.lowerBound..<b.lowerBound])
+            let interp = try! NSRegularExpression(pattern: #""([^"\\]+?) \\\(modulateReps"#)
+            let arrays = try! NSRegularExpression(pattern: #"(?:exercises|quickPicks)\s*(?::|=)\s*\[([^\]]*)\]"#)
+            let quoted = try! NSRegularExpression(pattern: #""([^"\\]+)""#)
+            let ns = region as NSString
+            for m in interp.matches(in: region, range: NSRange(location: 0, length: ns.length)) { add(ns.substring(with: m.range(at: 1)), origin) }
+            for m in arrays.matches(in: region, range: NSRange(location: 0, length: ns.length)) {
+                let body = ns.substring(with: m.range(at: 1))
+                let nb = body as NSString
+                for q in quoted.matches(in: body, range: NSRange(location: 0, length: nb.length)) {
+                    let s = nb.substring(with: q.range(at: 1))
+                    if s.first?.isUppercase == true { add(s, origin) }
+                }
+            }
+        }
+        scan("WorkoutTrackerMac_Enhanced.swift", from: "func generateProgramWithPreset", to: "func generateCustomWorkout", "old preset generator")
+        scan("ProgramsMeso.swift", from: "private static let quickPicks", to: "var body", "custom builder")
+        return out
+    }
+
+    /// `-ef.guidedump`: every program item name with its library match and guide (developer aid).
+    static func dumpDirections() {
+        ExerciseLibrary.fallbackResourceDirectory = repoResources
+        let names = programItemNames(full: CommandLine.arguments.contains("-full"))
+        for (name, origin) in names.sorted(by: { $0.key < $1.key }) {
+            let lib = ExerciseLibrary.shared.match(name: name)?.name ?? "-"
+            let d = ExerciseGuide.directions(for: name)
+            let how = d.map { $0.stepsFromLibrary ? "library+guide" : "guide" } ?? "NONE"
+            print("\(origin)\t\(name)\t\(lib)\t\(ExerciseGuide.entry(for: name) == nil && d != nil ? "library" : how)")
+        }
+        print("total \(names.count), library \(names.keys.filter { ExerciseLibrary.shared.match(name: $0) != nil }.count)")
     }
 }

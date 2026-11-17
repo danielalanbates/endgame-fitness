@@ -211,8 +211,14 @@ final class ExerciseLibrary {
         return .weighted
     }
 
+    /// Where to look when the app bundle has no copy (the command-line
+    /// selftest build, which is a bare executable). Set before first use.
+    static var fallbackResourceDirectory: URL?
+
     private static func loadBundled() -> [LibraryExercise] {
-        guard let url = Bundle.main.url(forResource: "exercise_library", withExtension: "json"),
+        let bundled = Bundle.main.url(forResource: "exercise_library", withExtension: "json")
+        let fallback = fallbackResourceDirectory?.appendingPathComponent("exercise_library.json")
+        guard let url = bundled ?? fallback,
               let data = try? Data(contentsOf: url),
               let file = try? JSONDecoder().decode(File.self, from: data)
         else { return [] }

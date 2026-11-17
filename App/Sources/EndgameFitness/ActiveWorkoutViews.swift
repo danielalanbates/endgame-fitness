@@ -275,12 +275,16 @@ struct ExerciseLogCard: View {
     var onMove: ((Int) -> Void)? = nil
 
     @State private var showInfo = false
+    /// nil = default: open the first time this exercise is logged, closed after.
+    @State private var howToOpen: Bool?
     @State private var showRange = false
     @State private var confirmRemove = false
     @State private var rejectedSet: UUID?
 
     private var tracking: SetTracking { exercise.resolvedTracking }
     private var library: LibraryExercise? { exercise.exerciseID.flatMap { ExerciseLibrary.shared.entry(id: $0) } }
+    /// Guide and/or library directions for this exercise (warm-ups, cardio and drills included).
+    private var directions: ExerciseDirections? { ExerciseGuide.directions(for: exercise.name, libraryID: exercise.exerciseID) }
 
     var body: some View {
         let last = ProgressionEngine.lastPerformance(of: exercise, in: history, excluding: excludingSession)
@@ -288,8 +292,15 @@ struct ExerciseLogCard: View {
         let prescription = live ? SmartCoach.prescribe(exercise: exercise, history: history, excluding: excludingSession,
                                                        context: CoachContext.current()) : nil
 
+        let directions = self.directions
+
         VStack(alignment: .leading, spacing: 8) {
-            header
+            header(hasDirections: directions != nil || library != nil)
+            if live, let directions {
+                ExerciseHowToInline(directions: directions,
+                                    isExpanded: Binding(get: { howToOpen ?? (last == nil) }, set: { howToOpen = $0 }),
+                                    onMore: { showInfo = true })
+            }
             if live {
                 ProgressionHintView(exercise: exercise, suggestion: suggestion, prescription: prescription,
                                     hasHistory: last != nil, unit: unit, onEditRange: tracking == .timed ? nil : { showRange = true })
@@ -313,7 +324,11 @@ struct ExerciseLogCard: View {
         .padding(12)
         .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 12))
         .sheet(isPresented: $showInfo) {
-            if let library { ExerciseInfoView(entry: library) }
+            if let directions {
+                ExerciseDirectionsSheet(directions: directions)
+            } else if let library {
+                ExerciseInfoView(entry: library)
+            }
         }
         .popover(isPresented: $showRange) {
             RepRangeEditor(exercise: exercise)
@@ -327,7 +342,7 @@ struct ExerciseLogCard: View {
         }
     }
 
-    private var header: some View {
+    private func header(hasDirections: Bool) -> some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
@@ -343,9 +358,20 @@ struct ExerciseLogCard: View {
                 }
             }
             Spacer(minLength: 4)
+            if hasDirections {
+                Button { showInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.headline)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.brandBlue)
+                .accessibilityLabel("How to do \(exercise.name)")
+            }
             Menu {
-                if library != nil {
-                    Button { showInfo = true } label: { Label("Instructions", systemImage: "info.circle") }
+                if hasDirections {
+                    Button { showInfo = true } label: { Label("How To", systemImage: "info.circle") }
                 }
                 if tracking != .timed {
                     Button { showRange = true } label: { Label("Rep Range…", systemImage: "arrow.up.arrow.down") }

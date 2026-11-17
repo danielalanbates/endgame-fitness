@@ -2406,22 +2406,7 @@ struct ScheduledWorkoutBrowser: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     ForEach(Array(workout.plannedExercises.enumerated()), id: \.offset) { _, planned in
-                        HStack(alignment: .firstTextBaseline) {
-                            Image(systemName: "circle")
-                                .font(.caption)
-                                .foregroundColor(.brandBlue)
-                            Text(planned.name)
-                                .font(.body)
-                            Spacer()
-                            if planned.hasTarget {
-                                Text(planned.schemeText)
-                                    .font(.callout.monospacedDigit())
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 12)
-                        .background(Color.platformControlBackground, in: RoundedRectangle(cornerRadius: 8))
+                        ProgramDayExerciseRow(planned: planned) // name, scheme, cue, "How to"
                     }
                 }
                 Button {

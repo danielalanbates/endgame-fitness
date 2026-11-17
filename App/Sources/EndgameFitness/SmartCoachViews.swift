@@ -58,6 +58,8 @@ struct SmartTodayCard: View {
         let load: String
         let reason: String
         let firstTime: Bool
+        /// One-line "how to" from `ExerciseGuide`.
+        var cue: String? = nil
     }
 
     private var rows: [Row] {
@@ -76,19 +78,36 @@ struct SmartTodayCard: View {
         return lifts.prefix(6).enumerated().compactMap { i, pair in
             let (plan, ex) = pair
             guard let p = SmartCoach.prescribe(exercise: ex, history: history, context: ctx) else {
-                return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "", firstTime: true)
+                return Row(id: i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "", firstTime: true,
+                           cue: ExerciseGuide.cue(for: plan.name))
             }
             let load = p.topLoad > 0 ? "\(TrainingUnits.weight(p.topLoad, ctx.unit)) × \(p.topReps)" : "\(p.topReps) reps"
-            return Row(id: i, name: plan.name, load: "\(p.sets.count) sets · \(load)", reason: p.reason, firstTime: false)
+            return Row(id: i, name: plan.name, load: "\(p.sets.count) sets · \(load)", reason: p.reason, firstTime: false,
+                       cue: ExerciseGuide.cue(for: plan.name))
+        }
+    }
+
+    /// Today's cardio, intervals, drills and finishers (not the warm-up, not lifts), each with its cue.
+    private var otherItems: [Row] {
+        guard let todaysWorkout else { return [] }
+        let liftNames = Set(rows.map(\.name))
+        return todaysWorkout.plannedExercises.enumerated().compactMap { i, plan in
+            guard !plan.name.hasPrefix("Warm-up"), !liftNames.contains(plan.name) else { return nil }
+            var ex = Exercise(name: plan.name)
+            WorkoutManager.attachLibraryMatch(&ex)
+            let timedTarget = plan.seconds != nil && plan.repMin == nil && plan.repMax == nil
+            guard timedTarget || ex.resolvedTracking == .timed else { return nil }
+            return Row(id: 100 + i, name: plan.name, load: plan.hasTarget ? plan.schemeText : "", reason: "", firstTime: false,
+                       cue: ExerciseGuide.cue(for: plan.name))
         }
     }
 
     /// The warm-up steps, in order, with their minutes.
-    private func warmupSteps(_ w: ScheduledWorkout) -> [(id: Int, name: String, time: String)] {
+    private func warmupSteps(_ w: ScheduledWorkout) -> [(id: Int, name: String, time: String, cue: String?)] {
         w.plannedExercises.filter { $0.name.hasPrefix("Warm-up") }.enumerated().map { i, p in
             let name = p.name.replacingOccurrences(of: "Warm-up: ", with: "")
             let secs = p.seconds ?? 0
-            return (i, name, secs >= 60 ? "\(secs / 60) min" : (secs > 0 ? "\(secs)s" : ""))
+            return (i, name, secs >= 60 ? "\(secs / 60) min" : (secs > 0 ? "\(secs)s" : ""), ExerciseGuide.cue(for: p.name))
         }
     }
 
@@ -148,10 +167,19 @@ struct SmartTodayCard: View {
                             .foregroundStyle(.orange)
                         ForEach(warm, id: \.id) { step in
                             HStack(alignment: .firstTextBaseline) {
-                                Text(step.name)
-                                    .font(.caption)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(step.name)
+                                        .font(.caption)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    if let cue = step.cue {
+                                        Text(cue)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
                                 Spacer(minLength: 8)
                                 Text(step.time)
                                     .font(.caption.monospacedDigit())
@@ -183,12 +211,37 @@ struct SmartTodayCard: View {
                                 .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(Color.brandBlue)
                         }
+                        if let cue = row.cue {
+                            Text(cue)
+                                .font(.caption)
+                                .foregroundStyle(Color.brandBlue)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if !row.reason.isEmpty {
                         Text(row.reason)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                ForEach(otherItems.prefix(6)) { row in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(row.name).font(.subheadline)
+                            Spacer(minLength: 8)
+                            Text(row.load)
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        if let cue = row.cue {
+                            Text(cue)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -242,9 +295,12 @@ struct RestDayPlanView: View {
                     Image(systemName: item.name.hasPrefix("Optional") ? "circle.dotted" : "circle")
                         .font(.caption)
                         .foregroundStyle(Color.brandGreen)
-                    Text(item.name)
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ExerciseCueLine(name: item.name)
+                    }
                     Spacer(minLength: 8)
                     if item.hasTarget {
                         Text(item.schemeText)
