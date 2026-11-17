@@ -46,7 +46,6 @@
 		AF739CEA16FF86C2869CD863 /* ExercisePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7431416290CCE0DF4D3636 /* ExercisePicker.swift */; };
 		B576DF8B4904D9C79841D0F1 /* ProfileSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66BA66FD91ED0F58BB7C05EE /* ProfileSetupView.swift */; };
 		BA9846BCB838C7CF33215443 /* HistoryMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D1D0516FB0CDC9D2039AF7 /* HistoryMerge.swift */; };
-		C38664E9B3B87B3AAA70F6FD /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9B52389A47515E3F6C0447 /* HealthKitManager.swift */; };
 		C480866273430FC91866CE62 /* ShareCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57618C28AFF851EEA3215FB1 /* ShareCards.swift */; };
 		C59E8A06DA2502DF0A3FC8D0 /* SessionGameLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD61E68761B022E3F91ADE5 /* SessionGameLayer.swift */; };
 		C86369086E22A534CBE3472E /* HistoryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0163504337DD70B05325B0A3 /* HistoryViews.swift */; };
@@ -79,7 +78,6 @@
 		31453536801AEDFAA9354FAF /* LocalPlayers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPlayers.swift; sourceTree = "<group>"; };
 		49C1FFB17E4CDBDC03406F24 /* WorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutStore.swift; sourceTree = "<group>"; };
 		4D2AEE8B80D38CFDAFBAA6E9 /* AvatarSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarSystem.swift; sourceTree = "<group>"; };
-		4D9B52389A47515E3F6C0447 /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
 		5483094B001F034CD09101C6 /* ProgramWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramWizard.swift; sourceTree = "<group>"; };
 		567D6EBEBC6811E9C809016F /* WorkoutTrackerMac_Enhanced.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTrackerMac_Enhanced.swift; sourceTree = "<group>"; };
 		57618C28AFF851EEA3215FB1 /* ShareCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareCards.swift; sourceTree = "<group>"; };
@@ -143,7 +141,6 @@
 				8B3C89FBDBCE00C73430F9A7 /* GameRules.swift */,
 				A9024759EE2A27226B5C8D2C /* GuildViews.swift */,
 				0CADF70A07BEAA3A751AC640 /* GymParty.swift */,
-				4D9B52389A47515E3F6C0447 /* HealthKitManager.swift */,
 				B4D1D0516FB0CDC9D2039AF7 /* HistoryMerge.swift */,
 				0163504337DD70B05325B0A3 /* HistoryViews.swift */,
 				BCA6E0305FF92145DEAB6881 /* LocalGame.swift */,
@@ -306,7 +303,6 @@
 				577A901805721AF8746086CD /* GameRules.swift in Sources */,
 				845F52A6C213CC831F64A0F8 /* GuildViews.swift in Sources */,
 				DA0617B443F27908416AC78B /* GymParty.swift in Sources */,
-				C38664E9B3B87B3AAA70F6FD /* HealthKitManager.swift in Sources */,
 				BA9846BCB838C7CF33215443 /* HistoryMerge.swift in Sources */,
 				C86369086E22A534CBE3472E /* HistoryViews.swift in Sources */,
 				FAFF026D51C1A6CD87C7D177 /* LocalGame.swift in Sources */,

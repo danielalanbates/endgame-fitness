@@ -75,7 +75,8 @@ enum EngineSelfTest {
         check("hash32 FNV-1a (JS)", GameRules.hash32("player-1|daily|2026-11-16") == 1_147_006_096,
               "\(GameRules.hash32("player-1|daily|2026-11-16"))")
         let board = GameRules.board(for: "player-1", at: t).map(\.def.key).joined(separator: ",")
-        check("quest board selection (JS)", board == "steps_8k,react_friend,minutes_30,workouts_5,workouts_3", board)
+        // Step Count archived 2026-11-16, so the daily pick no longer matches the retired server JS.
+        check("quest board selection (deterministic, no archived quests)", board == "log_workout,reps_100,react_friend,workouts_5,workouts_3", board)
         check("xpForWorkout (JS)", GameRules.xpForWorkout(volume: 5000, reps: 50, durationSecs: 1800) == 389
               && GameRules.xpForWorkout(volume: 0, reps: 0, durationSecs: 200) == 0
               && GameRules.xpForWorkout(volume: 12345.5, reps: 120, durationSecs: 4000) == 817,
@@ -468,10 +469,10 @@ enum EngineSelfTest {
                     if p.model == .waves { bad.append("\(e.name): waves") }
                     if p.sets.contains(where: { $0.reps < 8 }) { bad.append("\(e.name): reps \(p.sets.map(\.reps))") }
                     if (p.targetRPE ?? 99) > 8 { bad.append("\(e.name): RPE \(String(describing: p.targetRPE))") }
-                    if !p.reason.contains("short of failure") { bad.append("\(e.name): no cue") }
+                    if p.reason.contains("2–3 reps short of failure") { bad.append("\(e.name): generic cue repeated per lift") }
                     if p.sets.map(\.weightLb).max() ?? 0 > (e.completedSets.map(\.weight).max() ?? 0) * 1.15 + 10 { bad.append("\(e.name): jump") }
                 }
-                check("coach longevity: 8+ reps, RPE <= 8, no waves, cue", bad.isEmpty, "\(bad)")
+                check("coach longevity: 8+ reps, RPE <= 8, no waves, no generic per-lift cue", bad.isEmpty, "\(bad)")
                 // Top of the range at only 1 rep in reserve is not a load increase for longevity.
                 lctx.model = .double; lctx.experience = .intermediate
                 let hard = ex("Lon Hard", 8, 12, sets: [(60, 12, 1), (60, 12, 1)])

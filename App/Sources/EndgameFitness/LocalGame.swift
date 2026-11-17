@@ -318,6 +318,14 @@ final class LocalGame {
                                              expiresAt: entry.expiresAt, completedAt: nil, claimed: false)
             changed = true
         }
+        let board = Set(GameRules.board(for: id, at: t).map(\.id))
+        // Archived quests leave the board. A quest that fell off today's
+        // selection (the catalog changed) leaves too, unless it has progress.
+        let dropped = s.quests.filter { key, q in
+            GameRules.archivedQuestKeys.contains(q.questKey)
+                || (!board.contains(key) && q.progress == 0 && q.completedAt == nil && q.expiresAt > t)
+        }.map(\.key)
+        for key in dropped { s.quests[key] = nil; changed = true }
         let expired = s.quests.filter { $0.value.expiresAt <= t }.map(\.key)
         for key in expired { s.quests[key] = nil; changed = true }
         if changed { store.save(s, for: id) }

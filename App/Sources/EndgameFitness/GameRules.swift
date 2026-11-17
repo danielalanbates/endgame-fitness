@@ -240,8 +240,14 @@ enum GameRules {
         QuestDef(key: "minutes_30", title: "Half Hour Hero", desc: "Train for 30 minutes", metric: "minutes", target: 30, xp: 45, icon: "timer"),
         QuestDef(key: "react_friend", title: "Hype Squad", desc: "React to a household member's activity", metric: "reactions", target: 1, xp: 20, icon: "hands.clap.fill"),
         QuestDef(key: "volume_10k", title: "Heavy Day", desc: "Move 10,000 lb of total volume", metric: "volume", target: 10000, xp: 90, icon: "flame.fill"),
+    ]
+
+    /// Archived 2026-11-16 (Daniel): kept for reference, never put on a board.
+    /// Saved boards that still hold one of these keys drop it (LocalGame.ensureBoard).
+    static let archivedQuests: [QuestDef] = [
         QuestDef(key: "steps_8k", title: "Step Count", desc: "Walk 8,000 steps (Apple Health)", metric: "steps", target: 8000, xp: 50, icon: "figure.walk", absolute: true),
     ]
+    static var archivedQuestKeys: Set<String> { Set(archivedQuests.map(\.key)) }
 
     static let weeklyQuests: [QuestDef] = [
         QuestDef(key: "workouts_3", title: "Consistency", desc: "Train 3 times this week", metric: "workouts", target: 3, xp: 150, icon: "calendar"),

@@ -187,16 +187,12 @@ final class GameProfileService: ObservableObject {
     }
 
     /// Kept for callers from the networked build: refreshes from local state
-    /// and feeds today's Apple Health steps into the Step Count quest.
+    /// (No Apple Health or wearable sync: archived 2026-11-16.)
     @discardableResult
     func sync() async -> Bool {
         guard let id = playerID, !isSyncing else { return false }
         isSyncing = true
         defer { isSyncing = false }
-        await HealthKitManager.shared.refreshToday()
-        if let steps = (HealthKitManager.shared.syncFields["steps_today"] as? NSNumber)?.doubleValue, steps > 0 {
-            engine.advanceQuests(id, event: ["steps": steps.rounded(.down)])
-        }
         refreshAll()
         return true
     }
