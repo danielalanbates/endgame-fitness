@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import App from './LocalApp';
 import './styles.css';
 
 // Register the service worker (app-shell caching + offline). It lives at

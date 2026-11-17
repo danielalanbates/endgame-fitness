@@ -1,3 +1,8 @@
+> 2026-11-17 local-first development update: see
+> [LOCAL_FIRST_2026-11-17.md](LOCAL_FIRST_2026-11-17.md). The membership-required
+> launch described below is historical. This session verified web behavior on
+> Linux, not native Apple builds or a public release.
+
 # Endgame Fitness — status and next actions
 
 _Updated 2026-08-29 (autonomous session; supersedes the 2026-08-28 status)._

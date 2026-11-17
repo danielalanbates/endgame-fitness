@@ -1,0 +1,52 @@
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import assert from 'node:assert/strict';
+const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage({viewport:{width:390,height:844}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto(process.env.APP_URL || 'http://localhost:5173/fitness/');
+await page.getByLabel('Your name').fill('Test Athlete');
+await page.getByRole('button',{name:'Enter the gym'}).click();
+await page.getByRole('heading',{name:/Welcome back/}).waitFor();
+await page.getByRole('button',{name:'Start today’s training'}).click();
+await page.getByLabel('Squat set 1 weight').fill('100');
+await page.getByRole('button',{name:'Complete Squat set 1',exact:true}).click();
+await page.getByRole('button',{name:'Programs',exact:true}).click();
+await page.getByRole('button',{name:'Train',exact:true}).click();
+assert.equal(await page.getByLabel('Squat set 1 weight').inputValue(),'100');
+await page.reload();
+await page.getByRole('button',{name:'Train',exact:true}).click();
+assert.equal(await page.getByLabel('Squat set 1 weight').inputValue(),'100');
+assert.equal(await page.getByRole('button',{name:'Unmark Squat set 1',exact:true}).getAttribute('aria-pressed'),'true');
+await page.getByRole('button',{name:'Finish and earn XP'}).click();
+await page.getByRole('heading',{name:'Your progress'}).waitFor();
+assert.equal(await page.locator('.local-stats .card').last().locator('strong').innerText(),'1');
+await page.getByRole('button',{name:'You',exact:true}).click();
+await page.getByLabel('Primary goal').selectOption('strength');
+await page.getByRole('button',{name:'Save profile',exact:true}).click();
+const downloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'Export backup'}).click();
+const download=await downloadEvent;await download.saveAs('/tmp/endgame-test-backup.json');
+await page.reload();await page.getByRole('button',{name:'You',exact:true}).click();
+assert.equal(await page.getByLabel('Your name').inputValue(),'Test Athlete');
+assert.equal(await page.getByLabel('Primary goal').inputValue(),'strength');
+page.on('dialog',dialog=>dialog.accept());
+await page.locator('input[type=file]').setInputFiles('/tmp/endgame-test-backup.json');
+await page.getByRole('status').filter({hasText:'Backup restored'}).waitFor();
+for(const width of [320,390,768,1280]) {
+ await page.setViewportSize({width,height:900});
+ for(const tab of ['Home','Train','Programs','Progress','You']) {
+  await page.getByRole('button',{name:tab,exact:true}).click();
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+  assert.equal(overflow,false,`${tab} overflows at ${width}`);
+ }
+}
+await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Home',exact:true}).click();
+await page.screenshot({path:'/tmp/endgame-mobile.png',fullPage:true});
+await page.setViewportSize({width:1280,height:900});await page.screenshot({path:'/tmp/endgame-desktop.png',fullPage:true});
+await page.evaluate(()=>localStorage.setItem('ef_local_training_v1','invalid json'));
+await page.reload();await page.getByRole('heading',{name:'Recover your training'}).waitFor();
+assert.equal(await page.evaluate(()=>localStorage.getItem('ef_local_training_v1')),'invalid json');
+await page.locator('input[type=file]').setInputFiles('/tmp/endgame-test-backup.json');
+await page.getByRole('heading',{name:/Welcome back/}).waitFor();
+assert.deepEqual(errors,[]);
+console.log('PASS: onboarding, draft recovery, navigation, completed history, profile persistence, backup/restore, corrupt storage preservation, 20 viewport/tab checks; no browser errors.');
+await browser.close();

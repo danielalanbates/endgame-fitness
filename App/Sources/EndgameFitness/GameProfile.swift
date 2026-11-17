@@ -686,6 +686,9 @@ final class GameProfileService: ObservableObject {
         totalReps: Int,
         exercises: [SyncExercise]? = nil
     ) {
+        // Device-local training is not silently enrolled in online sync.
+        // Local sessions are already persisted by WorkoutManager.
+        guard auth.isSignedIn else { return }
         var queue = pending
         // Replace rather than append if this id is already queued, so an edited
         // session doesn't upload twice.

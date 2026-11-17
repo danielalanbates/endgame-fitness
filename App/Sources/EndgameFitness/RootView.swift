@@ -2,15 +2,9 @@
 //  RootView.swift
 //  Endgame Fitness
 //
-//  Decides what the user sees at launch, in this order:
-//    1. restoring a stored session   -> splash
-//    2. not signed in                -> SignInView
-//    3. signed in, no onboarding yet -> OnboardingView
-//    4. otherwise                    -> the app
-//
-//  Sign-in comes before onboarding on purpose: the onboarding answers (goal,
-//  experience, equipment, bodyweight) belong on the server profile, so we need
-//  to know who the person is before asking them.
+//  Training opens with a device-local profile. Membership is optional and is
+//  restored only when the user opens Community. Existing onboarding answers
+//  remain in userProfile.v1; signing out never resets them.
 //
 
 import SwiftUI
@@ -31,7 +25,9 @@ struct RootView: View {
                 minHeight: Platform.isDesktop ? 700 : nil
             )
             .task {
-                await auth.restoreSession()
+                // Repair older installs where the completion flag was lost but
+                // the profile survived. Never discard the saved answers.
+                if workoutManager.userProfile != nil { hasCompletedOnboarding = true }
                 #if DEBUG
                 // Headless UI verification (simulator): `-ef.autologin email password`
                 // signs in a test account without touching the keyboard.
@@ -76,11 +72,7 @@ struct RootView: View {
 
     @ViewBuilder
     private var content: some View {
-        if auth.isRestoring {
-            SplashView()
-        } else if !auth.isSignedIn {
-            SignInView()
-        } else if !hasCompletedOnboarding {
+        if !hasCompletedOnboarding || workoutManager.userProfile == nil {
             OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
                 .environmentObject(workoutManager)
                 .onDisappear {
@@ -108,7 +100,7 @@ struct RootView: View {
             if profile.height > 0 { fields["height_inches"] = profile.height }
             if !profile.name.isEmpty { fields["display_name"] = profile.name }
         }
-        guard !fields.isEmpty else { return }
+        guard auth.isSignedIn, !fields.isEmpty else { return }
         await game.updateProfile(fields)
     }
 }

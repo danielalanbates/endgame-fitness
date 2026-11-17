@@ -360,3 +360,32 @@ input, select, textarea { font: inherit; color: var(--text); }
   white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 .seg button.active { background: var(--card-2); color: var(--text); }
+
+/* Local training shell: the same destinations and controls at every width. */
+.local-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 16px; border-bottom:1px solid var(--line); font-size:12px; letter-spacing:.08em; }
+.local-header a, .local-main a { color:var(--accent-2); }
+.local-header b { color:var(--accent-2); }
+.local-main h1, .local-onboarding h1 { font-size:clamp(28px,5vw,42px); line-height:1.12; margin:8px 0 16px; letter-spacing:-.035em; overflow-wrap:anywhere; }
+.local-main h2 { font-size:18px; margin:8px 0 12px; }
+.local-main p { line-height:1.6; }
+.local-hero { background:radial-gradient(ellipse at top right,#353467,transparent 75%),var(--card); padding:24px; }
+.local-main progress { width:100%; height:12px; accent-color:var(--accent-2); margin-top:16px; }
+.local-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.local-stats .card { padding:14px 10px; display:flex; flex-direction:column; gap:6px; overflow-wrap:anywhere; }
+.local-stats strong { font-size:clamp(18px,4vw,28px); }
+.local-stats span { font-size:12px; }
+.local-plan-row { padding:10px 0; border-top:1px solid var(--line); gap:12px; }
+.local-plan-row strong { white-space:nowrap; }
+.local-main .btn { min-height:44px; }
+.local-main .btn + .btn { margin-top:8px; }
+.local-exercise-input { min-width:0; width:100%; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--bg-soft); }
+.local-cloud-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px; background:var(--card); }
+.local-onboarding { max-width:600px; margin:0 auto; padding-top:40px; }
+:focus-visible { outline:3px solid var(--accent-2); outline-offset:3px; }
+@media(min-width:900px) {
+  #root { max-width:1120px; }
+  .local-main { max-width:900px; margin:0 auto; padding:32px 32px 110px; }
+  .tabbar { max-width:1120px; }
+  .local-hero { padding:36px; }
+}
+@media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }

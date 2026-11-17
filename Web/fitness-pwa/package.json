@@ -1,1 +1,25 @@
-{"dependencies":{"react":"^19.2.5","react-dom":"^19.2.5"},"description":"Endgame Fitness — mobile web client (PWA) for batesai.org/fitness. Talks to the real batesai.org membership + fitness API. No mocks.","devDependencies":{"@types/node":"^24.0.0","@types/react":"^19.2.14","@types/react-dom":"^19.2.3","@vitejs/plugin-react":"^6.0.1","typescript":"~5.9.2","vite":"^8.0.10"},"name":"endgame-fitness-pwa","private":true,"scripts":{"build":"tsc -b && vite build","dev":"vite","preview":"vite preview"},"type":"module","version":"1.0.0"}
+{
+  "dependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "description": "Endgame Fitness \u2014 local-first training with optional online community at batesai.org/fitness.",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "~5.9.2",
+    "vite": "^8.0.10"
+  },
+  "name": "endgame-fitness-pwa",
+  "private": true,
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types tests/local-training.test.mjs"
+  },
+  "type": "module",
+  "version": "1.0.0"
+}

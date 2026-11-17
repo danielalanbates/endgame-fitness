@@ -2,7 +2,7 @@
    Scope is /fitness/ so the rest of batesai.org is untouched. The cache name
    is stamped with the build time by vite.config.ts, so every deploy installs
    a fresh worker and no one is stranded on a stale shell. */
-const CACHE = 'endgame-fitness-1789965320707';
+const CACHE = 'endgame-fitness-1794939768534';
 const SHELL = ['/fitness/', '/fitness/index.html', '/fitness/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -13,7 +13,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('endgame-fitness-') && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
   );
 });
 
