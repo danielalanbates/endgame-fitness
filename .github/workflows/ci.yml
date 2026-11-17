@@ -81,3 +81,18 @@ jobs:
       # regressing any of them would be a full account-takeover bug.
       - name: Auth verification tests
         run: node App/Backend/tests/auth-verification.test.mjs
+
+  web:
+    name: Local web training
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Test and build
+        working-directory: Web/fitness-pwa
+        run: |
+          npm ci
+          npm test
+          npm run build

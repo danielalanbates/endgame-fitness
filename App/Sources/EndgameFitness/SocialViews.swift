@@ -361,6 +361,23 @@ struct CommunityView: View {
     @State private var leaderboardMetric = "xp"
 
     var body: some View {
+        Group {
+            if auth.isSignedIn {
+                communityContent
+            } else {
+                VStack(spacing: 12) {
+                    Text("Optional online community").font(.title2.bold())
+                    Text("Your training profile stays on this device. Sign in to use online friends, guilds and ranked progression.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).padding(.horizontal)
+                    SignInView()
+                }
+            }
+        }
+        .task { await auth.restoreSession() }
+    }
+
+    private var communityContent: some View {
         VStack(spacing: 0) {
             if let profile = game.profile {
                 PlayerCardView(profile: profile, compact: true)
@@ -380,7 +397,7 @@ struct CommunityView: View {
                                 .font(.system(size: 13, weight: section == item ? .semibold : .regular))
                                 .fixedSize()
                                 .padding(.horizontal, 12)
-                                .frame(height: 28)
+                                .frame(minHeight: 44)
                                 .background(
                                     Capsule().fill(section == item
                                         ? Color.accentColor.opacity(0.2)

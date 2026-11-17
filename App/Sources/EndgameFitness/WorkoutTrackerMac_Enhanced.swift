@@ -217,9 +217,9 @@ class WorkoutManager: ObservableObject {
     }
 
     func loadModulations() {
-        repRangeModulation = UserDefaults.standard.double(forKey: "repRangeModulation") != 0 ? UserDefaults.standard.double(forKey: "repRangeModulation") : 50.0
-        volumeIntensityModulation = UserDefaults.standard.double(forKey: "volumeIntensityModulation") != 0 ? UserDefaults.standard.double(forKey: "volumeIntensityModulation") : 50.0
-        frequencyModulation = UserDefaults.standard.double(forKey: "frequencyModulation") != 0 ? UserDefaults.standard.double(forKey: "frequencyModulation") : 50.0
+        repRangeModulation = (UserDefaults.standard.object(forKey: "repRangeModulation") as? NSNumber)?.doubleValue ?? 50.0
+        volumeIntensityModulation = (UserDefaults.standard.object(forKey: "volumeIntensityModulation") as? NSNumber)?.doubleValue ?? 50.0
+        frequencyModulation = (UserDefaults.standard.object(forKey: "frequencyModulation") as? NSNumber)?.doubleValue ?? 50.0
         bodybuilderMiniActive = UserDefaults.standard.bool(forKey: "bodybuilderMiniActive")
     }
 
@@ -244,7 +244,7 @@ class WorkoutManager: ObservableObject {
         SessionGame.shared.sessionStarted() // SessionGameLayer hook
     }
 
-    func startScheduledWorkout(_ scheduledWorkout: ScheduledWorkout, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 135) {
+    func startScheduledWorkout(_ scheduledWorkout: ScheduledWorkout, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 0) {
         currentWorkout = WorkoutSession()
         isWorkoutActive = true
         selectedTab = 1
@@ -256,7 +256,7 @@ class WorkoutManager: ObservableObject {
         }
     }
 
-    func addExerciseToCurrentWorkout(name: String, muscleGroup: String? = nil, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 135) {
+    func addExerciseToCurrentWorkout(name: String, muscleGroup: String? = nil, defaultSets: Int = 3, defaultReps: Int = 10, defaultWeight: Double = 0) {
         guard currentWorkout != nil else { return }
 
         // Check if we have performance data for this exercise
@@ -5379,8 +5379,6 @@ struct OnboardingView: View {
               let squat = Int(squat5RM),
               let deadlift = Int(deadlift5RM) else {
             print("❌ Failed to parse onboarding values")
-            print("Age: \(userAge), Weight: \(userWeight), Height: \(userHeight)")
-            print("Bench: \(benchPress5RM), Squat: \(squat5RM), Deadlift: \(deadlift5RM)")
             errorMessage = "Please enter valid numbers for all fields"
             showError = true
             return

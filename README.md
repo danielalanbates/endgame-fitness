@@ -2,9 +2,19 @@
 
 A strength-training app that behaves like a game: you level up, earn talent
 points, hold streaks, and your friends can see it. macOS and iOS, one codebase,
-signed in through your **batesai.org membership**.
+with device-local training and optional **batesai.org membership** for online community.
 
 ---
+
+## Local-first update (2026-11-17)
+
+The website at `/fitness/` now defaults to a local training profile with saved
+onboarding, goal/equipment-based programs, recoverable sessions, local XP,
+backup/restore and sharing. Existing online accounts remain available separately.
+Native launch also no longer requires sign-in. See
+[implementation, validation and remaining work](Docs/LOCAL_FIRST_2026-11-17.md).
+Native local game progression and full iPhone/Mac verification remain pending;
+this is development work, not a declared stable public release.
 
 ## Where things are
 

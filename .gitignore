@@ -11,3 +11,13 @@ Web/web-react/dist/
 _archive/
 .local/
 .claude/
+
+# Personal exports, local credentials, and machine-specific state
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.mobileprovision
+endgame-fitness-*.json
+*.tsbuildinfo
