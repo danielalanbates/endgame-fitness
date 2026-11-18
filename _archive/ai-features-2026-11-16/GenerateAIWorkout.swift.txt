@@ -1,0 +1,82 @@
+    // AI Generate Workout - Creates personalized program based on user profile
+    func generateAIWorkout() {
+        guard let profile = userProfile else {
+            // If no profile, use a default beginner program
+            setFullBodyProgram()
+            selectedTab = 1
+            return
+        }
+
+        // Generate program based on user goals and experience
+        let primaryGoal = profile.primaryGoals.first ?? .buildMuscle
+
+        switch (profile.experienceLevel, primaryGoal) {
+        case (.beginner, _):
+            // Beginners get full body 3x per week
+            weeklySchedule = [
+                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI Full Body Strength",
+                                exercises: ["Goblet Squats", "Push-ups", "Dumbbell Rows", "Plank"],
+                                estimatedDuration: 45),
+                ScheduledWorkout(dayOfWeek: "Wednesday", workoutType: "AI Full Body Power",
+                                exercises: ["Leg Press", "Dumbbell Bench Press", "Lat Pulldowns", "Leg Raises"],
+                                estimatedDuration: 45),
+                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Full Body Hypertrophy",
+                                exercises: ["Lunges", "Incline Dumbbell Press", "Cable Rows", "Russian Twists"],
+                                estimatedDuration: 45)
+            ]
+
+        case (.intermediate, .buildMuscle):
+            // Intermediate muscle building - Push/Pull/Legs
+            weeklySchedule = [
+                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI Push (Chest/Shoulders/Triceps)",
+                                exercises: ["Bench Press 4x8", "Overhead Press 3x10", "Dumbbell Flyes 3x12", "Tricep Dips 3x10"],
+                                estimatedDuration: 60),
+                ScheduledWorkout(dayOfWeek: "Wednesday", workoutType: "AI Pull (Back/Biceps)",
+                                exercises: ["Deadlifts 4x6", "Pull-ups 3x8", "Barbell Rows 4x8", "Hammer Curls 3x12"],
+                                estimatedDuration: 60),
+                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Legs (Quads/Hamstrings/Calves)",
+                                exercises: ["Squats 4x8", "Romanian Deadlifts 3x10", "Leg Press 3x12", "Calf Raises 4x15"],
+                                estimatedDuration: 60)
+            ]
+
+        case (.intermediate, .loseWeight):
+            // Fat loss with circuits
+            weeklySchedule = [
+                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI HIIT Circuit",
+                                exercises: ["Jump Squats 4x15", "Burpees 4x12", "Mountain Climbers 4x20", "Plank 4x45s"],
+                                estimatedDuration: 35),
+                ScheduledWorkout(dayOfWeek: "Wednesday", workoutType: "AI Strength Circuit",
+                                exercises: ["Kettlebell Swings 4x15", "Push-ups 4x12", "Goblet Squats 4x12", "Russian Twists 4x20"],
+                                estimatedDuration: 35),
+                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Cardio Circuit",
+                                exercises: ["Box Jumps 4x10", "Battle Ropes 4x30s", "High Knees 4x30s", "Bicycle Crunches 4x20"],
+                                estimatedDuration: 35)
+            ]
+
+        case (.advanced, .buildMuscle), (.expert, .buildMuscle):
+            // Advanced muscle building - Upper/Lower 4x per week
+            weeklySchedule = [
+                ScheduledWorkout(dayOfWeek: "Monday", workoutType: "AI Upper Power",
+                                exercises: ["Bench Press 5x5", "Barbell Rows 5x5", "Overhead Press 4x6", "Weighted Pull-ups 4x6"],
+                                estimatedDuration: 75),
+                ScheduledWorkout(dayOfWeek: "Tuesday", workoutType: "AI Lower Power",
+                                exercises: ["Squats 5x5", "Deadlifts 5x5", "Front Squats 3x8", "Leg Curls 4x10"],
+                                estimatedDuration: 75),
+                ScheduledWorkout(dayOfWeek: "Thursday", workoutType: "AI Upper Hypertrophy",
+                                exercises: ["Incline Bench 4x10", "Cable Rows 4x12", "Dumbbell Press 3x12", "Face Pulls 4x15"],
+                                estimatedDuration: 75),
+                ScheduledWorkout(dayOfWeek: "Friday", workoutType: "AI Lower Hypertrophy",
+                                exercises: ["Leg Press 4x15", "Romanian Deadlifts 4x12", "Lunges 3x12", "Calf Raises 5x15"],
+                                estimatedDuration: 75)
+            ]
+
+        default:
+            // Default to push/pull/legs
+            setPushPullLegsProgram()
+            selectedTab = 1
+            return
+        }
+
+        saveData()
+        selectedTab = 1 // Navigate to workouts tab
+    }

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>org.batesai.endgamefitness.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>endgamefitness</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Gym Party finds other Endgame Fitness players near you so you can trade player cards and fight a co-op boss together.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_egf-gymparty._tcp</string>
+		<string>_egf-gymparty._udp</string>
+	</array>
+	<key>NSGKFriendListUsageDescription</key>
+	<string>Shows your Game Center friends on the Endgame Fitness leaderboards and lets you challenge them to duels.</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.healthcare-fitness</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera scans friends’ player-card QR codes, and the AI form coach uses it on-device to check your lifting technique. Video is not uploaded or stored.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Endgame Fitness reads your steps and active energy to show them on your dashboard and to complete the daily Step Count quest. Only today's totals are sent to your batesai.org account.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Endgame Fitness saves completed workouts to Health so they count toward your activity rings.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

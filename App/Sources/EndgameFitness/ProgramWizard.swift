@@ -13,25 +13,119 @@ import SwiftUI
 
 // MARK: - Config types
 
-enum ProgramSplit: String, CaseIterable, Identifiable {
-    case auto = "Auto-recommend"
+enum ProgramSplit: String, CaseIterable, Identifiable, Codable {
+    case auto = "Smart Advisor"
     case fullBody = "Full Body"
     case upperLower = "Upper / Lower"
     case ppl = "Push / Pull / Legs"
+    case phul = "Power & Hypertrophy (PHUL)"
+    case pplUpperLower = "Push / Pull / Legs + Upper / Lower"
+    case arnold = "Arnold Split"
+    case bodyPart = "Body-Part Split"
+    case torsoLimbs = "Torso / Limbs"
     var id: String { rawValue }
+
+    /// One session of the split's rotation.
+    struct Session { let label: String; let groups: [String]; let focus: String? }
+
+    /// The split's session order. Programs rotate through it continuously,
+    /// so a 4-day cycle on PPL runs Push, Pull, Legs, Push | Pull, Legs, ...
+    var rotation: [Session] {
+        switch self {
+        case .fullBody: return ["A", "B", "C"].map { Session(label: "Full Body \($0)", groups: ["Full Body"], focus: nil) }
+        case .upperLower: return [Session(label: "Upper Body", groups: ["Upper"], focus: nil),
+                                  Session(label: "Lower Body", groups: ["Lower"], focus: nil)]
+        case .ppl, .auto: return [Session(label: "Push Day", groups: ["Push"], focus: nil),
+                                  Session(label: "Pull Day", groups: ["Pull"], focus: nil),
+                                  Session(label: "Leg Day", groups: ["Legs"], focus: nil)]
+        case .phul: return [Session(label: "Upper Power", groups: ["Upper"], focus: "strength"),
+                            Session(label: "Lower Power", groups: ["Lower"], focus: "strength"),
+                            Session(label: "Upper Hypertrophy", groups: ["Upper"], focus: "hypertrophy"),
+                            Session(label: "Lower Hypertrophy", groups: ["Lower"], focus: "hypertrophy")]
+        case .pplUpperLower: return ProgramSplit.ppl.rotation + ProgramSplit.upperLower.rotation
+        case .arnold: return [Session(label: "Chest & Back", groups: ["Chest", "Back"], focus: nil),
+                              Session(label: "Shoulders & Arms", groups: ["Shoulders", "Arms"], focus: nil),
+                              Session(label: "Leg Day", groups: ["Legs"], focus: nil)]
+        case .bodyPart: return ["Chest", "Back", "Legs", "Shoulders", "Arms"].map {
+                              Session(label: "\($0) Day", groups: [$0], focus: nil) }
+        case .torsoLimbs: return [Session(label: "Torso", groups: ["Chest", "Back"], focus: nil),
+                                  Session(label: "Limbs", groups: ["Legs", "Arms"], focus: nil)]
+        }
+    }
+
+    /// Training days per week this split fits evenly (for the wizard hint).
+    var fits: [Int] {
+        switch self {
+        case .auto: return Array(2...7)
+        case .fullBody: return [2, 3, 4]
+        case .upperLower, .torsoLimbs: return [2, 4, 6]
+        case .ppl, .arnold: return [3, 6]
+        case .phul: return [4]
+        case .pplUpperLower, .bodyPart: return [5]
+        }
+    }
 }
 
-enum ProgressionStyle: String, CaseIterable, Identifiable {
-    case auto = "Auto"
+enum ProgressionStyle: String, CaseIterable, Identifiable, Codable {
+    case auto = "Smart Advisor"
     case linear = "Linear"
     case double = "Double Progression"
+    case rpe = "RPE / RIR"
+    case waves = "Percentage Waves"
     var id: String { rawValue }
 
-    /// "Double Progression" clips in a three-segment control at 390pt.
-    var shortLabel: String { self == .double ? "Double" : rawValue }
+    /// Short labels: five segments have to fit at 390pt.
+    var shortLabel: String {
+        switch self {
+        case .double: return "Double"
+        case .rpe: return "RPE"
+        case .waves: return "Waves"
+        default: return rawValue
+        }
+    }
 }
 
-struct ProgramConfig {
+/// Weekly = fixed weekdays. Rolling = X days on, Y days off, repeating
+/// regardless of the calendar week (e.g. 3 on / 1 off).
+enum ScheduleMode: String, CaseIterable, Identifiable, Codable {
+    case weekly = "Weekly"
+    case rolling = "Days on / off"
+    var id: String { rawValue }
+}
+
+/// Session length choices shared by every place a user picks minutes:
+/// quick presets up to two hours plus a custom value in 5-minute steps.
+enum SessionLength {
+    static let presets = [30, 45, 60, 90, 120]
+    static let range = 15...120
+    static let step = 5
+    static func clamp(_ minutes: Int) -> Int {
+        let snapped = (minutes + step / 2) / step * step
+        return min(range.upperBound, max(range.lowerBound, snapped))
+    }
+}
+
+struct SessionLengthPicker: View {
+    @Binding var minutes: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Session length", selection: $minutes) {
+                // Five segments at 390pt: "30 min" clips, "30m" does not.
+                ForEach(SessionLength.presets, id: \.self) { Text($0 == 120 ? "2h" : "\($0)m").tag($0) }
+            }
+            .compactSegmentedPicker()
+            .labelsHidden()
+            Stepper("Custom: \(minutes) min", value: $minutes,
+                    in: SessionLength.range, step: SessionLength.step)
+        }
+    }
+}
+
+struct ProgramConfig: Codable, Equatable {
+    var scheduleMode: ScheduleMode = .weekly
+    var daysOn: Int = 3
+    var daysOff: Int = 1
     var daysPerWeek: Int = 4
     var weekdays: Set<String> = ["Monday", "Tuesday", "Thursday", "Friday"]
     var sessionLength: Int = 60
@@ -43,6 +137,17 @@ struct ProgramConfig {
     var injuries: Set<String> = []
     var split: ProgramSplit = .auto
     var progression: ProgressionStyle = .auto
+
+    /// Training frequency used to pick a split. Rolling cycles are converted
+    /// to their average sessions per 7 days (3 on / 1 off ≈ 5.25 → 5).
+    var effectiveDaysPerWeek: Int {
+        guard scheduleMode == .rolling else { return daysPerWeek }
+        let perWeek = 7.0 * Double(daysOn) / Double(daysOn + daysOff)
+        return min(6, max(2, Int(perWeek.rounded())))
+    }
+
+    /// Session count the program generates: one per training day.
+    var sessionCount: Int { scheduleMode == .rolling ? daysOn : daysPerWeek }
 }
 
 // MARK: - Calm first-login dashboard
@@ -64,9 +169,10 @@ struct GetSetUpView: View {
             VStack(spacing: 10) {
                 Image(systemName: "figure.strengthtraining.traditional")
                     .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(Color.brandPurple)
+                    .foregroundStyle(Brand.title)
                 Text("Welcome, \(firstName)")
                     .font(.screenTitle.bold())
+                    .brandTitle()
                     .adaptiveHeading()
                 Text("One step left: build the program you'll train on.")
                     .font(.subheadline)
@@ -74,31 +180,11 @@ struct GetSetUpView: View {
             }
 
             // Single primary call-to-action.
-            Button(action: onBuildProgram) {
-                HStack(spacing: 14) {
-                    Image(systemName: "wand.and.stars")
-                        .font(.title2)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Build your program")
-                            .font(.title3.bold())
-                        Text("A short setup: days, split, cycle length and goals")
-                            .font(.caption)
-                            .opacity(0.85)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                }
-                .foregroundColor(.white)
-                .padding(20)
-                .background(
-                    LinearGradient(colors: [.brandPurple, .brandBlue],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 16)
-                )
-                .shadow(color: .brandPurple.opacity(0.3), radius: 10, y: 5)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: 480)
+            BrandHeroCard(icon: "wand.and.stars",
+                          title: "Build your program",
+                          subtitle: "A short setup: days, split, cycle length and goals",
+                          action: onBuildProgram)
+                .frame(maxWidth: 520)
 
             // Just the two light chips — no grid, no cards.
             HStack(spacing: 12) {
@@ -173,6 +259,8 @@ struct ProgramWizardView: View {
 
     // Prefill from the onboarding answers so nothing is asked twice cold.
     private func prefill() {
+        // Rebuilding: start from the answers the current program was built with.
+        if let saved = workoutManager.savedProgramConfig() { config = saved; return }
         guard let profile = workoutManager.userProfile else { return }
         config.experienceLevel = profile.experienceLevel
         config.equipment = profile.availableEquipment
@@ -221,7 +309,7 @@ struct ProgramWizardView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.brandPurple)
-            .disabled(step == 0 && config.weekdays.isEmpty)
+            .disabled(step == 0 && config.scheduleMode == .weekly && config.weekdays.isEmpty)
         }
         .padding(20)
     }
@@ -243,9 +331,16 @@ struct ProgramWizardView: View {
     private var scheduleStep: some View {
         VStack(spacing: 16) {
             card("Training Days", icon: "calendar") {
+                Picker("Schedule", selection: $config.scheduleMode) {
+                    ForEach(ScheduleMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .compactSegmentedPicker()
+                .labelsHidden()
+
+                if config.scheduleMode == .weekly {
                 Stepper("Days per week: \(config.daysPerWeek)",
                         value: $config.daysPerWeek, in: 2...6)
-                    .onChange(of: config.daysPerWeek) { _ in trimWeekdays() }
+                    .onChange(of: config.daysPerWeek) { _, _ in trimWeekdays() }
 
                 Text("Which days?")
                     .font(.subheadline)
@@ -265,15 +360,29 @@ struct ProgramWizardView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                            } else {
+                    Stepper("Days on: \(config.daysOn)", value: $config.daysOn, in: 1...7)
+                    Stepper("Days off: \(config.daysOff)", value: $config.daysOff, in: 1...7)
+                    Text("Repeats every \(config.daysOn + config.daysOff) days, starting today — not tied to the calendar week.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        ForEach(0..<(config.daysOn + config.daysOff), id: \.self) { i in
+                            let on = i < config.daysOn
+                            Text(on ? "Train" : "Rest")
+                                .font(.caption2.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(on ? Color.brandPurple : Color.gray.opacity(0.15),
+                                            in: RoundedRectangle(cornerRadius: 6))
+                                .foregroundColor(on ? .white : .primary)
+                        }
+                    }
+                }
             }
 
             card("Session Length", icon: "clock") {
-                Picker("Session length", selection: $config.sessionLength) {
-                    // Five segments at 390pt: "30 min" clips, "30m" does not.
-                    ForEach([30, 45, 60, 75, 90], id: \.self) { Text("\($0)m").tag($0) }
-                }
-                .compactSegmentedPicker()
-                .labelsHidden()
+                SessionLengthPicker(minutes: $config.sessionLength)
             }
         }
     }
@@ -313,9 +422,11 @@ struct ProgramWizardView: View {
                 }
                 .compactSegmentedPicker()
                 .labelsHidden()
-                Text("Auto picks linear for newer lifters and double progression once loads stall.")
+                Text(config.progression.explanation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -324,12 +435,11 @@ struct ProgramWizardView: View {
     private var goalStep: some View {
         VStack(spacing: 16) {
             card("Primary Goal", icon: "target") {
-                let stored = workoutManager.userProfile?.primaryGoals ?? []
-                let options: [TrainingGoal] = stored.isEmpty
-                    ? [.buildMuscle, .getStronger, .loseWeight, .improveEndurance, .generalFitness, .longevity]
-                    : stored
+                // Every goal is listed so the user can re-pick.
                 Picker("Goal", selection: $config.primaryGoal) {
-                    ForEach(options, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(TrainingGoal.allCases, id: \.self) { goal in
+                        Text(goal.rawValue).tag(goal)
+                    }
                 }
                 .wizardRadioStyle()
                 .labelsHidden()
@@ -395,19 +505,24 @@ struct ProgramWizardView: View {
                 }
                 .wizardRadioStyle()
                 .labelsHidden()
-                if config.split == .auto {
-                    Text("Recommended for you: \(workoutManager.resolvedSplit(for: config).rawValue)")
+                if config.split != .auto && config.scheduleMode == .weekly
+                    && !config.split.fits.contains(config.daysPerWeek) {
+                    Text("Fits best at \(config.split.fits.map(String.init).joined(separator: " or ")) days a week. With \(config.daysPerWeek), the sessions rotate across weeks.")
                         .font(.caption)
-                        .foregroundStyle(Color.brandPurple)
+                        .foregroundStyle(.secondary)
                 }
             }
 
             card("Review", icon: "checkmark.seal") {
-                reviewRow("Days", "\(config.daysPerWeek)/week — \(weekOrder.filter { config.weekdays.contains($0) }.map { String($0.prefix(3)) }.joined(separator: ", "))")
+                if config.scheduleMode == .rolling {
+                    reviewRow("Days", "\(config.daysOn) on / \(config.daysOff) off, repeating")
+                } else {
+                    reviewRow("Days", "\(config.daysPerWeek)/week — \(weekOrder.filter { config.weekdays.contains($0) }.map { String($0.prefix(3)) }.joined(separator: ", "))")
+                }
                 reviewRow("Sessions", "\(config.sessionLength) min")
                 reviewRow("Cycle", "\(config.mesocycleWeeks) weeks\(config.includeDeload ? " + deload" : "")")
                 reviewRow("Goal", config.primaryGoal.rawValue)
-                reviewRow("Split", workoutManager.resolvedSplit(for: config).rawValue)
+                reviewRow("Split", config.split.rawValue)
                 reviewRow("Progression", config.progression.rawValue)
                 if !config.injuries.isEmpty {
                     reviewRow("Protecting", config.injuries.sorted().joined(separator: ", "))

@@ -1,0 +1,61 @@
+// MARK: - AI service
+
+@MainActor
+enum FitnessAI {
+    struct Failure: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    private struct AIResponse: Decodable { let text: String }
+
+    static func complete(task: String, payload: [String: Any]) async throws -> String {
+        var body = payload
+        body["task"] = task
+        // The AI coach ran on the old online account backend, which this
+        // local-players build no longer signs in to (see
+        // _archive/online-account-2026-11-16/WHY_ARCHIVED.md).
+        _ = body
+        _ = AIResponse.self
+        throw Failure(message: "AI coaching isn't available in the offline, local-players version yet.")
+    }
+
+    static func improveWorkout(days: [ScheduledWorkout], profile: UserProfile?) async throws -> String {
+        let workout = days.map { day -> [String: Any] in
+            ["day": day.dayOfWeek, "name": day.workoutType,
+             "exercises": day.exercises, "minutes": day.estimatedDuration]
+        }
+        var payload: [String: Any] = ["workout": workout]
+        if let p = profile {
+            payload["profile"] = ["experience": p.experienceLevel.rawValue,
+                                  "goals": p.primaryGoals.map(\.rawValue)]
+        }
+        return try await complete(task: "improve_workout", payload: payload)
+    }
+
+    static func buildMesocycle(goal: String, experience: String, weeks: Int, notes: String) async throws -> [MesoPhase] {
+        let text = try await complete(task: "build_mesocycle", payload: [
+            "goal": goal, "experience": experience, "weeks": weeks, "notes": notes,
+        ])
+        // The model is instructed to return a bare JSON array; tolerate prose
+        // around it by slicing to the outermost brackets.
+        guard let start = text.firstIndex(of: "["), let end = text.lastIndex(of: "]"),
+              start < end else {
+            throw Failure(message: "AI did not return a plan. Try again.")
+        }
+        let jsonText = String(text[start...end])
+        struct RawPhase: Decodable {
+            let name: String; let weeks: Int; let repRange: String?
+            let focus: String?; let emoji: String?
+        }
+        guard let raw = try? JSONDecoder().decode([RawPhase].self, from: Data(jsonText.utf8)),
+              !raw.isEmpty else {
+            throw Failure(message: "Could not read the AI plan. Try again.")
+        }
+        return raw.map {
+            MesoPhase(name: $0.name, weeks: max(1, $0.weeks),
+                      repRange: $0.repRange ?? "8-12",
+                      focus: $0.focus ?? "", emoji: $0.emoji ?? "📈")
+        }
+    }
+}

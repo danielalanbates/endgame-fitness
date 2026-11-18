@@ -135,17 +135,44 @@ final class SessionGame: ObservableObject {
         lastExerciseForCombo = nil
     }
 
+    /// A workout restored at launch (or after an account switch): rebuild the
+    /// running numbers from its completed sets. No pop-ups, no rest timer.
+    func resume(with workout: WorkoutSession, history: [WorkoutSession]) {
+        sessionStarted()
+        recalculate(for: workout, history: history)
+    }
+
+    /// Recomputes the estimate, set count and PR list after a set was
+    /// un-ticked or deleted, so the summary never credits undone work.
+    func recalculate(for workout: WorkoutSession, history: [WorkoutSession]) {
+        let completed = workout.completedSets
+        let volume = completed.reduce(0.0) { $0 + $1.volume }
+        let reps = completed.reduce(0) { $0 + max($1.reps, 0) }
+        setsLogged = completed.count
+        sessionEstimatedXP = reps > 0 ? XPEstimator.sessionXP(volume: volume, reps: reps, durationSecs: 0) : 0
+        var prs: [String] = []
+        for exercise in workout.exercises where !prs.contains(exercise.name) {
+            if exercise.completedSets.contains(where: {
+                ProgressionEngine.isPersonalRecord($0, in: exercise, history: history, current: workout)
+            }) {
+                prs.append(exercise.name)
+            }
+        }
+        prExercises = prs
+        if completed.isEmpty { combo = 0 }
+    }
+
     // MARK: Set logged
 
-    /// Called from `WorkoutManager.addSetToExercise` after the set is appended.
-    /// `workout` is the session state including the new set; `history` is used
-    /// for PR detection.
+    /// Called from `WorkoutManager.toggleSetCompleted` when a set is ticked.
+    /// `workout` is the session state including the set; `history` holds the
+    /// finished workouts used for PR detection.
     func setLogged(_ set: ExerciseSet, in exercise: Exercise, workout: WorkoutSession, history: [WorkoutSession]) {
         setsLogged += 1
 
         // XP estimate for this set (marginal against the session before it).
-        let allSets = workout.exercises.flatMap { $0.sets }.filter { $0.completed }
-        let volumeAfter = allSets.reduce(0.0) { $0 + Double($1.reps) * $1.weight }
+        let allSets = workout.completedSets
+        let volumeAfter = allSets.reduce(0.0) { $0 + $1.volume }
         let repsAfter = allSets.reduce(0) { $0 + $1.reps }
         let volumeBefore = volumeAfter - Double(set.reps) * set.weight
         let repsBefore = repsAfter - set.reps
@@ -161,14 +188,10 @@ final class SessionGame: ObservableObject {
         }
         lastExerciseForCombo = exercise.id
 
-        // PR: best estimated 1RM for this exercise across history.
-        let previousBest = history
-            .flatMap { $0.exercises }
-            .filter { $0.name == exercise.name }
-            .flatMap { $0.sets }
-            .map(XPEstimator.e1RM)
-            .max() ?? 0
-        let isPR = previousBest > 0 && XPEstimator.e1RM(set) > previousBest
+        // PR, by the server's rule: more weight than ever before at this rep
+        // count (completed sets only, including earlier sets today). The first
+        // time a rep count is logged is the baseline, not a PR.
+        let isPR = ProgressionEngine.isPersonalRecord(set, in: exercise, history: history, current: workout)
         if isPR, !prExercises.contains(exercise.name) { prExercises.append(exercise.name) }
 
         if SessionGameSettings.xpPopupsEnabled {
@@ -215,9 +238,12 @@ final class SessionGame: ObservableObject {
         restExercise = exercise
         restEndsAt = Date().addingTimeInterval(TimeInterval(seconds))
         scheduleRestNotification(after: seconds)
-        restTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        // .common so the countdown keeps ticking while a list is scrolling.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             self?.tick()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        restTimer = timer
     }
 
     func adjustRest(by delta: Int) {
@@ -307,13 +333,15 @@ struct SessionSummary: Identifiable {
     let estimatedXP: Int
     let prExercises: [String]
     let streakDays: Int
+    /// New best e1RMs and what the coach prescribes next time.
+    var review: SessionReview = .empty
 
     /// Built at finish time, before `WorkoutManager` clears `currentWorkout`.
     static func make(from workout: WorkoutSession, streak: Int) -> SessionSummary {
-        let completed = workout.exercises.flatMap { $0.sets }.filter { $0.completed }
-        let volume = completed.reduce(0.0) { $0 + Double($1.reps) * $1.weight }
-        let reps = completed.reduce(0) { $0 + $1.reps }
-        let duration = Int(workout.duration ?? Date().timeIntervalSince(workout.date))
+        let completed = workout.completedSets
+        let volume = completed.reduce(0.0) { $0 + $1.volume }
+        let reps = completed.reduce(0) { $0 + max($1.reps, 0) }
+        let duration = Int(workout.duration ?? WorkoutManager.duration(of: workout))
         return SessionSummary(
             name: workout.programName ?? "Workout",
             date: workout.date,
@@ -331,6 +359,19 @@ struct SessionSummary: Identifiable {
     var durationText: String {
         let m = durationSecs / 60
         return m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m"
+    }
+
+    /// The same summary with the streak known after the workout was saved.
+    func withStreak(_ days: Int) -> SessionSummary {
+        SessionSummary(name: name, date: date, durationSecs: durationSecs, totalVolume: totalVolume,
+                       totalReps: totalReps, sets: sets, exercises: exercises, estimatedXP: estimatedXP,
+                       prExercises: prExercises, streakDays: days, review: review)
+    }
+
+    func withReview(_ review: SessionReview) -> SessionSummary {
+        var copy = self
+        copy.review = review
+        return copy
     }
 }
 
@@ -372,11 +413,11 @@ struct RestTimerBar: View {
                     .tint(.brandOrange)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .controlSize(Platform.isDesktop ? .small : .regular)
             .padding(10)
-            .background(Color.brandBlue.opacity(0.12))
-            .cornerRadius(10)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .background(Color.brandBlue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 }
@@ -468,6 +509,10 @@ struct SessionSummaryView: View {
 
             ShareCardView(summary: summary)
 
+            if !summary.review.records.isEmpty || !summary.review.nextTime.isEmpty {
+                SessionReviewView(review: summary.review)
+            }
+
             HStack(spacing: 12) {
                 #if os(macOS)
                 Button(copied ? "Copied" : "Copy Share Card") {
@@ -517,6 +562,47 @@ struct SessionSummaryView: View {
     }
 }
 
+/// PRs by estimated max and what changes next session.
+struct SessionReviewView: View {
+    let review: SessionReview
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                if !review.records.isEmpty {
+                    Label("New best estimated max", systemImage: "trophy.fill")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Color.brandGreen)
+                    ForEach(review.records) { line in
+                        row(line)
+                    }
+                }
+                if !review.nextTime.isEmpty {
+                    Label("Next time", systemImage: "arrow.forward.circle")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Color.brandBlue)
+                    ForEach(review.nextTime) { line in
+                        row(line)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 220)
+    }
+
+    private func row(_ line: SessionReview.Line) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(line.name).font(.caption.bold())
+            Text(line.text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 struct ShareCardView: View {
     let summary: SessionSummary
 
@@ -534,7 +620,8 @@ struct ShareCardView: View {
             }
 
             HStack(spacing: 12) {
-                stat("\(Int(summary.totalVolume))", "lbs volume")
+                stat(TrainingUnits.volume(summary.totalVolume).components(separatedBy: " ").first ?? "0",
+                     "\(TrainingUnits.current.label) volume")
                 stat("\(summary.sets)", "sets")
                 stat(summary.durationText, "duration")
                 stat("+\(summary.estimatedXP)", "XP est.")
@@ -612,11 +699,23 @@ struct ExerciseRestOverride: View {
                 .foregroundColor(.secondary)
             TextField("Rest", value: $seconds, format: .number)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .frame(width: 56)
+                #if os(iOS)
+                .keyboardType(.numberPad)
+                #endif
+                .multilineTextAlignment(.leading)
+                .frame(width: Platform.isDesktop ? 56 : 64)
+                .accessibilityLabel("Rest seconds for \(exerciseName)")
                 .onChange(of: seconds) { _, new in
+                    // Only a value that differs from the default is an
+                    // override. Showing the default (onAppear) must not pin
+                    // it, or a later change to Default Rest Time would never
+                    // reach this exercise.
                     let key = SessionGameSettings.exerciseRestKey(exerciseName)
-                    if new > 0 { UserDefaults.standard.set(new, forKey: key) }
-                    else { UserDefaults.standard.removeObject(forKey: key) }
+                    if new > 0, new != SessionGameSettings.defaultRestSeconds {
+                        UserDefaults.standard.set(new, forKey: key)
+                    } else {
+                        UserDefaults.standard.removeObject(forKey: key)
+                    }
                 }
             Text("s")
                 .font(.caption)

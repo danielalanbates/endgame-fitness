@@ -17,6 +17,7 @@ import SwiftUI
 struct ChallengesView: View {
     @ObservedObject var game = GameProfileService.shared
     @State private var showCreate = false
+    @State private var respondError: String?
 
     var body: some View {
         ScrollView {
@@ -36,8 +37,11 @@ struct ChallengesView: View {
                     sectionHeader("Invites")
                     ForEach(game.pendingChallenges) { challenge in
                         PendingChallengeRow(challenge: challenge) { accept in
-                            Task { await game.respondToChallenge(id: challenge.id, accept: accept) }
+                            Task { respondError = await game.respondToChallenge(id: challenge.id, accept: accept) }
                         }
+                    }
+                    if let respondError {
+                        Text(respondError).font(.caption).foregroundStyle(.red)
                     }
                 }
 
@@ -278,7 +282,11 @@ struct LiveDuelCard: View {
 
     var body: some View {
         if let challenge = featured {
-            Button(action: onOpen) {
+            Button {
+                // Community opens on Challenges, not the feed.
+                game.requestedCommunitySection = .challenges
+                onOpen()
+            } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Label(challenge.isDuel ? "Live duel" : "Guild challenge", systemImage: "flag.2.crossed.fill")
@@ -464,9 +472,15 @@ struct TodayCardCluster: View {
                 .symbolEffectIfAvailable(active: streak > 0)
             Text("\(streak)")
                 .font(.title2.monospacedDigit().bold())
-            Text(streak == 1 ? "day streak" : "day streak")
+            Text(streak == 0 && game.profile?.streakAlive == false ? "start a streak" : "day streak")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if let freezes = game.profile?.streakFreezes, freezes > 0 {
+                Label("\(freezes)", systemImage: "snowflake")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.brandBlue)
+                    .help("Streak freezes protect your streak on a missed day.")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(10)
@@ -486,7 +500,7 @@ struct TodayCardCluster: View {
                     .foregroundStyle(.secondary)
             } else {
                 XPRing(progress: 0, level: 1).frame(width: 44, height: 44)
-                Text("Sign in").font(.caption.weight(.semibold))
+                Text("Pick a player").font(.caption.weight(.semibold))
                 Text("to earn XP").font(.caption2).foregroundStyle(.secondary)
             }
         }
@@ -501,28 +515,31 @@ struct TodayCardCluster: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: workoutDoneToday ? "checkmark.circle.fill" : "play.circle.fill")
-                        .foregroundStyle(workoutDoneToday ? Color.brandGreen : Color.brandBlue)
                     Text(workoutDoneToday ? "Done today" : (todaysWorkout == nil ? "Rest day" : "Up next"))
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 0)
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title3)
                 }
                 Text(todaysWorkout?.workoutType ?? "Free session")
-                    .font(.subheadline.bold())
+                    .font(.headline)
                     .lineLimit(2)
                 if let w = todaysWorkout {
                     Text("\(w.exercises.count) exercises · \(w.estimatedDuration) min")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .opacity(0.9)
                 } else {
                     Text("Tap to log anything")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .opacity(0.9)
                 }
             }
+            .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(10)
-            .background((workoutDoneToday ? Color.brandGreen : Color.brandBlue).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(12)
+            .background(workoutDoneToday ? Brand.heroDone : Brand.hero, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .brandPurple.opacity(0.25), radius: 8, y: 4)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
@@ -566,6 +583,8 @@ struct FriendsStrip: View {
     let items: [ActivityItem]
     var onOpen: () -> Void = {}
 
+    @State private var selectedPlayer: PlayerRef?
+
     private var recent: [ActivityItem] {
         // One entry per friend, newest first.
         var seen = Set<String>()
@@ -592,32 +611,39 @@ struct FriendsStrip: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(recent) { item in
-                            HStack(spacing: 8) {
-                                ZStack(alignment: .bottomTrailing) {
-                                    ZStack {
-                                        Circle().fill(item.tint.opacity(0.2))
-                                        Text("\(item.level)").font(.caption2.bold())
-                                    }
-                                    .frame(width: 30, height: 30)
-                                    if isLive(item) {
-                                        Circle().fill(Color.brandGreen)
-                                            .frame(width: 9, height: 9)
-                                            .overlay(Circle().stroke(Color.platformControlBackground, lineWidth: 1.5))
-                                    }
-                                }
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(item.displayName).font(.caption.weight(.semibold)).lineLimit(1)
-                                    Text(item.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                                .frame(maxWidth: 150, alignment: .leading)
+                            Button {
+                                selectedPlayer = PlayerRef(id: item.userID, displayName: item.displayName)
+                            } label: {
+                                chip(item)
                             }
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(Color.platformControlBackground)
-                            .clipShape(Capsule())
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
+            .playerProfileSheet($selectedPlayer)
         }
+    }
+
+    private func chip(_ item: ActivityItem) -> some View {
+        HStack(spacing: 8) {
+            ZStack(alignment: .bottomTrailing) {
+                AvatarBadgeView(config: nil, level: item.level, cosmetic: item.authorCosmetic,
+                                size: 30, tint: FitnessProfile.rankColor(for: item.level))
+                if isLive(item) {
+                    Circle().fill(Color.brandGreen)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(Color.platformControlBackground, lineWidth: 1.5))
+                }
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.displayName).font(.caption.weight(.semibold)).lineLimit(1)
+                Text(item.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: 150, alignment: .leading)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color.platformControlBackground)
+        .clipShape(Capsule())
     }
 }

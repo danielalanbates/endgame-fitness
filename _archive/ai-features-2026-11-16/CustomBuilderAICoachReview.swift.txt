@@ -1,0 +1,61 @@
+
+    @State private var programName = "My Custom Program"
+    @State private var days: [DraftDay] = [DraftDay()]
+    @State private var aiSuggestions: String?
+    @State private var aiBusy = false
+    @State private var aiError: String?
+    @State private var showQuitConfirmation = false
+// ...
+                aiSection
+// ...
+    private var aiSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI Coach Review", systemImage: "sparkles")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task { await runAI() }
+                } label: {
+                    if aiBusy {
+                        SwiftUI.ProgressView().controlSize(.small)
+                    } else {
+                        Text("Suggest Improvements")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.brandBlue)
+                .disabled(aiBusy || !isValid)
+            }
+            Text("Your workout is reviewed by our AI coach (runs on our server — free to you).")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if let error = aiError {
+                Text(error).font(.caption).foregroundColor(.red)
+            }
+            if let suggestions = aiSuggestions {
+                Text(suggestions)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.brandBlue.opacity(0.08))
+                    .cornerRadius(10)
+            }
+        }
+        .padding()
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(12)
+    }
+
+    private func runAI() async {
+        aiBusy = true
+        aiError = nil
+        defer { aiBusy = false }
+        do {
+            aiSuggestions = try await FitnessAI.improveWorkout(days: draftedDays(), profile: workoutManager.userProfile)
+        } catch {
+            aiError = error.localizedDescription
+        }
+    }

@@ -164,3 +164,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 **Note**: For detailed commit history, see [GitHub Commits](https://github.com/yourusername/WorkoutTracker/commits/main).
+
+## 1.1.0 beta — 2026-11-18
+
+- Consolidate the richer native training/game branch and preserve existing profiles.
+- Facebook-only web and native authentication, persistent sessions, secure native handoff.
+- Responsive training companion with account saves, workout recovery, progression, XP, quests and private friend invitations.
+- Scoped BatesAI deployment, privacy/deletion instructions, local-only verification and disabled GitHub compute.
+- Known release gate: Meta credentials/live-mode configuration and real Facebook authentication still required. Native/web logs remain separate; no stable release is asserted.
