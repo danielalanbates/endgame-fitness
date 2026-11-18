@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-const CACHE='endgame-local-v1.1.0-beta-1';
+const CACHE='endgame-local-v1.1.0-beta-2';
 const BASE=new URL('./',self.location).pathname;
 const FILES=['','index.html','style.css','app.mjs','engine.mjs','icon.svg','manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES.map(f=>BASE+f)))));

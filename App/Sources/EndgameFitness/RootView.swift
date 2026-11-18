@@ -19,7 +19,7 @@ struct RootView: View {
 
     @EnvironmentObject var workoutManager: WorkoutManager
     @StateObject private var players = LocalPlayerStore.shared
-    @ObservedObject private var facebook = FacebookSession.shared
+    @ObservedObject private var membership = MembershipSession.shared
     @StateObject private var game = GameProfileService.shared
     @Environment(\.scenePhase) private var scenePhase
 
@@ -107,7 +107,7 @@ struct RootView: View {
     // MARK: Gate
 
     private var stage: Stage {
-        guard facebook.user != nil else { return .signin }
+        guard membership.user != nil else { return .signin }
         guard let id = players.currentID else { return .picker }
         if onboardedAccounts.contains(id) || game.profile?.isOnboarded == true { return .app }
         return .onboarding
@@ -117,9 +117,9 @@ struct RootView: View {
     private var content: some View {
         switch stage {
         case .signin:
-            FacebookSignInView()
+            MembershipSignInView()
         case .picker:
-            FacebookSignInView().task { facebook.selectPlayer() }
+            MembershipSignInView().task { membership.selectPlayer() }
         case .onboarding:
             OnboardingView(hasCompletedOnboarding: onboardingBinding)
                 .environmentObject(workoutManager)

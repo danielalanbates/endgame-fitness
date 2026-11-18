@@ -1,40 +1,44 @@
 # Endgame Fitness
 
-Strength training with game progression and a training party. **Facebook is the only sign-in provider** (updated November 18, 2026).
+Copyright © 2026 Daniel Bates / Bates LLC. All rights reserved.
 
-- Website: **https://batesai.org/endgamefitness/**
-- Support: **help@batesai.org** · https://batesai.org
-- Source: https://github.com/danielalanbates/endgame-fitness
-- Status: **public beta; real Facebook sign-in requires Meta app configuration**. No stable release or universal superiority claim is made.
+Website: https://batesai.org/endgamefitness/ · Support: help@batesai.org
 
-| Area | Current behavior |
+Source: https://github.com/danielalanbates/endgame-fitness
+
+Endgame turns strength training into a long-running game: adaptive plans,
+workout history, earned levels and quests, and friend-code training parties.
+The web app is published from the BatesAI website repo. BatesAI's existing
+Google and Apple membership system is the only login system.
+
+## Current behavior
+
+| Area | Behavior |
 | --- | --- |
-| Web | Equipment-aware strength plans, readiness/recovery sessions, conservative double progression, resumable workout logging, history, XP/levels/quests, unit conversion, export/import, account saves with conflict protection |
-| Social | Facebook identity, private friend codes, mutual invitations, aggregate stats and a weekly consistency challenge. No automatic posts or Facebook contact import. |
-| Mac beta | Existing full native training engine, 876-exercise library, game systems and native social features; Facebook gate and PKCE browser handoff added. Existing selected profile and answers adopted once on first Facebook connection. |
-| Identity | Secure 30-day sessions; HttpOnly cookie on web, Keychain on Mac. No email, Google, Apple or guest login in the new Endgame entry points. |
-| Data | Web data stays in per-account browser storage and private Cloudflare D1 records. Native logs remain on the Mac. **Native and web logs do not yet sync.** |
+| Web app | Equipment-aware plans, readiness and recovery adjustments, conservative progression, resumable workout logging, history, XP/levels/quests, unit conversion, backup export/import, and cloud saves with revision checks |
+| Social | Private friend codes, mutual invitations, aggregate stats and a weekly consistency quest. No contact import or automatic social posts |
+| Login | Existing BatesAI Google/Apple account. Web uses its secure HttpOnly `batesai_session`; Mac uses a Keychain token. The Worker verifies that token against the shared D1 `sessions` table |
+| Mac beta | Existing native training engine and local profile. First BatesAI sign-in maps the account to the selected local player so answers and local workouts remain intact |
+| Data | Web training records are stored per BatesAI account. Native training history remains on the Mac and does not yet sync with the web format |
 
 ## Source map
 
 ```text
 App/Sources/EndgameFitness/    SwiftUI Mac app and native training/game engines
-  FacebookSession.swift      Facebook-only sign-in, PKCE, Keychain, existing-player mapping
+  MembershipSession.swift    Google/Apple browser sign-in, PKCE handoff, Keychain, local-profile mapping
   SmartPlanner.swift         native adaptive program generator and evaluation
   WorkoutStore.swift         atomic training storage and recovery
   EngineSelfTest.swift       native engine regression checks
 Web/local-app/               dependency-free browser app and testable training engine
-Server/                     scoped Cloudflare Worker, Facebook OAuth, account saves and friends
-Docs/FACEBOOK_SETUP.md       Meta app settings, credential audit, and release checklist
-Server/README.md             deployment, Meta setup and security details
-Docs/STATUS.md              verification results, known limits and next actions
-Docs/STATUS_LEGACY.md        earlier development notes (historical, not current behavior)
-_archive/                   retired account/iOS features and superseded approaches
+Server/                      scoped Cloudflare Worker, shared membership session, saves and friends
+Docs/                         current status, login handoff, privacy and future pathways
+_archive/                     retired Facebook login source and older account approaches
 ```
 
-## Check and build locally (no GitHub compute)
+## Build and verify locally
 
-Node 22+ (with `node:sqlite`), Python 3, Xcode and XcodeGen are used locally.
+Node 22+ (`node:sqlite`), Python 3, Xcode and XcodeGen are used locally. No
+GitHub-hosted compute is part of the build or deployment path.
 
 ```sh
 node --test Web/local-app/tests/*.test.mjs Server/tests/*.test.mjs
@@ -47,14 +51,46 @@ xcodebuild -project App/EndgameFitness.xcodeproj -scheme EndgameFitness-macOS \
 "build/Release/Endgame Fitness.app/Contents/MacOS/Endgame Fitness" -ef.selftest
 ```
 
-Browser regression checks are in `scripts/verify/web_flow.py` (Python Playwright). Start `python3 scripts/preview_web.py` for the local fixture server; it never creates a real authenticated session. Keep browser downloads and screenshots in ignored `.local/`.
+Use the generated local `.app` for beta testing. Signing and notarization are
+still required for a normal downloadable Mac release. Browser regression
+checks are in `scripts/verify/web_flow.py`; preview uses
+`python3 scripts/preview_web.py` and a local fixture only.
 
-Use the generated local `.app` for beta testing. Signing/notarization and verified real Facebook login are required before treating a downloadable Mac build as a stable public release. A source checkout and local build do not require GitHub Actions.
+## Website publishing
 
-For website deployment and the exact Meta redirect URI, see [Server/README.md](Server/README.md). Build artifacts include only eight allowlisted web assets, excluding tests and development files. The Worker intercepts only Endgame routes and does not rebuild the rest of BatesAI.
+The website checkout is `../endgame-fitness-website`. Its local deployment
+script stages the eight-file Endgame web artifact at
+`public/endgamefitness/`, applies its idempotent auth handoff migration, builds
+Astro and deploys Cloudflare Pages. The Worker routes only
+`batesai.org/api/endgame/*`. Read
+[`Server/README.md`](Server/README.md) and the website repo's
+`docs/ENDGAME_FITNESS_DEPLOYMENT.md` before changing this boundary.
 
-## Privacy and licensing
+Deploy the additive D1 profile-link table before the Worker code:
 
-Keep credentials, test exports, training data and logs in ignored `.local/` or environment/secret storage. Never commit them. Privacy and deletion instructions are published at `/endgamefitness/privacy.html`.
+```sh
+wrangler d1 execute batesai-db --remote --config Server/wrangler.toml --file Server/migrations/0002_batesai_membership.sql
+wrangler deploy --config Server/wrangler.toml
+```
 
-PolyForm Noncommercial 1.0.0 plus the existing 10% commercial rider: see [LICENSE](LICENSE). This is source available, not an OSI open-source license. Exercise data attribution is retained in the project. Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
+## Identity and privacy
+
+- BatesAI membership owns provider sign-in. Endgame receives neither Google nor Apple tokens.
+- Web sessions are opaque 256-bit values; D1 stores only SHA-256 hashes. Web cookies are Secure and HttpOnly. Native tokens stay in Keychain.
+- Native browser login returns a one-use, 60-second PKCE code; the reusable session token never appears in a custom URL.
+- Endgame keeps a stable profile link to the BatesAI user ID. An internal synthetic `batesai:<user-id>` value fills the legacy required `facebook_id` column in the first Endgame schema; no Facebook identifier is stored.
+- Deleting Endgame data removes its profile, training state and friendships and revokes the current shared session. BatesAI account deletion also removes the linked Endgame data.
+- Keep credentials and personal training backups in ignored local storage or Cloudflare secret storage. Never commit them.
+
+## Known limits and next paths
+
+- Automated tests mock Google/Apple API responses. Complete one real production login with each provider before describing provider integration as end-to-end tested.
+- Native and browser training models differ. Design and validate a versioned migration before enabling workout synchronization; never overwrite a native history with the smaller web schema.
+- Current friend-code requests are self-reported. Add user controls, block/report flows, and rate limits before broad social promotion.
+- The deterministic program generator is conservative guidance, not proof of superiority over a qualified coach or every user-built plan.
+- If Endgame's account table is rebuilt, replace the legacy `facebook_id` column with a provider-neutral schema and migrate only after confirming existing `ef_accounts` counts and backups.
+
+## License
+
+PolyForm Noncommercial 1.0.0 with the 10% commercial revenue rider. This is
+source available, not an OSI-approved open-source license. See [`LICENSE`](LICENSE).

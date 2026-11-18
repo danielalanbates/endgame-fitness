@@ -10,16 +10,18 @@ async def main():
   page=await browser.new_page(viewport={'width':1440,'height':1000},service_workers='block')
   errors=[]
   page.on('pageerror',lambda e:errors.append(str(e)))
-  await page.goto(BASE);await page.get_by_text('Facebook sign-in not configured yet',exact=True).wait_for()
-  assert await page.locator('button[disabled]').count()==1
+  await page.goto(BASE);await page.get_by_role('link',name='Continue with Google').wait_for()
+  assert await page.get_by_role('link',name='Continue with Apple').count()==1
+  assert '/api/auth/oauth/google' in await page.get_by_role('link',name='Continue with Google').get_attribute('href')
+  assert '/api/auth/oauth/apple' in await page.get_by_role('link',name='Continue with Apple').get_attribute('href')
   await page.screenshot(path=str(OUT/'01-login-desktop.png'),full_page=True)
   await page.set_viewport_size({'width':390,'height':844});await page.screenshot(path=str(OUT/'02-login-mobile.png'),full_page=True)
   assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-  user={'id':'test-facebook-user','display_name':'Test Adventurer','friend_code':'1234567890ABCDEF'}
+  user={'id':'test-batesai-user','display_name':'Test Adventurer','friend_code':'1234567890ABCDEF'}
   cloud={'state':None,'revision':0}
   async def route(r):
    name=r.request.url.split('/api/endgame/')[-1];method=r.request.method
-   if name=='config':data={'facebook':True}
+   if name=='config':data={'providers':['google','apple'],'provider':'batesai-membership'}
    elif name=='me':data={'user':user}
    elif name=='state':
     if method=='PUT':body=r.request.post_data_json;cloud.update(state=body['state'],revision=cloud['revision']+1)
@@ -73,5 +75,5 @@ async def main():
   await page.get_by_role('heading',name='Ready for your next level, Ada?').wait_for()
   assert not errors,errors
   await browser.close()
-  print('BROWSER PASS: login unavailable, onboarding, dashboard desktop/mobile, active workout reload, finish/XP, quest claim, all tabs, unit conversion, export/import, exercise search, party response; no JS errors or horizontal overflow.')
+  print('BROWSER PASS: Google/Apple sign-in options, onboarding, dashboard desktop/mobile, active workout reload, finish/XP, quest claim, all tabs, unit conversion, export/import, exercise search, party response; no JS errors or horizontal overflow.')
 asyncio.run(main())

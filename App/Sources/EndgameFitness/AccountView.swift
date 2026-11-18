@@ -117,8 +117,8 @@ struct AccountView: View {
                 }
                 LabeledContent("PIN", value: current.hasPIN ? "On" : "Off")
             }
-            Button("Sign out of Facebook") {
-                FacebookSession.shared.signOut()
+            Button("Sign out of BatesAI") {
+                MembershipSession.shared.signOut()
                 dismiss()
             }
             Text("Training data stays on this Mac. Web and native training logs are currently separate.").font(.caption).foregroundStyle(.secondary)
@@ -286,7 +286,7 @@ struct AccountView: View {
                 Text(deleteError).font(.caption).foregroundStyle(.red)
             }
         } footer: {
-            Text("Native workout logs live on this Mac. Facebook authenticates your session; the web app has its own cloud training log.")
+            Text("Native workout logs live on this Mac. Your BatesAI account authenticates this session; the web app has its own cloud training log.")
                 .font(.caption)
         }
     }
@@ -389,7 +389,7 @@ struct AccountView: View {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let player = try players.importBackup(try Data(contentsOf: url))
-            backupMessage = "Imported \(player.name) as an archived local profile. Your Facebook-linked player stays selected."
+            backupMessage = "Imported \(player.name) as an archived local profile. Your BatesAI-linked player stays selected."
         } catch {
             backupMessage = error.localizedDescription
         }

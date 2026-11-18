@@ -1,59 +1,78 @@
-# Endgame Fitness deployment
+# Endgame Fitness server and deployment
 
-Facebook is the only identity provider. The Worker serves the web app and isolated `/api/endgame/*` routes; the rest of batesai.org stays on its existing Pages deployment. No GitHub compute is used.
+Copyright © 2026 Daniel Bates / Bates LLC. All rights reserved.
 
-## Local checks
+Website: https://batesai.org/endgamefitness/ · Support: help@batesai.org
 
-From the repository root:
+## Architecture
+
+- Cloudflare Pages serves the app at `/endgamefitness/` and handles the shared
+  BatesAI `/membership` OAuth callback.
+- This Worker owns only `/api/endgame/*`; it does not serve the production app
+  path after the shared-account migration.
+- BatesAI Membership is the identity system. Google and Apple sign-in are
+  initiated and completed by the website. The Worker validates the opaque
+  `batesai_session` against the existing `sessions` table in `batesai-db`.
+- `ef_membership_links` maps a BatesAI user ID to one stable Endgame profile.
+  The first version of `ef_accounts` requires a `facebook_id` column, so new
+  rows store the synthetic internal key `batesai:<user-id>` there. It is not a
+  Facebook identifier and is never returned by the API.
+- Account deletion in Endgame deletes its profile, workout state and friend
+  edges, then revokes the current shared BatesAI session. BatesAI account
+  deletion removes linked Endgame rows and outstanding native handoff codes.
+
+## Local verification
 
 ```sh
 node --test Web/local-app/tests/*.test.mjs Server/tests/*.test.mjs
 node scripts/build-web.mjs
 wrangler deploy --config Server/wrangler.toml --dry-run
+xcodegen generate --spec App/project.yml
+xcodebuild -project App/EndgameFitness.xcodeproj -scheme EndgameFitness-macOS \
+  -configuration Release -derivedDataPath "$PWD/.local/DerivedData" \
+  SYMROOT="$PWD/build" CODE_SIGNING_ALLOWED=NO build
 ```
 
-## Provision and deploy
+The browser tests use a local database fixture. Real Google and Apple callback
+completion must still be checked on production with authorized test accounts.
+The user-facing Mac beta is the local `.app`; test builds without signing do
+not constitute a public release.
+
+## Production migrations and deployment
+
+Apply the Endgame mapping table before deploying code that reads it:
 
 ```sh
-wrangler d1 execute batesai-db --remote --config Server/wrangler.toml --file Server/migrations/0001_endgame.sql
+wrangler d1 execute batesai-db --remote --config Server/wrangler.toml --file Server/migrations/0002_batesai_membership.sql
 wrangler deploy --config Server/wrangler.toml
 ```
 
-The migration is additive and uses only `ef_` tables. Do not run membership migrations or recreate the existing database.
+The website Pages repo applies `migrations/0003_auth_handoff.sql` and stages
+the built Endgame files in `public/endgamefitness/` as part of
+`scripts/deploy_site.sh`. Its full publishing contract is in the website repo's
+`docs/ENDGAME_FITNESS_DEPLOYMENT.md`. Deploy Pages first, then redeploy this
+Worker if retiring an older `/endgamefitness*` route. Do not use GitHub Actions
+or GitHub-hosted compute for local builds and publishing.
 
-## Required Meta setup (external dependency)
+## Security behavior
 
-See [`Docs/FACEBOOK_SETUP.md`](../Docs/FACEBOOK_SETUP.md) for the current credential audit, exact Meta dashboard values, setup commands, and public release checklist.
+- Only the website verifies Google/Apple provider responses. Provider tokens
+  and client secrets never enter Endgame.
+- Browser writes require exact `https://batesai.org` origin and JSON content.
+  Native requests use an Authorization bearer token.
+- Cloud saves are account-owned, structurally validated and use optimistic
+  revisions. Stale writes return `409`.
+- Friends must mutually accept before aggregate stats are shared. The social
+  API does not return workout details, credentials, or internal account keys.
+- Keep OAuth credentials in Cloudflare secret storage. Keep training exports
+  in ignored local storage; do not commit them or place them in documentation.
 
-1. Register an appropriate Meta developer app and enable Facebook Login for the web. Complete any required business verification, app review, data handling questions and public/live-mode requirements in Meta's dashboard.
-2. Set the website URL to `https://batesai.org/endgamefitness/` and register this **exact** Valid OAuth Redirect URI: `https://batesai.org/api/endgame/auth/callback`.
-3. Set privacy policy and data-deletion instructions to `https://batesai.org/endgamefitness/privacy`. The instructions explain in-app deletion and the support fallback. This build does not claim an automatic Meta signed-request deletion callback.
-4. Request only `public_profile`. The app does not request email, friend lists or posting permissions. Sign-in does not automatically expose Facebook contacts.
-5. Set `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` using `wrangler secret put <NAME> --config Server/wrangler.toml`. Use interactive secret input. Never put credentials in source, screenshots, shell arguments or PRs.
-6. Test with a Meta app tester and then a non-role public account. A configured development-mode Meta app is **not** evidence that public sign-in works.
+## Future work
 
-Without the credentials, `/config` returns `facebook:false`, `/auth/start` returns 503, and both clients display an explicit unavailable state. There is no demo bypass or alternate login in production.
-
-## Security and identity
-
-- Facebook authorization-code exchange occurs server-side; the token is used to fetch the app-scoped Facebook identifier and name, then discarded. HMAC `appsecret_proof` is attached to Graph calls.
-- The account key is the Facebook app-scoped identifier, never a claimed email or unverified client-supplied identity.
-- OAuth uses a random state, short expiry, HttpOnly state cookie and atomic single-use consumption.
-- Native callbacks carry a 60-second one-use code bound to an S256 PKCE verifier held in app memory. They never carry the session or Facebook access token.
-- Opaque 256-bit session tokens expire in 30 days. Only SHA-256 hashes are stored. Web tokens use secure HttpOnly SameSite cookies; native tokens use Keychain.
-- Cookie mutations require exact same-origin JSON requests. Native requests use Authorization headers.
-- Account cloud saves require ownership, structural validation and optimistic revision matching. A stale save returns 409 rather than overwriting another device.
-- Friends require mutual acceptance. Only name and aggregate totals are exposed; raw workouts and Facebook IDs are never returned in the social endpoint.
-- Self-reported training is not independently verified. XP is derived from validated sets but is not an anti-cheat guarantee; no public competitive ranking is advertised.
-
-## Limitations and next pathways
-
-- Real Facebook login cannot be verified until the Meta app credentials and public/live status exist.
-- Native and browser training models are different. They do not share a training log yet. Design a versioned migration before attempting bidirectional sync; never overwrite native history with a reduced web schema.
-- Mac's first Facebook account adopts the selected existing local player once; subsequent identities get separate native profiles. Preserve that mapping and the bundle identifier.
-- A future friend discovery flow can request eligible Facebook friends only after reviewing Meta's permissions and consent constraints. Do not assume the full Facebook friend graph is available.
-- Consider finer-grained per-session writes and server-issued quest claims before large scale. Current full-state writes are limited to 3 MB and use revision checks.
-- Expired OAuth states are cleaned on login start; expired sessions/native codes should get a scheduled retention cleanup before large scale.
-- The web engine is conservative and deterministic. Its choices are not proof of universal superiority over coach-designed or custom programs.
-
-References: [Meta manual login](https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow/), [secure Graph requests](https://developers.facebook.com/docs/graph-api/guides/secure-requests/), [Graph versions](https://developers.facebook.com/docs/graph-api/changelog/versions/), [Workers static assets](https://developers.cloudflare.com/workers/static-assets/).
+- Run a real Google and Apple sign-in check before claiming provider-level
+  end-to-end validation.
+- Add a scheduled cleanup for expired shared session and handoff rows after
+  reviewing the database's existing retention jobs.
+- Validate a versioned bridge before syncing native and web training histories.
+- Consider rebuilding `ef_accounts` with a provider-neutral identity schema
+  after checking live counts and preserving an encrypted backup.

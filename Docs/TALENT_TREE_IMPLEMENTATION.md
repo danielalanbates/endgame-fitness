@@ -39,7 +39,7 @@
 
 ## 🚧 TODO - Replace AIChangesView
 
-The complete UI code is in `/Users/daniel/Documents/aicode/Workout_Tracker_Enhanced/WorkoutTrackerMac/TalentTreeView_temp.swift`
+The earlier UI draft was kept in a local scratch file outside this repository. The current source in `App/Sources/EndgameFitness/` is authoritative.
 
 ### To Complete Implementation:
 

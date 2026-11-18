@@ -21,6 +21,7 @@
 		3F52A172B6A5D956AA1D5619 /* ExerciseGuideViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C24B863D65AF3B040FF0B0 /* ExerciseGuideViews.swift */; };
 		426152B504F7980CBFEB1665 /* AvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */; };
 		4341949350DDB253A5BF4C06 /* SmartCoachViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1516D27BC706E957A14514 /* SmartCoachViews.swift */; };
+		4ADAEA4053FCE37495BCFDE3 /* MembershipSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B63A2599935996422262D033 /* MembershipSession.swift */; };
 		4BF3B831790ED0BCAE75480B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5D63D8872DD09A9EE0982E4 /* Assets.xcassets */; };
 		4C2F363CBAB44F664FC37DC0 /* ActiveWorkoutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D01CBD884905DA9095FD305 /* ActiveWorkoutViews.swift */; };
 		50FC4855FC6E5084EFE49DAC /* ChallengeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A00FF687D610286E92EF090 /* ChallengeViews.swift */; };
@@ -37,7 +38,6 @@
 		82CA8057B3D6D69550A858F0 /* SmartCoach.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4ABDB9AF97FAF369BE5633 /* SmartCoach.swift */; };
 		845F52A6C213CC831F64A0F8 /* GuildViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9024759EE2A27226B5C8D2C /* GuildViews.swift */; };
 		868B88FBCE26A9FBB7CE0E20 /* SocialCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F210ACDFAD421FCE9744559A /* SocialCore.swift */; };
-		8E916E27F52DB823F5B2FA5C /* FacebookSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2772BBA420DE6F45F2B67 /* FacebookSession.swift */; };
 		93E40F0D8D2266BC0AF067BE /* TrainingUnits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FA59F3F324232FDE94BC8A5 /* TrainingUnits.swift */; };
 		94E2E0F23680D25F443A2DC5 /* RaidViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70E1D100FB56EAE773770B7 /* RaidViews.swift */; };
 		A05F1147A5F77D638D9DFCF3 /* exercise_library.json in Resources */ = {isa = PBXBuildFile; fileRef = DD57C1FA2246AF367A95471D /* exercise_library.json */; };
@@ -104,13 +104,13 @@
 		AFC59F06D0943992C800DD58 /* QuestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestViews.swift; sourceTree = "<group>"; };
 		B4A28E7410AE8775CC42B7AA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B4D1D0516FB0CDC9D2039AF7 /* HistoryMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMerge.swift; sourceTree = "<group>"; };
+		B63A2599935996422262D033 /* MembershipSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipSession.swift; sourceTree = "<group>"; };
 		BCA6E0305FF92145DEAB6881 /* LocalGame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalGame.swift; sourceTree = "<group>"; };
 		BE891B167A9FC7D4CD343DD7 /* ExerciseGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseGuide.swift; sourceTree = "<group>"; };
 		C9A89AB24A868DBBB9C67DF4 /* AvatarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarViews.swift; sourceTree = "<group>"; };
 		CF7B384F0700E4DFD5161F6B /* SeasonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeasonViews.swift; sourceTree = "<group>"; };
 		CF7C6FE9DB7EF8CA6B0D8A86 /* EngineSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSelfTest.swift; sourceTree = "<group>"; };
 		D16087692F90DA13FBB2C15D /* ProgramsMeso.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramsMeso.swift; sourceTree = "<group>"; };
-		D1A2772BBA420DE6F45F2B67 /* FacebookSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacebookSession.swift; sourceTree = "<group>"; };
 		D5D63D8872DD09A9EE0982E4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DD57C1FA2246AF367A95471D /* exercise_library.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = exercise_library.json; sourceTree = "<group>"; };
 		DF72E2066BCBAE1BE4C35A24 /* CommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentsView.swift; sourceTree = "<group>"; };
@@ -140,7 +140,6 @@
 				62C24B863D65AF3B040FF0B0 /* ExerciseGuideViews.swift */,
 				DFECB8377CFAD3AF38534C3A /* ExerciseLibrary.swift */,
 				FF7431416290CCE0DF4D3636 /* ExercisePicker.swift */,
-				D1A2772BBA420DE6F45F2B67 /* FacebookSession.swift */,
 				26D61C68FC4C823D56D304DB /* GameCenterService.swift */,
 				9821287317E68F40835358AF /* GameProfile.swift */,
 				2DD85BA9625E7BD26DF9BACD /* GameProfileService.swift */,
@@ -152,6 +151,7 @@
 				BCA6E0305FF92145DEAB6881 /* LocalGame.swift */,
 				31453536801AEDFAA9354FAF /* LocalPlayers.swift */,
 				FA4FF38821A1442EFFBB77A3 /* LocalPlayerViews.swift */,
+				B63A2599935996422262D033 /* MembershipSession.swift */,
 				61304C03E79829A6D866D856 /* MuscleVolumeView.swift */,
 				18610C77DB91BEA7EC1BA5A5 /* Platform.swift */,
 				1AD5F6D25B0747CBB34B92E0 /* PlayerProfileView.swift */,
@@ -304,7 +304,6 @@
 				3F52A172B6A5D956AA1D5619 /* ExerciseGuideViews.swift in Sources */,
 				A603EF1D2081E79D426D125F /* ExerciseLibrary.swift in Sources */,
 				AF739CEA16FF86C2869CD863 /* ExercisePicker.swift in Sources */,
-				8E916E27F52DB823F5B2FA5C /* FacebookSession.swift in Sources */,
 				2F5A3BD85D3A48178F19089D /* GameCenterService.swift in Sources */,
 				1AD07D332B819F1123CCE2CE /* GameProfile.swift in Sources */,
 				103CF1C2993C71A13DD25302 /* GameProfileService.swift in Sources */,
@@ -316,6 +315,7 @@
 				FAFF026D51C1A6CD87C7D177 /* LocalGame.swift in Sources */,
 				F09135DE35EB11EB544583DD /* LocalPlayerViews.swift in Sources */,
 				8195A5C92DF6554EE927DBD1 /* LocalPlayers.swift in Sources */,
+				4ADAEA4053FCE37495BCFDE3 /* MembershipSession.swift in Sources */,
 				16FE8CE8358EE85D97FFF9B2 /* MuscleVolumeView.swift in Sources */,
 				DBBCF29A9BBE4CCF84AAD66A /* Platform.swift in Sources */,
 				E46FF44B7F2C9AD69C1ADC4A /* PlayerProfileView.swift in Sources */,

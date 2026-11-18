@@ -1,54 +1,75 @@
-# Endgame Fitness — current state (2026-11-18)
+# Endgame Fitness current status
 
-The latest user instruction supersedes local-only login: **Facebook is the sole sign-in provider**. Existing local-player records remain the native storage model; they are not a second login provider.
+Copyright © 2026 Daniel Bates / Bates LLC. All rights reserved.
+Website: https://batesai.org/endgamefitness/ · Support: help@batesai.org
 
-## Delivered implementation
+Updated November 18, 2026.
 
-- Reconciled `main` with the newer `worldclass-2026-11-16` native branch; resolved conflicts toward the local training/game implementation rather than resurrecting old membership auth.
-- Native Facebook gate, Keychain session, browser authentication and PKCE-bound single-use callback exchange. First Facebook connection adopts the existing selected profile once, preserving its log and onboarding answers. Subsequent Facebook accounts map to separate profiles.
-- Dependency-free responsive browser app: preference onboarding, equipment-aware plans, readiness-based recovery, every-fifth-week volume reduction, rep-reserve progression, active-session recovery, rest timer, history, XP, quests, units, backups and exercise guide.
-- Server-side Facebook identity verification; secure session handling; validated account-only cloud records with optimistic revisions; mutual friend invitations and aggregate-only party stats; deletion endpoint and privacy/deletion instructions.
-- Scoped Worker deployment targets `/endgamefitness*` and `/api/endgame/*`, preserving the rest of the website. Added only isolated `ef_` database tables.
-- No automatic GitHub workflows. Local `.app` is the beta artifact. Keep public release as a prerelease until the external sign-in path is verified.
+## Current login and deployment
 
-## Verification evidence
+- Endgame uses the existing BatesAI Google and Apple membership system. There
+  is no separate Endgame or Facebook login.
+- The web app is published at `https://batesai.org/endgamefitness/`. The Pages
+  deployment completed at `https://13963e29.website-8lz.pages.dev`.
+- Pages handles the `/membership` OAuth callback. The Endgame Worker now routes
+  only `/api/endgame/*`; production version `2be68dff-d05a-48f7-a794-73762c6fd06a`.
+- The production Google and Apple start routes both returned 302 to their
+  providers and used `https://batesai.org/membership` as the callback. Google
+  state uses `SameSite=Lax`; Apple form POST uses `SameSite=None; Secure`.
+- Production callback smoke checks rejected mismatched state for both GET and
+  Apple form POST. The old `/api/endgame/auth/start` route now returns 404.
+- Facebook App ID and App Secret were removed from the Endgame Worker after the
+  new shared-session API was deployed. No secret values are stored in this repo.
 
-| Check | Result / boundary |
+## Data and session status
+
+- The Endgame membership-link migration and website native-handoff migration
+  were applied to the existing `batesai-db` database.
+- Before the switch, production had zero rows in `ef_accounts`; there was no
+  Facebook Endgame profile data to migrate.
+- The Worker validates BatesAI session hashes against the shared `sessions`
+  table and maps each BatesAI user to one stable Endgame profile.
+- The app uses Secure, HttpOnly browser sessions. The Mac beta uses a
+  one-use, PKCE-bound native handoff and stores its BatesAI session in Keychain.
+- Google and Apple redirects and callback state rejection are verified. A full
+  login using an actual Google or Apple account has not been completed in this
+  run, so provider-console configuration and account access still need a real
+  sign-in check.
+
+## Verification
+
+| Check | Result |
 | --- | --- |
-| Native regression selftest | **304/304 PASS** on the consolidated native engine; includes planner, progression, data recovery and game rules. These tests do not prove clinical superiority. |
-| Native Facebook sources | Swift compile succeeds; full Release `.app` build succeeds. Live authentication remains unverified. |
-| Web/backend tests | **43/43 PASS**, including full plan matrix, earned quest claims, progression, replay prevention, mocked successful Facebook exchange, PKCE one-use codes, session expiry, ownership, conflicts, friendships, deletion and validation. Provider responses are mocked, not real Meta credentials. |
-| Browser workflows | Pass in headless Chromium at desktop and 390px mobile: unavailable login, mocked authenticated onboarding, workout resume after reload, finish/XP, quests, main tabs, unit conversion, backup export/import, exercise search and invitation acceptance. No JavaScript errors or horizontal overflow observed. |
-| Live deployment | App entry and scoped privacy page return 200. `/config` returns `facebook:true`; `/auth/start` returns 302 to Facebook OAuth with `public_profile` and the configured callback URI. This verifies the readiness gate and start redirect, not a completed login. Real Chromium loads the production entry and privacy page with no JavaScript errors. Worker version `3037fae0-d49f-4b62-b10b-34521d4f814b` is deployed. |
-| Candidate source scan | Gitleaks found no leaks in the candidate source snapshot; ignored browsers/build artifacts excluded. |
+| BatesAI website callback tests | 6/6 pass: OAuth start, state validation, secure cookies, Apple form callback, session cookie, and one-use native PKCE exchange |
+| Endgame web/backend tests | 39/39 pass: training engine, membership mapping, cookie/Bearer sessions, ownership, conflicts, friends, logout and deletion |
+| Native engine self-test | 304/304 pass |
+| Mac beta | Release build succeeded for Apple Silicon; a fresh local app copy is at the top level of Downloads |
+| Website build | Astro static build succeeded; existing warnings remain for stale Browserslist data and an unrelated GET-only API route |
+| Worker build | Wrangler dry-run passed; production deploy contains only the API custom route |
+| Production smoke | App, privacy redirect, membership page, provider redirects, config and anonymous response verified |
+| Browser automation | Not run to completion: Playwright's Chromium executable is not installed. No browser was installed or opened. |
 
-Screenshots and raw test logs are private working artifacts in `.local/` (test player only). Do not publish real player data.
+## Data and product limits
 
-## Current external blocker
+- Native Mac and web training histories remain separate formats and do not sync.
+- Endgame's first schema requires a `facebook_id` column. New rows use the
+  internal synthetic `batesai:<user-id>` key, never a Facebook identifier.
+- Program rules are conservative product choices, not proof of universal
+  superiority over a qualified coach or every custom plan.
+- The Mac `.app` is an unsigned local beta; signing and notarization remain
+  necessary for a normal public download.
 
-The Endgame Worker now has both required secret names configured. Production `/api/endgame/config` returns `facebook:true`, and `/api/endgame/auth/start` redirects to Facebook OAuth using only `public_profile`. The secret values were entered directly in Wrangler and were not read back. A full callback/login test, an app-role account test, and a non-role public-account test are still required. The Meta app is still in Development mode, and the user reports its category and icon are missing for submission. Complete Meta review and Live-mode setup before public launch. Never ask the user to paste a secret into chat or source.
+## Next work
 
-The setup values and credential search are recorded in [`FACEBOOK_SETUP.md`](FACEBOOK_SETUP.md). The Google Drive Code `Documentation` folder had no Endgame/Facebook credential file or matching app-key declarations; its `Project_Management_Meta` environment pointer leads to alert-email settings, not Facebook credentials. The secure key store also had no Facebook App ID or App Secret. The user reports saving the OAuth redirect URI, app domain, and privacy/data-deletion URLs on the existing BatesAI Meta app; the redirect persisted after reload. The App Secret was entered directly into Cloudflare through Wrangler; no secret value is in documentation or chat. The app remains in Development mode, and its category and icon are still reported missing for submission. A 1024 × 1024 Endgame icon candidate is already in the repository, but it has not been uploaded to Meta.
+1. Complete Google and Apple production sign-in with authorized accounts and
+   verify Endgame web saves under the resulting BatesAI account.
+2. Complete the Mac beta sign-in once for each provider and confirm the current
+   local player and onboarding answers remain selected.
+3. Install a local Playwright browser only if browser QA is needed and permitted;
+   then rerun `scripts/verify/web_flow.py` against its local fixture.
+4. Before introducing workout sync, define and test a versioned bridge between
+   native and web training formats.
 
-The Meta developer dashboard was visible in the signed-in browser, but this review did not independently read back the reported settings. This agent did not change Meta settings or retrieve credentials. The only reported changes are the three settings listed in `FACEBOOK_SETUP.md`.
-
-## Known limitations and follow-up work
-
-1. **No real Facebook end-to-end test yet.** Do not advertise the app as publicly usable or bug-free merely because the landing page is online.
-2. **Native and web logs remain separate.** Native has a substantially richer planner/library and game world. Web is a usable training companion once login is configured, not feature parity. Build a versioned, lossless bridge before cloud-syncing native records.
-3. Native social systems retain household/rival/Game Center/Gym Party capabilities; the web uses Facebook-authenticated friend codes. No automatic Facebook friend import and no automatic social posts.
-4. Web rules are conservative heuristics informed by resistance-training research; they are not a mathematical proof that arbitrary user programs are inferior. Avoid optimizing a scoring function and presenting its own scores as independent outcome evidence.
-5. Native online friend UI parity, signed/notarized distribution, real-device notifications, accessibility/VoiceOver over every native screen and cross-device concurrency under real workloads still need dedicated verification.
-6. Add scheduled expiry cleanup, request-level abuse protection and granular session sync before scaling a public launch.
-7. Bodyweight-only web plans have limited loaded pulling options; make bands/anchor equipment a future preference rather than pretending an unweighted W raise is equivalent to a loaded row.
-8. The web 3 MB backup/save limit is deliberate. Design pagination and per-session storage before removing it.
-9. Keep the existing bundle ID, player mapping, onboarding flags and WorkoutStore recovery behavior. Never replace old logs with empty or simplified web data.
-
-## Research references
-
-- [ACSM progression position stand](https://pubmed.ncbi.nlm.nih.gov/19204579/) supports progressive resistance training; our precise rounding/decision rules are implementation choices.
-- [Proximity-to-failure meta-regression](https://pubmed.ncbi.nlm.nih.gov/38970765/) motivates tracking reps in reserve, with uncertainty about individual response.
-- [2026 ACSM overview](https://pmc.ncbi.nlm.nih.gov/articles/PMC12965823/) is the newer guidance to evaluate in the next training-engine review.
-- [Meta Graph version documentation](https://developers.facebook.com/docs/graph-api/changelog/versions/) was checked; this integration pins v27.0 and allows an explicit validated override.
-
-Earlier notes are in `STATUS_LEGACY.md`; archived account and iOS approaches remain under `_archive/` with their original rationale. Some older documents describe obsolete membership behavior; use this file and `Server/README.md` as current guidance.
+For architecture and migration details, read [`BATESAI_LOGIN.md`](BATESAI_LOGIN.md),
+[`Server/README.md`](../Server/README.md), and the website repo's
+`docs/ENDGAME_FITNESS_DEPLOYMENT.md`.

@@ -60,7 +60,10 @@ test("API config stays separate from asset path rewriting", async () => {
     {},
     ctx,
   );
-  assert.equal((await r.json()).facebook, false);
+  assert.deepEqual(await r.json(), {
+    providers: ["google", "apple"],
+    provider: "batesai-membership",
+  });
 });
 test("similar unrelated routes are not served as the app", async () => {
   const r = await worker.fetch(

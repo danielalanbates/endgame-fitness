@@ -77,7 +77,7 @@ via the old website membership; TestFlight on macOS + iOS.
    worktree; it lagged origin and website PR #6 lacked `_lib/game.js`,
    `talents.js`, `challenges.js`, so `/api/fitness/quests` was 404 live.
    Website PR #7 syncs everything; `~` is fast-forwarded. Deploy from the
-   session scratchpad — `wrangler pages deploy` fails under `/Users/daniel`
+   session scratchpad — `wrangler pages deploy` failed from a local home directory
    with a mangled `.wrangler/tmp` path.
 8. **Debug affordance:** `-ef.autologin <email> <password>` (DEBUG builds)
    signs in without a keyboard so the simulator can be driven headlessly

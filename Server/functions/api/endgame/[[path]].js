@@ -1,15 +1,13 @@
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-// Facebook is the sole identity provider. Provider tokens never reach clients or storage.
+// BatesAI Membership is the sole identity system. Endgame accepts its shared
+// Google/Apple session and never receives provider tokens.
 import {
   validateState,
   stats,
   weeklySessions,
   completedSets,
 } from "../../_lib/endgame-engine.mjs";
-const ORIGIN = "https://batesai.org",
-  COOKIE = "__Secure-ef_session",
-  STATE = "__Secure-ef_oauth";
-const TTL = 30 * 86400;
+const ORIGIN = "https://batesai.org";
 const now = () => Math.floor(Date.now() / 1000);
 const random = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(32)), (x) =>
@@ -28,8 +26,14 @@ const cookie = (r, k) =>
     .map((x) => x.trim())
     .find((x) => x.startsWith(k + "="))
     ?.slice(k.length + 1) || "";
-const cookieValue = (name, value, ttl) =>
-  `${name}=${value}; Path=/api/endgame; Max-Age=${ttl}; HttpOnly; Secure; SameSite=Lax`;
+const authToken = (request) => {
+  const authorization = request.headers.get("Authorization") || "";
+  return authorization.startsWith("Bearer ")
+    ? authorization.slice(7).trim()
+    : cookie(request, "batesai_session");
+};
+const clearSessionCookie =
+  "batesai_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax";
 function reply(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
@@ -41,40 +45,59 @@ function reply(body, status = 200, headers = {}) {
     },
   });
 }
-function redirect(url, cookies = []) {
-  const h = new Headers({
-    Location: url,
-    "Cache-Control": "no-store",
-    "Referrer-Policy": "no-referrer",
-  });
-  for (const c of cookies) h.append("Set-Cookie", c);
-  return new Response(null, { status: 302, headers: h });
-}
-const configured = (env) =>
-  /^\d+$/.test(env.FACEBOOK_APP_ID || "") && !!env.FACEBOOK_APP_SECRET;
-const apiVersion = (env) =>
-  /^v\d+\.0$/.test(env.FACEBOOK_GRAPH_VERSION || "")
-    ? env.FACEBOOK_GRAPH_VERSION
-    : "v27.0";
 async function session(request, env) {
-  const token =
-    (request.headers.get("Authorization") || "").replace(/^Bearer /, "") ||
-    cookie(request, COOKIE);
+  const token = authToken(request);
   if (!token) return null;
-  return env.DB.prepare(
-    "SELECT a.id,a.display_name,a.friend_code,s.expires_at FROM ef_sessions s JOIN ef_accounts a ON a.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
+  const identity = await env.DB.prepare(
+    "SELECT u.id AS membership_user_id, COALESCE(NULLIF(u.name,''),u.email) AS display_name,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
   )
     .bind(await hash(token), now())
     .first();
-}
-async function issue(env, id) {
-  const token = random();
-  await env.DB.prepare(
-    "INSERT INTO ef_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
+  if (!identity) return null;
+
+  let link = await env.DB.prepare(
+    "SELECT a.id,a.display_name,a.friend_code FROM ef_membership_links l JOIN ef_accounts a ON a.id=l.user_id WHERE l.membership_user_id=?",
   )
-    .bind(await hash(token), id, now() + TTL)
-    .run();
-  return token;
+    .bind(identity.membership_user_id)
+    .first();
+  if (!link) {
+    const id = crypto.randomUUID();
+    const displayName = String(identity.display_name || "BatesAI member").trim().slice(0, 80) || "BatesAI member";
+    const memberKey = `batesai:${identity.membership_user_id}`;
+    await env.DB.prepare(
+      "INSERT INTO ef_accounts(id,facebook_id,display_name,friend_code,created_at) VALUES(?,?,?,?,?) ON CONFLICT(facebook_id) DO NOTHING",
+    )
+      .bind(id, memberKey, displayName, random().slice(0, 16).toUpperCase(), now())
+      .run();
+    const account = await env.DB.prepare(
+      "SELECT id FROM ef_accounts WHERE facebook_id=?",
+    )
+      .bind(memberKey)
+      .first();
+    await env.DB.prepare(
+      "INSERT INTO ef_membership_links(membership_user_id,user_id) VALUES(?,?) ON CONFLICT(membership_user_id) DO NOTHING",
+    )
+      .bind(identity.membership_user_id, account.id)
+      .run();
+    link = await env.DB.prepare(
+      "SELECT a.id,a.display_name,a.friend_code FROM ef_membership_links l JOIN ef_accounts a ON a.id=l.user_id WHERE l.membership_user_id=?",
+    )
+      .bind(identity.membership_user_id)
+      .first();
+  }
+  const displayName = String(identity.display_name || link.display_name || "BatesAI member").trim().slice(0, 80) || "BatesAI member";
+  if (link.display_name !== displayName) {
+    await env.DB.prepare("UPDATE ef_accounts SET display_name=? WHERE id=?")
+      .bind(displayName, link.id)
+      .run();
+  }
+  return {
+    id: link.id,
+    membership_user_id: identity.membership_user_id,
+    display_name: displayName,
+    friend_code: link.friend_code,
+    expires_at: identity.expires_at,
+  };
 }
 export function validMutation(request) {
   return (
@@ -87,193 +110,13 @@ async function boundedJSON(request) {
   if (text.length > 3000000) throw Error("Payload too large");
   return JSON.parse(text);
 }
-async function graph(env, path, token) {
-  const url = new URL(`https://graph.facebook.com/${apiVersion(env)}/${path}`);
-  const proofKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(env.FACEBOOK_APP_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const proof = await crypto.subtle.sign(
-    "HMAC",
-    proofKey,
-    new TextEncoder().encode(token),
-  );
-  url.searchParams.set(
-    "appsecret_proof",
-    Array.from(new Uint8Array(proof), (x) =>
-      x.toString(16).padStart(2, "0"),
-    ).join(""),
-  );
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) throw Error("Facebook verification failed");
-  return res.json();
-}
-async function oauth(request, env, path) {
-  if (!configured(env))
-    return reply(
-      {
-        error: "Facebook sign-in is awaiting Meta app configuration.",
-        code: "FACEBOOK_NOT_CONFIGURED",
-      },
-      503,
-    );
-  const url = new URL(request.url),
-    callback = ORIGIN + "/api/endgame/auth/callback";
-  if (path === "start") {
-    if (request.method !== "GET")
-      return reply({ error: "Method not allowed" }, 405);
-    const native = url.searchParams.get("native") === "1",
-      challenge = url.searchParams.get("challenge");
-    if (native && !/^[A-Za-z0-9_-]{43}$/.test(challenge || ""))
-      return reply({ error: "Invalid native verifier challenge" }, 400);
-    const state = random();
-    await env.DB.prepare("DELETE FROM ef_oauth_states WHERE expires_at<?")
-      .bind(now())
-      .run();
-    await env.DB.prepare(
-      "INSERT INTO ef_oauth_states(state_hash,native,challenge,expires_at) VALUES(?,?,?,?)",
-    )
-      .bind(await hash(state), native ? 1 : 0, challenge || null, now() + 600)
-      .run();
-    const target = new URL(
-      `https://www.facebook.com/${apiVersion(env)}/dialog/oauth`,
-    );
-    for (const [k, v] of Object.entries({
-      client_id: env.FACEBOOK_APP_ID,
-      redirect_uri: callback,
-      response_type: "code",
-      state,
-      scope: "public_profile",
-    }))
-      target.searchParams.set(k, v);
-    return redirect(target.toString(), [cookieValue(STATE, state, 600)]);
-  }
-  if (path !== "callback" || request.method !== "GET")
-    return reply({ error: "Unknown authentication endpoint" }, 404);
-  const state = url.searchParams.get("state") || "";
-  if (!/^[a-f0-9]{64}$/.test(state) || cookie(request, STATE) !== state)
-    return reply(
-      {
-        error:
-          "Sign-in state expired or invalid. Start again from Endgame Fitness.",
-      },
-      400,
-    );
-  const entry = await env.DB.prepare(
-    "DELETE FROM ef_oauth_states WHERE state_hash=? AND expires_at>? RETURNING native,challenge",
-  )
-    .bind(await hash(state), now())
-    .first();
-  if (!entry)
-    return reply({ error: "This sign-in has expired. Please try again." }, 400);
-  const clear = cookieValue(STATE, "", 0);
-  if (url.searchParams.has("error"))
-    return redirect(ORIGIN + "/endgamefitness/?auth=cancelled", [clear]);
-  const code = url.searchParams.get("code");
-  if (!code || code.length > 4096)
-    return reply({ error: "Missing authorization code" }, 400);
-  const tokenResponse = await fetch(
-    `https://graph.facebook.com/${apiVersion(env)}/oauth/access_token`,
-    {
-      method: "POST",
-      body: new URLSearchParams({
-        client_id: env.FACEBOOK_APP_ID,
-        client_secret: env.FACEBOOK_APP_SECRET,
-        redirect_uri: callback,
-        code,
-      }),
-      signal: AbortSignal.timeout(10000),
-    },
-  );
-  const tokens = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokens.access_token)
-    return reply(
-      { error: "Facebook could not complete sign-in. Try again." },
-      401,
-      { "Set-Cookie": clear },
-    );
-  const me = await graph(env, "me?fields=id,name", tokens.access_token);
-  if (!/^\d+$/.test(me.id || "") || typeof me.name !== "string")
-    return reply({ error: "Invalid Facebook identity" }, 401);
-  let account = await env.DB.prepare(
-    "SELECT id FROM ef_accounts WHERE facebook_id=?",
-  )
-    .bind(me.id)
-    .first();
-  if (!account) {
-    const id = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO ef_accounts(id,facebook_id,display_name,friend_code,created_at) VALUES(?,?,?,?,?) ON CONFLICT(facebook_id) DO NOTHING",
-    )
-      .bind(
-        id,
-        me.id,
-        me.name.slice(0, 80),
-        random().slice(0, 16).toUpperCase(),
-        now(),
-      )
-      .run();
-    account = await env.DB.prepare(
-      "SELECT id FROM ef_accounts WHERE facebook_id=?",
-    )
-      .bind(me.id)
-      .first();
-  }
-  if (entry.native) {
-    const code = random();
-    await env.DB.prepare(
-      "INSERT INTO ef_native_codes(code_hash,user_id,challenge,expires_at) VALUES(?,?,?,?)",
-    )
-      .bind(await hash(code), account.id, entry.challenge, now() + 60)
-      .run();
-    return redirect("endgamefitness://auth?code=" + code, [clear]);
-  }
-  const token = await issue(env, account.id);
-  return redirect(ORIGIN + "/endgamefitness/", [
-    clear,
-    cookieValue(COOKIE, token, TTL),
-  ]);
-}
 export async function onRequest({ request, env, params }) {
   const path = (params.path || []).join("/");
   try {
     if (path === "config" && request.method === "GET")
-      return reply({ facebook: configured(env), provider: "facebook" });
+      return reply({ providers: ["google", "apple"], provider: "batesai-membership" });
     if (path.startsWith("auth/"))
-      return await oauth(request, env, path.slice(5));
-    if (path === "native/exchange" && request.method === "POST") {
-      const b = await boundedJSON(request);
-      if (
-        !/^[a-f0-9]{64}$/.test(b.code || "") ||
-        !/^[A-Za-z0-9_-]{43,128}$/.test(b.verifier || "")
-      )
-        return reply({ error: "Invalid exchange" }, 400);
-      const bytes = new Uint8Array(
-        await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(b.verifier),
-        ),
-      );
-      const challenge = btoa(String.fromCharCode(...bytes))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/, "");
-      // Wrong verifiers cannot consume a legitimate code.
-      const entry = await env.DB.prepare(
-        "DELETE FROM ef_native_codes WHERE code_hash=? AND challenge=? AND expires_at>? RETURNING user_id",
-      )
-        .bind(await hash(b.code), challenge, now())
-        .first();
-      if (!entry)
-        return reply({ error: "Sign-in code expired or invalid" }, 401);
-      return reply({ token: await issue(env, entry.user_id), expires_in: TTL });
-    }
+      return reply({ error: "Use BatesAI Membership to sign in" }, 404);
     if (
       !["GET", "HEAD"].includes(request.method) &&
       !request.headers.get("Authorization")?.startsWith("Bearer ") &&
@@ -283,17 +126,15 @@ export async function onRequest({ request, env, params }) {
     if (!env.DB) return reply({ error: "Storage is unavailable" }, 503);
     const user = await session(request, env);
     if (!user)
-      return reply({ error: "Sign in with Facebook to continue" }, 401);
+      return reply({ error: "Sign in with your BatesAI account to continue" }, 401);
     if (path === "me" && request.method === "GET") return reply({ user });
     if (path === "logout" && request.method === "POST") {
-      const token =
-        (request.headers.get("Authorization") || "").replace(/^Bearer /, "") ||
-        cookie(request, COOKIE);
-      await env.DB.prepare("DELETE FROM ef_sessions WHERE token_hash=?")
+      const token = authToken(request);
+      await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?")
         .bind(await hash(token))
         .run();
       return reply({ ok: true }, 200, {
-        "Set-Cookie": cookieValue(COOKIE, "", 0),
+        "Set-Cookie": clearSessionCookie,
       });
     }
     if (path === "state" && request.method === "GET") {
@@ -319,7 +160,7 @@ export async function onRequest({ request, env, params }) {
         v.rivals.length
       )
         return reply(
-          { error: "State must belong to your Facebook account" },
+          { error: "State must belong to your BatesAI account" },
           400,
         );
       let result;
@@ -439,7 +280,9 @@ export async function onRequest({ request, env, params }) {
       const b = await boundedJSON(request);
       if (b.confirm !== "DELETE")
         return reply({ error: "Confirmation required" }, 400);
+      const token = authToken(request);
       await env.DB.batch([
+        env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await hash(token)),
         env.DB.prepare(
           "DELETE FROM ef_friendships WHERE requester=? OR recipient=?",
         ).bind(user.id, user.id),
@@ -451,7 +294,7 @@ export async function onRequest({ request, env, params }) {
         env.DB.prepare("DELETE FROM ef_accounts WHERE id=?").bind(user.id),
       ]);
       return reply({ ok: true }, 200, {
-        "Set-Cookie": cookieValue(COOKIE, "", 0),
+        "Set-Cookie": clearSessionCookie,
       });
     }
     return reply({ error: "Unknown endpoint" }, 404);

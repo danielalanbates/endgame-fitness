@@ -9,7 +9,7 @@ class Handler(SimpleHTTPRequestHandler):
  def do_GET(self):
   if self.path.startswith('/api/endgame/'):
    name=self.path.split('?')[0].rsplit('/',1)[-1]
-   body={'facebook':False,'provider':'facebook'} if name=='config' else {'error':'Sign in with Facebook to continue'}
+   body={'providers':['google','apple'],'provider':'batesai-membership'} if name=='config' else {'error':'Sign in with your BatesAI account to continue'}
    self.send_response(200 if name=='config' else 401);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(json.dumps(body).encode());return
   super().do_GET()
 ThreadingHTTPServer(('127.0.0.1',4318),Handler).serve_forever()
