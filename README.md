@@ -1,107 +1,59 @@
 # Endgame Fitness
 
-A strength-training app that behaves like a game: you level up, earn talent
-points, hold streaks, and your friends can see it. macOS and iOS, one codebase,
-signed in through your **batesai.org membership**.
+Strength training with game progression and a training party. **Facebook is the only sign-in provider** (updated November 18, 2026).
 
----
+- Website: **https://batesai.org/endgamefitness/**
+- Support: **help@batesai.org** · https://batesai.org
+- Source: https://github.com/danielalanbates/endgame-fitness
+- Status: **public beta; real Facebook sign-in requires Meta app configuration**. No stable release or universal superiority claim is made.
 
-## Where things are
+| Area | Current behavior |
+| --- | --- |
+| Web | Equipment-aware strength plans, readiness/recovery sessions, conservative double progression, resumable workout logging, history, XP/levels/quests, unit conversion, export/import, account saves with conflict protection |
+| Social | Facebook identity, private friend codes, mutual invitations, aggregate stats and a weekly consistency challenge. No automatic posts or Facebook contact import. |
+| Mac beta | Existing full native training engine, 876-exercise library, game systems and native social features; Facebook gate and PKCE browser handoff added. Existing selected profile and answers adopted once on first Facebook connection. |
+| Identity | Secure 30-day sessions; HttpOnly cookie on web, Keychain on Mac. No email, Google, Apple or guest login in the new Endgame entry points. |
+| Data | Web data stays in per-account browser storage and private Cloudflare D1 records. Native logs remain on the Mac. **Native and web logs do not yet sync.** |
 
-```
-App/
-  Sources/EndgameFitness/     the app — both platforms build from these files
-    WorkoutTrackerMac_Enhanced.swift   6,300 lines: tracking, programs, mesocycles,
-                                       AI coach cards, calculators, charts, onboarding
-    Platform.swift                     every AppKit/UIKit difference, in one file
-    BatesAIAuth.swift                  Sign in with Apple / Google / email, Keychain
-    GameProfile.swift                  XP, levels, streaks, offline-first sync
-    SocialViews.swift                  sign-in, player card, feed, leaderboards, guilds
-    RootView.swift                     launch flow: restore -> sign in -> onboard -> app
-    AvatarSystem.swift, AvatarViews.swift   character/cosmetics system
-  Backend/
-    schema.sql                  D1 tables (profiles, sessions, friends, guilds, feed)
-    functions/                  Cloudflare Pages Functions — source of truth
-    tests/                      security tests for identity-token verification
-    deploy.sh                   sync + migrate + deploy
-  Support/                      Info.plists and entitlements
-  project.yml                   XcodeGen spec (macOS + iOS targets)
-Docs/                           design specs worth keeping
-Legal/                          disclaimer, ToS, licence
-Web/web-react/                  React companion (separate from the native app)
-_archive/2026-07-30/            everything retired, with WHY_ARCHIVED.md
-```
+## Source map
 
-## Building
-
-**Xcode 26.6 is installed** on the development Mac (since 2026-08-28). Two ways
-to build:
-
-```bash
-# Fast macOS binary for local verification (seconds, no bundle, no signing)
-cd App/Sources/EndgameFitness
-xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -o /tmp/EndgameFitness *.swift
-
-# Real archives (macOS + iOS), signed with the Apple Distribution certificate
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-SKIP_UPLOAD=1 scripts/ship.sh both
+```text
+App/Sources/EndgameFitness/    SwiftUI Mac app and native training/game engines
+  FacebookSession.swift      Facebook-only sign-in, PKCE, Keychain, existing-player mapping
+  SmartPlanner.swift         native adaptive program generator and evaluation
+  WorkoutStore.swift         atomic training storage and recovery
+  EngineSelfTest.swift       native engine regression checks
+Web/local-app/               dependency-free browser app and testable training engine
+Server/                     scoped Cloudflare Worker, Facebook OAuth, account saves and friends
+Server/README.md             deployment, Meta setup and security details
+Docs/STATUS.md              verification results, known limits and next actions
+Docs/STATUS_LEGACY.md        earlier development notes (historical, not current behavior)
+_archive/                   retired account/iOS features and superseded approaches
 ```
 
-`-parse-as-library` is required for the swiftc path: without it the compiler
-treats the file holding `@main` as a script and refuses to build.
+## Check and build locally (no GitHub compute)
 
-## Shipping to TestFlight
+Node 22+ (with `node:sqlite`), Python 3, Xcode and XcodeGen are used locally.
 
-`scripts/ship.sh ios|macos|both [version] [build]` — XcodeGen → archive →
-export (`App/ExportOptions-iOS.plist` / `-macOS.plist`) → upload through the
-App Store Connect Build Upload API (`scripts/upload_asc.py`). Needs the ASC API
-key at `~/Library/Application Support/BatesAI/keys/AuthKey_32R84GFV2F.p8` and
-**an App Store Connect app record for `org.batesai.endgamefitness`** (see
-`Docs/STATUS.md`).
-
-`.github/workflows/testflight.yml` does the same thing on GitHub Actions and is
-kept for when the account's Actions billing works again.
-
-## The backend
-
-Profiles live in the shared Cloudflare D1 database `batesai-db`
-(`9e43d1f6-b25f-4cab-87da-9669dc4148d2`), alongside the rest of BatesAI
-membership. Endpoints are Pages Functions under `/api/auth/*` and `/api/fitness/*`.
-
-```bash
-cd App/Backend
-./deploy.sh --dry-run                    # see what it would do
-./deploy.sh                              # sync workers, migrate, deploy
-node tests/auth-verification.test.mjs     # 12 security tests
+```sh
+node --test Web/local-app/tests/*.test.mjs Server/tests/*.test.mjs
+node scripts/build-web.mjs
+wrangler deploy --config Server/wrangler.toml --dry-run
+xcodegen generate --spec App/project.yml
+xcodebuild -project App/EndgameFitness.xcodeproj -scheme EndgameFitness-macOS \
+  -configuration Release -derivedDataPath "$PWD/.local/DerivedData" \
+  SYMROOT="$PWD/build" CODE_SIGNING_ALLOWED=NO build
+"build/Release/Endgame Fitness.app/Contents/MacOS/Endgame Fitness" -ef.selftest
 ```
 
-### Sign-in, and why the verification matters
+Browser regression checks are in `scripts/verify/web_flow.py` (Python Playwright). Start `python3 scripts/preview_web.py` for the local fixture server; it never creates a real authenticated session. Keep browser downloads and screenshots in ignored `.local/`.
 
-Native Sign in with Apple hands the device a JWT signed by Apple, which the app
-trades for a BatesAI session token. No client secret is involved in that
-exchange, so **signature verification is the only thing standing between the
-endpoint and account takeover**. `functions/api/auth/[[path]].js` verifies the
-token against Apple's published JWKS, plus issuer, audience and expiry.
+Use the generated local `.app` for beta testing. Signing/notarization and verified real Facebook login are required before treating a downloadable Mac build as a stable public release. A source checkout and local build do not require GitHub Actions.
 
-An earlier revision of that worker base64-decoded the token payload *without*
-checking the signature — anyone could have minted an identity token for any email
-and logged in as that user. `tests/auth-verification.test.mjs` exists so that
-cannot come back; it runs in CI.
+For website deployment and the exact Meta redirect URI, see [Server/README.md](Server/README.md). Build artifacts include only eight allowlisted web assets, excluding tests and development files. The Worker intercepts only Endgame routes and does not rebuild the rest of BatesAI.
 
-### Server-authoritative progression
+## Privacy and licensing
 
-The client uploads what happened (volume, reps, duration). The **server** decides
-the XP and the level. A patched client can lie about a single workout, but it
-cannot declare itself level 99 on the leaderboard. Session ids are
-client-generated UUIDs, so a retried sync is idempotent and can't double-count XP.
+Keep credentials, test exports, training data and logs in ignored `.local/` or environment/secret storage. Never commit them. Privacy and deletion instructions are published at `/endgamefitness/privacy.html`.
 
-Sync is offline-first: workouts queue locally and flush when a connection and a
-signed-in user are both available. A workout in a basement gym is never lost.
-
-## Status
-
-See `Docs/STATUS.md` — kept current per session. As of 2026-08-28: backend live at
-batesai.org (membership sign-in, sync, quests, achievements, talents, challenges,
-friend codes, account deletion all verified end to end from the macOS app);
-Xcode 26 installed and archives build locally; TestFlight waits only on the App
-Store Connect app record.
+PolyForm Noncommercial 1.0.0 plus the existing 10% commercial rider: see [LICENSE](LICENSE). This is source available, not an OSI open-source license. Exercise data attribution is retained in the project. Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.

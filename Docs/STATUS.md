@@ -1,109 +1,52 @@
-# Endgame Fitness — status and next actions
+# Endgame Fitness — current state (2026-11-18)
 
-_Updated 2026-08-29 (autonomous session; supersedes the 2026-08-28 status)._
+The latest user instruction supersedes local-only login: **Facebook is the sole sign-in provider**. Existing local-player records remain the native storage model; they are not a second login provider.
 
-Goal: world-class fitness app that blurs social game and training log; profiles
-via batesai.org membership; TestFlight on macOS + iOS.
+## Delivered implementation
 
-## Where things stand (2026-08-29, evening)
+- Reconciled `main` with the newer `worldclass-2026-11-16` native branch; resolved conflicts toward the local training/game implementation rather than resurrecting old membership auth.
+- Native Facebook gate, Keychain session, browser authentication and PKCE-bound single-use callback exchange. First Facebook connection adopts the existing selected profile once, preserving its log and onboarding answers. Subsequent Facebook accounts map to separate profiles.
+- Dependency-free responsive browser app: preference onboarding, equipment-aware plans, readiness-based recovery, every-fifth-week volume reduction, rep-reserve progression, active-session recovery, rest timer, history, XP, quests, units, backups and exercise guide.
+- Server-side Facebook identity verification; secure session handling; validated account-only cloud records with optimistic revisions; mutual friend invitations and aggregate-only party stats; deletion endpoint and privacy/deletion instructions.
+- Scoped Worker deployment targets `/endgamefitness*` and `/api/endgame/*`, preserving the rest of the website. Added only isolated `ef_` database tables.
+- No automatic GitHub workflows. Local `.app` is the beta artifact. Keep public release as a prerelease until the external sign-in path is verified.
 
-| Area | State |
-|---|---|
-| App Store Connect record | **EXISTS** — "Endgame Fitness RPG", app id `6806675925`, bundle `org.batesai.endgamefitness`, SKU `org.batesai.endgamefitness`. Created through Xcode Organizer → Distribute App (REST `POST /v1/apps` is 403). "Endgame Fitness" as a store name is taken by another developer; rename in ASC if a better free name is found. |
-| Signed builds | `scripts/ship.sh both 1.0.0 <build>` archives, exports and uploads locally (Xcode 26.6 + iOS 26.5 platform). Build 3 (both platforms) was REJECTED in processing — see "Build 3 post-mortem". **Build 1.0.0 (6) is VALID on both platforms** (see `Docs/SHIP_LOG.md`); TestFlight internal group created, Daniel invited. |
-| Backend | Live on batesai.org (Cloudflare Pages `website` + D1 `batesai-db`). Guild raids + Step Count quest deployed and migrated 2026-08-29; smoke: `/api/fitness/{profile,quests,raid,achievements,talents,challenges}` all 200, a synced 12,000 lb session dealt 12,250 raid damage. |
-| iOS UI | Ran in the Simulator for the FIRST time today. Sign-in, onboarding, Home, Workouts, Community feed verified on iPhone 17 Pro / iOS 26.5 after the layout pass (`Docs/screenshots/2026-08-29-ios/`). Known nit: Community segment labels truncate ("Leader…", "Challe…") on 390pt — use icons or a scrollable segmented control. Drive with `-ef.autologin`, `-ef.skipOnboarding`, `-ef.tab <n>` (DEBUG). |
-| macOS UI | Build 6 verified live: sign-in → dashboard (Level 6) → Community feed → Guild raid card (`Docs/screenshots/2026-08-29-macos/`). `/Applications/Endgame Fitness.app` = build 6 archive re-signed ad-hoc (works locally; App Store profile builds cannot launch outside the store). Previous copies archived to iCloud `EndgameFitness/_archive/apps/2026-08-29-*`. |
+## Verification evidence
 
-## What changed today
+| Check | Result / boundary |
+| --- | --- |
+| Native regression selftest | **304/304 PASS** on the consolidated native engine; includes planner, progression, data recovery and game rules. These tests do not prove clinical superiority. |
+| Native Facebook sources | Swift compile succeeds; full Release `.app` build succeeds. Live authentication remains unverified. |
+| Web/backend tests | **43/43 PASS**, including full plan matrix, earned quest claims, progression, replay prevention, mocked successful Facebook exchange, PKCE one-use codes, session expiry, ownership, conflicts, friendships, deletion and validation. Provider responses are mocked, not real Meta credentials. |
+| Browser workflows | Pass in headless Chromium at desktop and 390px mobile: unavailable login, mocked authenticated onboarding, workout resume after reload, finish/XP, quests, main tabs, unit conversion, backup export/import, exercise search and invitation acceptance. No JavaScript errors or horizontal overflow observed. |
+| Live deployment | App entry and scoped privacy page return 200. `/config` returns `facebook:false`; `/auth/start` returns 503. Real Chromium loads the production entry and privacy page with no JavaScript errors. Worker version `e9da6f85-072c-418b-98df-2021a19b9c8e` verified after final fixes. |
+| Candidate source scan | Gitleaks found no leaks in the candidate source snapshot; ignored browsers/build artifacts excluded. |
 
-1. **App record + TestFlight pipeline unblocked.** Xcode already had the Apple
-   Account signed in, so Organizer's upload flow created the record after the
-   name was changed to "Endgame Fitness RPG".
-2. **iOS 26.5 platform installed** (`xcodebuild -downloadPlatform iOS`, no
-   admin). Xcode 26.6 refuses every iOS destination — device *and* simulator —
-   without it. Disk was at 8 GB free, so the iOS 26.2 runtime was deleted first.
-3. **HealthKit** (`HealthKitManager.swift`, iOS only, macOS no-op stub): steps /
-   active energy / HR / body-mass read auth, strength workouts written on
-   session finish, Health card on the dashboard, Settings toggle,
-   `steps_today` + `active_kcal_today` in the sync payload, daily quest
-   "Step Count" (8,000). App ID has the HEALTHKIT capability; profiles
-   regenerated ("… AppStore 2026-08-29").
-4. **Guild Raids** (`Docs/GUILD_RAIDS.md`): weekly boss from an 8-boss catalog
-   (`_lib/raids.js`), hp scales with member count, damage = session volume in
-   lb + 250 per verified PR, defeat → XP to every contributor, `raid_slayer`
-   achievement, `raid_defeated` feed items. `GET /api/fitness/raid`, raid
-   section in the sync response, `RaidViews.swift` card in the guild pane.
-5. **Session game layer** (`Docs/SESSION_GAME_LAYER.md`): rest timer with local
-   notification + haptics, per-set "+XP" pop-ups (estimate mirrors the server
-   formula; server stays authoritative), combo/PR callouts, session summary +
-   share card. Fixed two latent bugs: "Add Set" never logged (bad guard) and
-   `duration` was never sent to the server.
-6. **iOS adaptive layouts** (`Platform.swift`: `Font.screenTitle`,
-   `desktopMinFrame`, `scrollableOnPhone`, `AdaptiveHStack`, …) applied to
-   onboarding, dashboard, workouts, progress, history, tools, settings, sheets,
-   wizard, talents, account. macOS appearance unchanged by construction.
-7. **Backend drift fixed for good.** The website deploys from the home-directory
-   worktree; it lagged origin and website PR #6 lacked `_lib/game.js`,
-   `talents.js`, `challenges.js`, so `/api/fitness/quests` was 404 live.
-   Website PR #7 syncs everything; `~` is fast-forwarded. Deploy from the
-   session scratchpad — `wrangler pages deploy` fails under `/Users/daniel`
-   with a mangled `.wrangler/tmp` path.
-8. **Debug affordance:** `-ef.autologin <email> <password>` (DEBUG builds)
-   signs in without a keyboard so the simulator can be driven headlessly
-   (`xcrun simctl launch booted org.batesai.endgamefitness -ef.autologin …`).
-9. Test-account credentials moved out of the docs into gitignored
-   `.local/test-accounts.md`; `scripts/verify/ax_signin.py` reads
-   `EF_TEST_PASSWORD`.
+Screenshots and raw test logs are private working artifacts in `.local/` (test player only). Do not publish real player data.
 
-## Build 3 post-mortem (both platforms rejected by ASC processing)
+## Current external blocker
 
-- **No asset catalog in either bundle.** `project.yml` used a `resources:` key
-  that xcodegen does not have; the `.xcassets` was silently dropped, so there
-  was no `Assets.car` and no icon (iOS 90022/90023/90713, macOS 90236). Fixed
-  by listing `Resources/Assets.xcassets` under `sources:`.
-- **macOS: App Sandbox missing** (90296). Entitlements now: `app-sandbox`,
-  `network.client`, `files.user-selected.read-write`, `applesignin`.
-- **pkg UTI**: Build Upload API wants `com.apple.pkg`, not
-  `com.apple.installer-package-archive` (409). Fixed in `upload_asc.py`.
+Production's existing Pages secrets include no `FACEBOOK_APP_ID` or `FACEBOOK_APP_SECRET`, and no existing `endgame-fitness` Worker was present. The implementation deliberately reports Facebook unavailable until credentials are configured. A public/live Meta application and successful testing with a non-role Facebook account are still required. See `Server/README.md` for exact setup; never ask the user to paste the secret into chat or source.
 
-## Not verified — do not claim
+The browser-control connection could list tabs but failed to navigate to the Meta developer dashboard. No developer app, credentials, permissions or Meta configuration were created or changed through the browser.
 
-- Native Sign in with Apple, HealthKit permission sheet + workout write, rest
-  timer notification delivery, haptics, ShareLink, raid card rendering — all
-  typecheck-only; none exercised on a device. The raid *server* path is
-  verified live.
-- Raid reward title/cosmetic is returned by the API but not applied to the
-  avatar yet.
-- Google sign-in has no client secret configured.
+## Known limitations and follow-up work
 
-## Next steps (in order)
+1. **No real Facebook end-to-end test yet.** Do not advertise the app as publicly usable or bug-free merely because the landing page is online.
+2. **Native and web logs remain separate.** Native has a substantially richer planner/library and game world. Web is a usable training companion once login is configured, not feature parity. Build a versioned, lossless bridge before cloud-syncing native records.
+3. Native social systems retain household/rival/Game Center/Gym Party capabilities; the web uses Facebook-authenticated friend codes. No automatic Facebook friend import and no automatic social posts.
+4. Web rules are conservative heuristics informed by resistance-training research; they are not a mathematical proof that arbitrary user programs are inferior. Avoid optimizing a scoring function and presenting its own scores as independent outcome evidence.
+5. Native online friend UI parity, signed/notarized distribution, real-device notifications, accessibility/VoiceOver over every native screen and cross-device concurrency under real workloads still need dedicated verification.
+6. Add scheduled expiry cleanup, request-level abuse protection and granular session sync before scaling a public launch.
+7. Bodyweight-only web plans have limited loaded pulling options; make bands/anchor equipment a future preference rather than pretending an unweighted W raise is equivalent to a loaded row.
+8. The web 3 MB backup/save limit is deliberate. Design pagination and per-session storage before removing it.
+9. Keep the existing bundle ID, player mapping, onboarding flags and WorkoutStore recovery behavior. Never replace old logs with empty or simplified web data.
 
-1. Accept the TestFlight invite (email to danielalanbates@live.com); install build 6 on iPhone + Mac; exercise Sign in with Apple and the HealthKit permission sheet on device.
-2. Simulator pass over every iOS screen with `-ef.autologin`, fix what the
-   layout helpers missed (set rows, charts, sheets).
-3. Apply raid reward title/cosmetic to the profile/avatar; show raid results in
-   the feed UI.
-4. Delete the smoke accounts + "Smoke Raiders" guild once real users exist.
-5. Store listing: privacy policy https://batesai.org/privacy-policy, support
-   https://batesai.org/contact, screenshots from `Docs/screenshots/`.
+## Research references
 
-## How to build and verify on this Mac
+- [ACSM progression position stand](https://pubmed.ncbi.nlm.nih.gov/19204579/) supports progressive resistance training; our precise rounding/decision rules are implementation choices.
+- [Proximity-to-failure meta-regression](https://pubmed.ncbi.nlm.nih.gov/38970765/) motivates tracking reps in reserve, with uncertainty about individual response.
+- [2026 ACSM overview](https://pmc.ncbi.nlm.nih.gov/articles/PMC12965823/) is the newer guidance to evaluate in the next training-engine review.
+- [Meta Graph version documentation](https://developers.facebook.com/docs/graph-api/changelog/versions/) was checked; this integration pins v27.0 and allows an explicit validated override.
 
-```bash
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-# typecheck both platforms (fast)
-cd App/Sources/EndgameFitness
-xcrun swiftc -typecheck -parse-as-library -target arm64-apple-macos14.0 *.swift
-xcrun -sdk iphonesimulator swiftc -typecheck -parse-as-library -target arm64-apple-ios17.0-simulator *.swift
-# iOS in the simulator, headless
-cd App && xcodegen generate --spec project.yml --quiet
-xcodebuild -project EndgameFitness.xcodeproj -target EndgameFitness-iOS -sdk iphonesimulator -arch arm64 \
-  -configuration Debug SYMROOT="$HOME/Downloads/endgame-fitness-ship/sim-build" CODE_SIGNING_ALLOWED=NO build
-xcrun simctl boot "iPhone 17 Pro"; xcrun simctl install booted "$HOME/Downloads/endgame-fitness-ship/sim-build/Debug-iphonesimulator/Endgame Fitness.app"
-xcrun simctl launch booted org.batesai.endgamefitness -ef.autologin <email> <password>
-xcrun simctl io booted screenshot shot.png
-# ship
-security unlock-keychain -p "$(cat ~/Library/Application\ Support/BatesAI/keys/endgame-signing/keychain-password.txt)" ~/Library/Keychains/endgame-ci.keychain-db
-scripts/ship.sh both 1.0.0 <build>
-```
+Earlier notes are in `STATUS_LEGACY.md`; archived account and iOS approaches remain under `_archive/` with their original rationale. Some older documents describe obsolete membership behavior; use this file and `Server/README.md` as current guidance.

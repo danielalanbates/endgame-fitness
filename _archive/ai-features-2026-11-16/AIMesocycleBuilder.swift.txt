@@ -1,0 +1,150 @@
+                // AI builder
+                Button {
+                    showAIBuilder = true
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 32))
+                            .foregroundColor(.yellow)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("AI Mesocycle Builder")
+                                .font(.title2.bold())
+                                .foregroundColor(.white)
+                            Text("Answer a few questions and AI designs your training phases")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(.white)
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity)
+                    .background(LinearGradient(colors: [.brandBlue, .brandPurple], startPoint: .leading, endPoint: .trailing))
+                    .cornerRadius(16)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+
+// sheet:
+        .sheet(isPresented: $showAIBuilder) {
+            AIMesocycleBuilderView()
+                .environmentObject(workoutManager)
+        }
+
+struct AIMesocycleBuilderView: View {
+    @EnvironmentObject var workoutManager: WorkoutManager
+    @Environment(\.dismiss) var dismiss
+
+    @State private var goal = "Build muscle"
+    @State private var weeks = 12
+    @State private var notes = ""
+    @State private var busy = false
+    @State private var error: String?
+    @State private var preview: [MesoPhase]?
+
+    private static let goals = ["Build muscle", "Get stronger", "Lose fat", "Athletic performance", "General fitness", "Longevity"]
+
+    /// Six segments share 390pt on an iPhone, so the control shows abbreviated
+    /// titles while the full string is what gets sent to the model.
+    private static let goalLabels = ["Muscle", "Strength", "Fat loss", "Athletic", "General", "Longevity"]
+
+    private static func goalLabel(_ goal: String) -> String {
+        guard let index = goals.firstIndex(of: goal) else { return goal }
+        return goalLabels[index]
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    Text("AI Mesocycle Builder")
+                        .font(.title.bold())
+                    Spacer()
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(.bordered)
+                }
+
+                Picker("Goal", selection: $goal) {
+                    ForEach(Self.goals, id: \.self) { Text(Self.goalLabel($0)) }
+                }
+                .compactSegmentedPicker()
+
+                Stepper("Cycle length: \(weeks) weeks", value: $weeks, in: 4...24, step: 2)
+
+                TextField("Anything else the AI should know? (injuries, schedule, preferences)", text: $notes, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...4)
+
+                Button {
+                    Task { await generate() }
+                } label: {
+                    if busy {
+                        SwiftUI.ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(6)
+                    } else {
+                        Label("Generate Phases", systemImage: "sparkles")
+                            .frame(maxWidth: .infinity)
+                            .padding(6)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.brandPurple)
+                .disabled(busy)
+
+                if let error {
+                    Text(error).font(.caption).foregroundColor(.red)
+                }
+
+                if let preview {
+                    Text("Proposed Plan")
+                        .font(.headline)
+                    ForEach(preview) { phase in
+                        HStack(spacing: 12) {
+                            Text(phase.emoji).font(.system(size: 28))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(phase.name) — \(phase.weeks)w, \(phase.repRange) reps").font(.subheadline.bold())
+                                Text(phase.focus).font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(Color.brandPurple.opacity(0.08))
+                        .cornerRadius(10)
+                    }
+                    Button {
+                        workoutManager.mesoPhases = preview
+                        workoutManager.saveScheduleState()
+                        dismiss()
+                    } label: {
+                        Text("Use This Plan")
+                            .font(.title3.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.brandGreen)
+                }
+            }
+            .padding(24)
+        }
+        .frame(minWidth: Platform.isDesktop ? 520 : nil,
+               minHeight: Platform.isDesktop ? 480 : nil)
+    }
+
+    private func generate() async {
+        busy = true
+        error = nil
+        defer { busy = false }
+        do {
+            preview = try await FitnessAI.buildMesocycle(
+                goal: goal,
+                experience: workoutManager.userProfile?.experienceLevel.rawValue ?? "intermediate",
+                weeks: weeks,
+                notes: notes
+            )
+        } catch let failure {
+            error = failure.localizedDescription
+        }
+    }
+}

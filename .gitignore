@@ -11,3 +11,20 @@ Web/web-react/dist/
 _archive/
 .local/
 .claude/
+
+# Private runtime records and credentials never belong in source control.
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.log
+.wrangler/
+Web/local-app/test-results/
+Web/local-app/playwright-report/
+*.tsbuildinfo
+# Never bundle live personal training records into the app source.
+App/Resources/data/user_profiles.json
+App/Resources/data/workout_sessions.json

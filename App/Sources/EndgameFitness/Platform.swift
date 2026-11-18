@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if os(macOS)
 import AppKit
@@ -86,6 +87,15 @@ enum Platform {
         #endif
     }
 
+    /// Plain text on the system pasteboard, if any.
+    static func pasteboardString() -> String? {
+        #if os(macOS)
+        NSPasteboard.general.string(forType: .string)
+        #else
+        UIPasteboard.general.string
+        #endif
+    }
+
     /// A short "that didn't work" cue. Audible on the Mac, haptic on iPhone.
     static func beep() {
         #if os(macOS)
@@ -149,6 +159,24 @@ enum Platform {
         false
         #endif
     }
+
+    /// True inside the App Sandbox (always on iOS; TestFlight/App Store builds
+    /// on the Mac). The unsandboxed local Mac build may read ~/Documents; a
+    /// sandboxed build never reaches outside its container without a panel.
+    static var isSandboxed: Bool {
+        #if os(macOS)
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        #else
+        true
+        #endif
+    }
+
+    /// Dismisses the on-screen keyboard (number pads have no return key).
+    static func dismissKeyboard() {
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
 }
 
 // MARK: - Split layout
@@ -207,11 +235,11 @@ struct PlatformTextField: View {
 // MARK: - File import / export
 
 /// Export and import were built on `NSSavePanel`/`NSOpenPanel`. iOS has no
-/// equivalent panel, so the JSON payload is produced here and the caller decides
-/// how to present it (share sheet on iOS, save panel on macOS).
+/// blocking panel: views there present `.fileExporter` / `.fileImporter` with
+/// `WorkoutExportDocument` instead, so these functions are macOS-only in effect.
 enum WorkoutTransfer {
     /// Writes `data` somewhere the user chose. Returns the destination, or nil if
-    /// they cancelled or the platform has no panel.
+    /// they cancelled, the write failed, or the platform has no panel.
     @discardableResult
     static func exportJSON(_ data: Data, suggestedName: String) -> URL? {
         #if os(macOS)
@@ -219,15 +247,14 @@ enum WorkoutTransfer {
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = suggestedName
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
-        try? data.write(to: url)
-        return url
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
         #else
-        // On iOS write to the app's Documents directory; the caller presents a
-        // share sheet for this URL.
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = dir.appendingPathComponent(suggestedName)
-        try? data.write(to: url)
-        return url
+        return nil
         #endif
     }
 
@@ -240,9 +267,32 @@ enum WorkoutTransfer {
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         return try? Data(contentsOf: url)
         #else
-        // iOS uses `.fileImporter` at the view layer instead of a blocking panel.
         return nil
         #endif
+    }
+
+    /// Reads a file handed over by `.fileImporter`, which grants
+    /// security-scoped access that must be opened and closed around the read.
+    static func readPickedFile(_ url: URL) -> Data? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        return try? Data(contentsOf: url)
+    }
+}
+
+/// The workout export as a document, for `.fileExporter` (iOS share/save).
+struct WorkoutExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

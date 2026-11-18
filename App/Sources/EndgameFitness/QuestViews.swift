@@ -13,18 +13,20 @@ import SwiftUI
 
 struct QuestBoardView: View {
     @ObservedObject var game = GameProfileService.shared
-    @ObservedObject var auth = BatesAIAuth.shared
+    @ObservedObject var players = LocalPlayerStore.shared
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                if !auth.isSignedIn {
+                if players.current == nil {
                     signedOut
                 } else {
                     questSection(title: "Daily Quests", subtitle: "Reset at midnight UTC", quests: game.dailyQuests)
                     questSection(title: "Weekly Quests", subtitle: "Reset Monday", quests: game.weeklyQuests)
                     if game.dailyQuests.isEmpty && game.weeklyQuests.isEmpty {
-                        Text("Loading your board…")
+                        Text(game.questsLoaded
+                             ? "No quests right now. New ones arrive at the daily reset."
+                             : "Loading your board…")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 30)
@@ -42,7 +44,7 @@ struct QuestBoardView: View {
             Image(systemName: "checkmark.seal")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
-            Text("Sign in to pick up quests").font(.headline)
+            Text("Pick a player to pick up quests").font(.headline)
             Text("Daily and weekly quests pay XP on top of your workouts.")
                 .font(.callout).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -193,7 +195,7 @@ struct QuestProgressBar: View {
 /// quest claims it in place; the header button jumps to the full board.
 struct TodaysQuestsCard: View {
     @ObservedObject var game = GameProfileService.shared
-    @ObservedObject var auth = BatesAIAuth.shared
+    @ObservedObject var players = LocalPlayerStore.shared
     var onOpenBoard: () -> Void = {}
 
     var body: some View {
@@ -211,17 +213,22 @@ struct TodaysQuestsCard: View {
                         .background(Color.brandYellow)
                         .clipShape(Capsule())
                 }
-                Button("All quests", action: onOpenBoard)
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button("All quests") {
+                    // Community opens on the Quests section, not the feed.
+                    game.requestedCommunitySection = .quests
+                    onOpenBoard()
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
-            if !auth.isSignedIn {
-                Text("Sign in to receive daily quests.")
+            if players.current == nil {
+                Text("Pick a player to receive daily quests.")
                     .font(.callout).foregroundStyle(.secondary)
             } else if game.dailyQuests.isEmpty {
-                Text("Loading…").font(.callout).foregroundStyle(.secondary)
+                Text(game.questsLoaded ? "No daily quests right now." : "Loading…")
+                    .font(.callout).foregroundStyle(.secondary)
             } else {
                 ForEach(game.dailyQuests) { quest in
                     HStack(spacing: 10) {
@@ -261,15 +268,15 @@ struct TodaysQuestsCard: View {
 
 struct AchievementsView: View {
     @ObservedObject var game = GameProfileService.shared
-    @ObservedObject var auth = BatesAIAuth.shared
+    @ObservedObject var players = LocalPlayerStore.shared
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if !auth.isSignedIn {
-                    Text("Sign in to track achievements.")
+                if players.current == nil {
+                    Text("Pick a player to track achievements.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 36)

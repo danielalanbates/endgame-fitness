@@ -1,75 +1,10 @@
-name: Build
-
-# Compile both platforms on every push. This is the only place the iOS build is
-# verified: the development machine has Command Line Tools but no Xcode and not
-# enough free disk to install one, so there is no local iOS SDK.
-#
-# No signing here — `CODE_SIGNING_ALLOWED=NO` means this runs without any
-# secrets and still catches every compile error. Shipping is testflight.yml.
-
+name: Local checks only
+# Daniel requests no GitHub compute. Run documented checks locally.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
-
 jobs:
-  build:
-    runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-            scheme: EndgameFitness-macOS
-            destination: platform=macOS,arch=arm64
-          # Naming a specific simulator ("iPhone 16") breaks whenever the runner
-          # image ships a different device set. A generic destination just needs
-          # the SDK to exist, which is all a compile check requires.
-          - name: iOS
-            scheme: EndgameFitness-iOS
-            destination: generic/platform=iOS Simulator
-
-    name: ${{ matrix.name }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: xcodebuild -version
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate project
-        working-directory: App
-        run: xcodegen generate --spec project.yml
-
-      - name: Build
-        working-directory: App
-        run: |
-          set -o pipefail
-          xcodebuild build \
-            -project EndgameFitness.xcodeproj \
-            -scheme "${{ matrix.scheme }}" \
-            -destination "${{ matrix.destination }}" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            | xcbeautify
-
-  backend:
-    name: Backend checks
+  disabled:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      # The auth worker verifies Apple/Google identity tokens. These tests prove
-      # forged tokens, wrong audiences and alg:none downgrades are rejected —
-      # regressing any of them would be a full account-takeover bug.
-      - name: Auth verification tests
-        run: node App/Backend/tests/auth-verification.test.mjs
+      - run: echo 'See scripts/check-local.sh'

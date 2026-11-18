@@ -38,7 +38,7 @@ struct RaidCard: View {
                 HStack(spacing: 10) {
                     Image(systemName: "shield.slash")
                         .foregroundStyle(.secondary)
-                    Text("No raid available. Pull to refresh once the API is reachable.")
+                    Text("Couldn't load this week's boss.")
                         .font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     Button("Retry") { Task { await game.loadRaid() } }
@@ -90,6 +90,7 @@ struct RaidBossPanel: View {
 
     /// Animated separately from `raid` so the bar slides rather than snaps.
     @State private var shownFraction: Double = 1
+    @State private var selectedPlayer: PlayerRef?
 
     private var gradient: LinearGradient {
         let colors = raid.boss.gradient.compactMap { Color(raidHex: $0) }
@@ -123,11 +124,13 @@ struct RaidBossPanel: View {
         .onChange(of: raid.hpFraction) { _, new in
             withAnimation(.easeOut(duration: 0.9)) { shownFraction = new }
         }
+        .playerProfileSheet($selectedPlayer)
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            RaidBossArt(symbol: raid.boss.symbol, gradient: gradient, defeated: raid.defeated)
+            RaidBossArt(symbol: raid.boss.symbol, gradient: gradient, defeated: raid.defeated,
+                        asset: raid.boss.artAsset)
                 .frame(width: 72, height: 72)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -208,26 +211,38 @@ struct RaidBossPanel: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(raid.contributors) { entry in
-                HStack(spacing: 10) {
-                    Text("\(entry.rank)")
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .frame(width: 18, alignment: .trailing)
-                        .foregroundStyle(entry.rank == 1 ? Color.brandYellow : .secondary)
-                    Text(entry.isSelf ? "You" : entry.displayName)
-                        .font(.callout)
-                        .fontWeight(entry.isSelf ? .semibold : .regular)
-                        .lineLimit(1)
-                    Text("Lv \(entry.level)")
-                        .font(.caption2).foregroundStyle(.secondary)
-                    Spacer()
-                    Text(RaidFormat.number(entry.damage))
-                        .font(.callout.monospacedDigit())
-                    Text("dmg")
-                        .font(.caption2).foregroundStyle(.secondary)
+                Button {
+                    if !entry.isSelf {
+                        selectedPlayer = PlayerRef(id: entry.userID, displayName: entry.displayName)
+                    }
+                } label: {
+                    contributorRow(entry)
                 }
-                .padding(.vertical, 2)
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    private func contributorRow(_ entry: RaidContributor) -> some View {
+        HStack(spacing: 10) {
+            Text("\(entry.rank)")
+                .font(.caption.weight(.bold).monospacedDigit())
+                .frame(width: 18, alignment: .trailing)
+                .foregroundStyle(entry.rank == 1 ? Color.brandYellow : .secondary)
+            Text(entry.isSelf ? "You" : entry.displayName)
+                .font(.callout)
+                .fontWeight(entry.isSelf ? .semibold : .regular)
+                .lineLimit(1)
+            Text("Lv \(entry.level)")
+                .font(.caption2).foregroundStyle(.secondary)
+            Spacer()
+            Text(RaidFormat.number(entry.damage))
+                .font(.callout.monospacedDigit())
+            Text("dmg")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 
@@ -237,6 +252,8 @@ struct RaidBossArt: View {
     let symbol: String
     let gradient: LinearGradient
     let defeated: Bool
+    /// Asset-catalog art drawn instead of the SF Symbol (template image, white).
+    var asset: String? = nil
 
     @State private var breathe = false
 
@@ -246,12 +263,23 @@ struct RaidBossArt: View {
                 .fill(gradient)
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.white.opacity(0.18), lineWidth: 1)
-            Image(systemName: symbol)
-                .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-                .scaleEffect(breathe ? 1.06 : 0.96)
-                .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: breathe)
+            Group {
+                if let asset {
+                    Image(asset)
+                        .renderingMode(.template)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(10)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 32, weight: .bold))
+                }
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+            .scaleEffect(breathe ? 1.06 : 0.96)
+            .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: breathe)
             if defeated {
                 Image(systemName: "xmark")
                     .font(.system(size: 46, weight: .black))
@@ -330,6 +358,11 @@ struct RaidDamageToast: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.brandYellow)
                     }
+                    if let aura = hit.rewardCosmetic, !aura.isEmpty {
+                        Text("\(aura.auraDisplayName) unlocked. Equip it in Account.")
+                            .font(.caption)
+                            .foregroundStyle(aura.auraColor)
+                    }
                 } else if hit.defeated {
                     Text("Boss already defeated — still counted")
                         .font(.caption).foregroundStyle(.secondary)
@@ -375,5 +408,12 @@ extension Color {
             green: Double((value >> 8) & 0xFF) / 255,
             blue: Double(value & 0xFF) / 255
         )
+    }
+}
+
+extension RaidBoss {
+    /// Bosses with their own artwork in the asset catalog.
+    var artAsset: String? {
+        id == "doms_dragon" ? Brand.dragonLogo : nil
     }
 }

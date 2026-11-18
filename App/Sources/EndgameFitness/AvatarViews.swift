@@ -1,6 +1,8 @@
 //
 //  AvatarViews.swift
-//  SwiftUI views for 3D blob avatar system
+//  SwiftUI views for the blob avatar: the creator, the 3D preview, and the
+//  lightweight 2D badge used on player cards and rows (SceneKit is far too
+//  heavy to put in a list).
 //
 
 import SwiftUI
@@ -175,10 +177,10 @@ struct AvatarQuestionnaireView: View {
 
     private var bellyQuestionView: some View {
         VStack(spacing: 20) {
-            Text("Belly profile?")
+            Text("Midsection shape?")
                 .font(.system(size: 24, weight: .semibold))
 
-            Text("No judgment - we're all on our own journey! 💪")
+            Text("No judgment, it's just a starting point for your avatar.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -270,10 +272,9 @@ struct AvatarPreviewView: View {
                 Text("As you work out, your avatar will:")
                     .font(.subheadline)
 
-                HStack(spacing: 20) {
-                    Label("Get Stronger", systemImage: "arrow.up.circle.fill")
-                    Label("Get Leaner", systemImage: "flame.fill")
-                    Label("Unlock Colors", systemImage: "paintpalette.fill")
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Build muscle as your lifetime volume grows", systemImage: "arrow.up.circle.fill")
+                    Label("Unlock new colors as you level up", systemImage: "paintpalette.fill")
                 }
                 .font(.caption)
             }
@@ -305,127 +306,155 @@ struct AvatarPreviewView: View {
     }
 }
 
-// MARK: - Avatar Display View (for main app)
-struct AvatarDisplayView: View {
-    @Binding var profile: AvatarBodyProfile
-    var showFullScreen: Bool = false
+// MARK: - 2D badge (cards and rows)
 
-    @State private var blobAvatar: BlobAvatar3D?
-    @State private var isAnimating = false
+/// The player's avatar as a small 2D portrait, with the equipped aura as a
+/// ring. Without an avatar it falls back to the level in a rank-coloured disc.
+struct AvatarBadgeView: View {
+    let config: AvatarBodyProfile?
+    let level: Int
+    var cosmetic: String?
+    var size: CGFloat = 52
+    var tint: Color = .brandPurple
 
     var body: some View {
-        VStack(spacing: 12) {
-            // 3D Avatar
-            if let avatar = blobAvatar {
-                SceneView(
-                    scene: avatar.getScene(),
-                    options: [.allowsCameraControl, .autoenablesDefaultLighting]
-                )
-                .frame(height: showFullScreen ? 500 : 300)
-                .background(Color.black.opacity(0.05))
-                .cornerRadius(12)
-                .onAppear {
-                    avatar.startIdleAnimation()
-                }
+        ZStack {
+            if let config {
+                Circle()
+                    .fill(LinearGradient(colors: [tint.opacity(0.30), tint.opacity(0.10)],
+                                         startPoint: .top, endPoint: .bottom))
+                BlobFigure(config: config)
+                    .padding(size * 0.12)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(LinearGradient(colors: [tint, tint.opacity(0.5)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Text("\(level)")
+                    .font(.system(size: size * 0.38, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.5)
             }
-
-            // Stats
-            if !showFullScreen {
-                HStack(spacing: 20) {
-                    VStack {
-                        Text("\(profile.muscleLevel)")
-                            .font(.title2.bold())
-                        Text("Muscle")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    VStack {
-                        Text("\(profile.leanLevel)")
-                            .font(.title2.bold())
-                        Text("Lean")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    VStack {
-                        Text(profile.skinColor.rawValue)
-                            .font(.title2.bold())
-                        Text("Color")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding()
-            }
-
-            // Action buttons
-            HStack(spacing: 12) {
-                Button("Squat") {
-                    blobAvatar?.performSquat()
-                }
-                .buttonStyle(.bordered)
-
-                Button("Jump") {
-                    blobAvatar?.performJumpingJack()
-                }
-                .buttonStyle(.bordered)
-
-                Button("Celebrate") {
-                    blobAvatar?.celebrate()
-                }
-                .buttonStyle(.borderedProminent)
+            if let cosmetic, !cosmetic.isEmpty {
+                auraRing(cosmetic.auraColor)
             }
         }
-        .onAppear {
-            blobAvatar = BlobAvatar3D(profile: profile)
+        .frame(width: size, height: size)
+        .overlay(alignment: .bottomTrailing) {
+            if config != nil && size >= 40 {
+                levelPill
+            }
         }
-        .onChange(of: profile) { newProfile in
-            blobAvatar?.updateProfile(newProfile)
-        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Level \(level) avatar")
+    }
+
+    private func auraRing(_ color: Color) -> some View {
+        Circle()
+            .strokeBorder(color, lineWidth: max(2, size * 0.05))
+            .padding(-size * 0.07)
+            .shadow(color: color.opacity(0.6), radius: size * 0.08)
+    }
+
+    private var levelPill: some View {
+        Text("\(level)")
+            .font(.system(size: max(9, size * 0.2), weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .background(Capsule().fill(tint))
+            .offset(x: 2, y: 2)
     }
 }
 
-// MARK: - Avatar Evolution Notification
-struct AvatarEvolutionNotification: View {
-    let oldProfile: AvatarBodyProfile
-    let newProfile: AvatarBodyProfile
+/// Flat drawing of the blob: proportions from the questionnaire, muscle from
+/// progress, a face once it is unlocked.
+struct BlobFigure: View {
+    let config: AvatarBodyProfile
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 48))
-                .foregroundColor(.green)
+        Canvas { context, size in
+            draw(in: &context, size: size)
+        }
+    }
 
-            Text("Your Avatar Evolved!")
-                .font(.title.bold())
+    private func draw(in context: inout GraphicsContext, size: CGSize) {
+        let w = size.width, h = size.height
+        let build = CGFloat(config.bodyType.baseScale)
+        let tall = CGFloat(config.height.scaleY)
+        let muscle = CGFloat(config.muscleLevel) / 100
+        let shading = bodyShading(size: size)
 
-            Text(AvatarEvolutionEngine.getProgressDescription(newProfile))
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        // Legs
+        let legW = w * 0.12
+        let legH = h * 0.24 * tall
+        for x in [w * 0.40, w * 0.60] {
+            let leg = CGRect(x: x - legW / 2, y: h - legH - h * 0.02, width: legW, height: legH)
+            context.fill(Path(roundedRect: leg, cornerRadius: legW / 2), with: shading)
+        }
 
-            HStack(spacing: 40) {
-                VStack {
-                    Text("\(oldProfile.muscleLevel) → \(newProfile.muscleLevel)")
-                        .font(.headline)
-                    Text("Muscle")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+        // Torso
+        let torsoW = w * 0.42 * build * (1 + 0.18 * muscle)
+        let torsoH = h * 0.40 * tall
+        let torso = CGRect(x: (w - torsoW) / 2, y: h * 0.74 - torsoH, width: torsoW, height: torsoH)
+        context.fill(Path(ellipseIn: torso), with: shading)
 
-                VStack {
-                    Text("\(oldProfile.leanLevel) → \(newProfile.leanLevel)")
-                        .font(.headline)
-                    Text("Lean")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+        // Arms
+        let armW = w * 0.11 * (1 + 0.4 * muscle)
+        let armH = torsoH * 0.75
+        for side: CGFloat in [-1, 1] {
+            let cx = w / 2 + side * (torsoW / 2 + armW * 0.2)
+            let arm = CGRect(x: cx - armW / 2, y: torso.minY + torsoH * 0.12, width: armW, height: armH)
+            context.fill(Path(roundedRect: arm, cornerRadius: armW / 2), with: shading)
+        }
+
+        // Head
+        let headR = w * 0.16
+        let head = CGRect(x: w / 2 - headR, y: torso.minY - headR * 1.75, width: headR * 2, height: headR * 2)
+        context.fill(Path(ellipseIn: head), with: shading)
+
+        if config.hasEyes {
+            let eyeR = headR * 0.16
+            for side: CGFloat in [-1, 1] {
+                let eye = CGRect(x: head.midX + side * headR * 0.38 - eyeR,
+                                 y: head.midY - eyeR * 1.4, width: eyeR * 2, height: eyeR * 2)
+                context.fill(Path(ellipseIn: eye), with: .color(.black.opacity(0.8)))
             }
         }
-        .adaptivePadding(30)
-        .background(Color.platformWindowBackground)
-        .cornerRadius(16)
-        .shadow(radius: 20)
+        if config.hasMouth {
+            var mouth = Path()
+            mouth.addArc(center: CGPoint(x: head.midX, y: head.midY + headR * 0.18),
+                         radius: headR * 0.32, startAngle: .degrees(20), endAngle: .degrees(160),
+                         clockwise: false)
+            context.stroke(mouth, with: .color(.black.opacity(0.7)), lineWidth: max(1, headR * 0.1))
+        }
+    }
+
+    private func bodyShading(size: CGSize) -> GraphicsContext.Shading {
+        if config.skinColor == .rainbow {
+            return .linearGradient(
+                Gradient(colors: [.red, .orange, .yellow, .green, .blue, .purple]),
+                startPoint: .zero, endPoint: CGPoint(x: size.width, y: size.height)
+            )
+        }
+        return .color(config.skinColor.swatch)
+    }
+}
+
+/// "Juggernaut"-style capsule for the class the server derived.
+struct HeroClassBadge: View {
+    let hero: HeroClass
+    var compact = false
+
+    var body: some View {
+        Label(hero.name, systemImage: hero.icon)
+            .font(compact ? .caption2.weight(.bold) : .caption.weight(.bold))
+            .foregroundStyle(hero.tint)
+            .padding(.horizontal, compact ? 6 : 8)
+            .padding(.vertical, compact ? 2 : 3)
+            .background(Capsule().fill(hero.tint.opacity(0.15)))
+            .lineLimit(1)
+            .fixedSize()
+            .help(hero.blurb)
+            .accessibilityLabel("Class: \(hero.name)")
     }
 }

@@ -144,9 +144,9 @@ Three distinct positioning strategies in the workout tracking/programming space:
 #### Endgame Fitness
 - **Local JSON per device:** Workout history stored in `/App Group/shared-workouts.json` per device
   - iOS and macOS do NOT sync history between each other
-  - Only game profile (XP/levels/talents) syncs via batesai.org backend
+  - Only game profile (XP/levels/talents) syncs via old online backend
 - **Consequence:** A user with iPhone + Mac sees different workout history on each device; terrible UX for a "native macOS" claim
-- **Backend exists but unused for fitness data:** batesai.org backend handles auth + game state; fitness data never sent to cloud
+- **Backend exists but unused for fitness data:** old online backend handles auth + game state; fitness data never sent to cloud
 
 **Winner:** RP/Boostcamp (seamless cross-device) >> Endgame (broken by design).
 
@@ -354,24 +354,24 @@ Three distinct positioning strategies in the workout tracking/programming space:
    - Enables "hit your prescribed sets" flow
    - Unblocks analytics (% of target achieved per session)
    - ~3 days of Swift + backend schema work
-   
+
 2. **RIR field on `ExerciseSet` + simple last-session-beat progression**
    - Single int field: RIR (0–5 range)
    - If last session beat reps @ weight: suggest +5 lb
    - If last session fell short: hold weight
    - ~2 days work; immediate differentiation from Boostcamp's program-defined-only progression
-   
+
 3. **Per-muscle weekly set counter** (enables deload + volume talent)
    - Track sets/week per muscle group
    - Deload toggle becomes live logic (scale to 50% on deload week)
    - Feed volume into talent effects ("High Volume" talent +2% XP per extra 2 sets)
    - ~2 days; ties game layer to training science
-   
-4. **Sync workout JSON through batesai.org backend**
+
+4. **Sync workout JSON through old online backend**
    - Ship iOS + Mac workouts to cloud `/api/fitness/workouts`
    - Merge local JSON on re-sync
    - ~1 day; fixes the cross-device sync disaster
-   
+
 5. **Wire up orphaned avatar**
    - Call `AvatarEvolutionEngine.update()` after workout
    - Display avatar in workout summary screen
@@ -386,4 +386,3 @@ Three distinct positioning strategies in the workout tracking/programming space:
 Endgame's moat is gamification. RP's moat is autoregulation. Boostcamp's moat is content. Today, Endgame loses on science (Endgame < Boostcamp < RP) but wins on novelty (Endgame >> Boostcamp, RP). The product is positioned correctly but incompletely.
 
 To ship successfully, Endgame must choose: (a) **play the game layer,** not science (raid-driven competitive social app), or (b) **implement true autoregulation** (RIR + volume + deload). Doing both half-way serves no audience well.
-
