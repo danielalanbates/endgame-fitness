@@ -10,9 +10,12 @@ Updated November 18, 2026.
 - Endgame uses the existing BatesAI Google and Apple membership system. There
   is no separate Endgame or Facebook login.
 - The web app is published at `https://batesai.org/endgamefitness/`. The Pages
-  deployment completed at `https://13963e29.website-8lz.pages.dev`.
+  deployment completed at `https://f23ac02d.website-8lz.pages.dev`.
 - Pages handles the `/membership` OAuth callback. The Endgame Worker now routes
   only `/api/endgame/*`; production version `2be68dff-d05a-48f7-a794-73762c6fd06a`.
+- Public app source: `https://github.com/danielalanbates/endgame-fitness`.
+  The private `endgame-fitness.batesai.org` repo has a `current-main` mirror
+  branch; its older `main` history is preserved.
 - The production Google and Apple start routes both returned 302 to their
   providers and used `https://batesai.org/membership` as the callback. Google
   state uses `SameSite=Lax`; Apple form POST uses `SameSite=None; Secure`.
