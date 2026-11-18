@@ -4,15 +4,15 @@ Last checked: 2026-11-18. Facebook is the only sign-in provider for Endgame Fitn
 
 ## Current credential audit
 
-The Meta App ID and App Secret were not present in the Endgame project documentation, the Google Drive Code `Documentation` folder, or the secure key files referenced by that folder. The `Documentation_Project_Management_Meta_.env` secure-store file contains email budget-alert settings; it does not contain Facebook app credentials. The project's `/api/endgame/config` endpoint consequently reports `facebook: false`, and the sign-in endpoint returns `503` until Meta is configured.
+The Meta App ID and App Secret were not present in the Endgame project documentation, the Google Drive Code `Documentation` folder, or the secure key files referenced by that folder. The `Documentation_Project_Management_Meta_.env` secure-store file contains email budget-alert settings; it does not contain Facebook app credentials. Both values have since been entered as Cloudflare Worker secrets. The latest name-only secret listing shows `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`. No secret value is stored in repository files; the App Secret was not read back or placed in chat.
 
 ## Meta dashboard status
 
-A read-only browser report says the Meta account has one app named **BatesAI** in Development mode. The user reports saving these Endgame settings on that app: app domain `batesai.org`, privacy and data-deletion URLs `https://batesai.org/endgamefitness/privacy`, and valid OAuth redirect URI `https://batesai.org/api/endgame/auth/callback`. The redirect URI persisted after a page reload. These fields were not independently re-read during this update. The App Secret remains unrevealed, and the app remains in Development mode. The report says the app category and icon are still missing for submission.
+A read-only browser report says the Meta account has one app named **BatesAI** in Development mode. The user reports saving these Endgame settings on that app: app domain `batesai.org`, privacy and data-deletion URLs `https://batesai.org/endgamefitness/privacy`, and valid OAuth redirect URI `https://batesai.org/api/endgame/auth/callback`. The redirect URI persisted after a page reload. These fields were not independently re-read during this update. The App Secret was entered directly into Wrangler and remains absent from chat and files. The app remains in Development mode. The report says the app category and icon are still missing for submission.
 
 The repository already contains a 1024 × 1024 Endgame icon candidate at `App/Resources/Assets.xcassets/AppIcon.appiconset/icon_1024.png`. It has not been uploaded to Meta. The requested Meta settings were the only reported Meta-side changes; no category or icon was submitted.
 
-At the latest production check, `wrangler secret list --config Server/wrangler.toml` returned an empty list, `/api/endgame/config` returned `facebook:false`, and `/api/endgame/auth/start` returned `503` with `FACEBOOK_NOT_CONFIGURED`. The Worker is deployed; Facebook sign-in is not active until the App ID and App Secret are stored and deployed.
+At the latest production check, `wrangler secret list --config Server/wrangler.toml` returned both secret names, `/api/endgame/config` returned `facebook:true`, and `/api/endgame/auth/start` returned `302` to `www.facebook.com/v27.0/dialog/oauth` with scope `public_profile` and the configured callback URI. This verifies readiness and the OAuth start redirect, not a completed Facebook callback or account login. Worker version `3037fae0-d49f-4b62-b10b-34521d4f814b` is deployed.
 
 Do not add either value to this document, source control, screenshots, or chat. Save both directly as Cloudflare Worker secrets.
 
