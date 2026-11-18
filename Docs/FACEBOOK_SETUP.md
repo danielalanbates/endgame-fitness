@@ -6,6 +6,12 @@ Last checked: 2026-11-18. Facebook is the only sign-in provider for Endgame Fitn
 
 The Meta App ID and App Secret were not present in the Endgame project documentation, the Google Drive Code `Documentation` folder, or the secure key files referenced by that folder. The `Documentation_Project_Management_Meta_.env` secure-store file contains email budget-alert settings; it does not contain Facebook app credentials. The project's `/api/endgame/config` endpoint consequently reports `facebook: false`, and the sign-in endpoint returns `503` until Meta is configured.
 
+## Meta dashboard status
+
+A read-only browser report says the Meta account has one app named **BatesAI** in Development mode. The open dashboard URL identifies that app, but its Basic and Facebook Login settings have not been verified. The App Secret was not retrieved. The existing app's redirect URI, app domains, privacy and deletion URLs, requested permissions, tester roles, and review/live status are therefore unknown. The report proposed reusing BatesAI or creating a dedicated Endgame Fitness app; no choice or Meta-side change is recorded. Do not assume that the existing app is configured for Endgame.
+
+At the latest production check, `wrangler secret list --config Server/wrangler.toml` returned an empty list, `/api/endgame/config` returned `facebook:false`, and `/api/endgame/auth/start` returned `503` with `FACEBOOK_NOT_CONFIGURED`. The Worker is deployed; Facebook sign-in is not active.
+
 Do not add either value to this document, source control, screenshots, or chat. Save both directly as Cloudflare Worker secrets.
 
 ## Meta app values to configure
