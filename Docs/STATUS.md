@@ -26,11 +26,11 @@ Screenshots and raw test logs are private working artifacts in `.local/` (test p
 
 ## Current external blocker
 
-Production's existing Pages secrets include no `FACEBOOK_APP_ID` or `FACEBOOK_APP_SECRET`, and no existing `endgame-fitness` Worker was present. The implementation deliberately reports Facebook unavailable until credentials are configured. A public/live Meta application and successful testing with a non-role Facebook account are still required. See `Server/README.md` for exact setup; never ask the user to paste the secret into chat or source.
+The Endgame Worker is deployed, but `wrangler secret list --config Server/wrangler.toml` returned an empty list at the latest check. Production `/api/endgame/config` returns `facebook:false` and `/api/endgame/auth/start` returns `503` with `FACEBOOK_NOT_CONFIGURED`. A public/live Meta application and successful testing with a non-role Facebook account are still required. See `Server/README.md` for exact setup; never ask the user to paste the secret into chat or source.
 
-The setup values and credential search are now recorded in [`FACEBOOK_SETUP.md`](FACEBOOK_SETUP.md). The Google Drive Code `Documentation` folder had no Endgame/Facebook credential file or matching app-key declarations; its `Project_Management_Meta` environment pointer leads to alert-email settings, not Facebook credentials. The secure key store also had no Facebook App ID or App Secret. The OAuth endpoint and Cloudflare configuration are documented; the Meta app and its credentials are not available in the documentation searched.
+The setup values and credential search are recorded in [`FACEBOOK_SETUP.md`](FACEBOOK_SETUP.md). The Google Drive Code `Documentation` folder had no Endgame/Facebook credential file or matching app-key declarations; its `Project_Management_Meta` environment pointer leads to alert-email settings, not Facebook credentials. The secure key store also had no Facebook App ID or App Secret. A read-only browser report identified an existing BatesAI Meta app in Development mode, but its Facebook Login settings and App Secret remain unverified. No choice between reusing that app and creating a dedicated Endgame app is recorded.
 
-The browser-control connection could list tabs but failed to navigate to the Meta developer dashboard. No developer app, credentials, permissions or Meta configuration were created or changed through the browser.
+The Meta developer dashboard was visible in the signed-in browser, but this review did not inspect app settings or change Meta configuration. No credentials were retrieved, and no app, permissions or Meta settings were created or changed.
 
 ## Known limitations and follow-up work
 
