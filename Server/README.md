@@ -23,9 +23,11 @@ The migration is additive and uses only `ef_` tables. Do not run membership migr
 
 ## Required Meta setup (external dependency)
 
+See [`Docs/FACEBOOK_SETUP.md`](../Docs/FACEBOOK_SETUP.md) for the current credential audit, exact Meta dashboard values, setup commands, and public release checklist.
+
 1. Register an appropriate Meta developer app and enable Facebook Login for the web. Complete any required business verification, app review, data handling questions and public/live-mode requirements in Meta's dashboard.
 2. Set the website URL to `https://batesai.org/endgamefitness/` and register this **exact** Valid OAuth Redirect URI: `https://batesai.org/api/endgame/auth/callback`.
-3. Set privacy policy and data-deletion instructions to `https://batesai.org/endgamefitness/privacy.html`. The instructions explain in-app deletion and the support fallback. This build does not claim an automatic Meta signed-request deletion callback.
+3. Set privacy policy and data-deletion instructions to `https://batesai.org/endgamefitness/privacy`. The instructions explain in-app deletion and the support fallback. This build does not claim an automatic Meta signed-request deletion callback.
 4. Request only `public_profile`. The app does not request email, friend lists or posting permissions. Sign-in does not automatically expose Facebook contacts.
 5. Set `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` using `wrangler secret put <NAME> --config Server/wrangler.toml`. Use interactive secret input. Never put credentials in source, screenshots, shell arguments or PRs.
 6. Test with a Meta app tester and then a non-role public account. A configured development-mode Meta app is **not** evidence that public sign-in works.
