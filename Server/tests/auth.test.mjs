@@ -427,3 +427,17 @@ test("cancelled OAuth consumes state without creating an account", async () => {
     0,
   );
 });
+test("opposite invitations cannot create duplicate friendship rows", async () => {
+  const { DB, id } = await setup();
+  DB.raw
+    .prepare("INSERT INTO ef_accounts VALUES(?,?,?,?,?)")
+    .run("friend", "2000", "Friend", "1111111111111111", 0);
+  DB.raw
+    .prepare("INSERT INTO ef_friendships VALUES(?,?,0,0)")
+    .run(id, "friend");
+  assert.throws(() =>
+    DB.raw
+      .prepare("INSERT INTO ef_friendships VALUES(?,?,0,0)")
+      .run("friend", id),
+  );
+});

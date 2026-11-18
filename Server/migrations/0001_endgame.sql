@@ -28,3 +28,6 @@ CREATE TABLE IF NOT EXISTS ef_friendships (
 );
 CREATE INDEX IF NOT EXISTS ef_session_expiry ON ef_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS ef_friend_recipient ON ef_friendships(recipient);
+
+-- Prevent simultaneous opposite invitations from creating duplicate friendships.
+CREATE UNIQUE INDEX IF NOT EXISTS ef_friend_pair ON ef_friendships(min(requester, recipient), max(requester, recipient));

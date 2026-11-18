@@ -94,10 +94,14 @@ async function sync() {
     revision = r.revision;
     dirty = saveEpoch !== epoch;
     cloudStatus = dirty ? "Saving latest changes…" : "Saved to your account";
-    localStorage.setItem(
-      localKey(),
-      JSON.stringify({ state, revision, dirty }),
-    );
+    try {
+      localStorage.setItem(
+        localKey(),
+        JSON.stringify({ state, revision, dirty }),
+      );
+    } catch {
+      storageIssue = true;
+    }
     if (dirty) {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(sync, 100);
@@ -127,7 +131,11 @@ async function boot() {
   }
   try {
     ({ user } = await api("me"));
-    localStorage.setItem(E.key + ".last", JSON.stringify({ user }));
+    try {
+      localStorage.setItem(E.key + ".last", JSON.stringify({ user }));
+    } catch {
+      storageIssue = true;
+    }
     const cloud = await api("state");
     revision = cloud.revision;
     let cached = null;

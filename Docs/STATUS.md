@@ -17,9 +17,9 @@ The latest user instruction supersedes local-only login: **Facebook is the sole 
 | --- | --- |
 | Native regression selftest | **304/304 PASS** on the consolidated native engine; includes planner, progression, data recovery and game rules. These tests do not prove clinical superiority. |
 | Native Facebook sources | Swift compile succeeds; full Release `.app` build succeeds. Live authentication remains unverified. |
-| Web/backend tests | **42/42 PASS**, including full plan matrix, earned quest claims, progression, replay prevention, mocked successful Facebook exchange, PKCE one-use codes, session expiry, ownership, conflicts, friendships, deletion and validation. Provider responses are mocked, not real Meta credentials. |
+| Web/backend tests | **43/43 PASS**, including full plan matrix, earned quest claims, progression, replay prevention, mocked successful Facebook exchange, PKCE one-use codes, session expiry, ownership, conflicts, friendships, deletion and validation. Provider responses are mocked, not real Meta credentials. |
 | Browser workflows | Pass in headless Chromium at desktop and 390px mobile: unavailable login, mocked authenticated onboarding, workout resume after reload, finish/XP, quests, main tabs, unit conversion, backup export/import, exercise search and invitation acceptance. No JavaScript errors or horizontal overflow observed. |
-| Live deployment | App entry and scoped privacy page return 200. `/config` returns `facebook:false`; `/auth/start` returns 503. Real Chromium loads the production entry and privacy page with no JavaScript errors. Worker version `b31a4506-c6d0-486d-9d7a-8da4c6064f5f` verified before final source formatting. |
+| Live deployment | App entry and scoped privacy page return 200. `/config` returns `facebook:false`; `/auth/start` returns 503. Real Chromium loads the production entry and privacy page with no JavaScript errors. Worker version `e9da6f85-072c-418b-98df-2021a19b9c8e` verified after final fixes. |
 | Candidate source scan | Gitleaks found no leaks in the candidate source snapshot; ignored browsers/build artifacts excluded. |
 
 Screenshots and raw test logs are private working artifacts in `.local/` (test player only). Do not publish real player data.
