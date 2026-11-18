@@ -8,9 +8,11 @@ The Meta App ID and App Secret were not present in the Endgame project documenta
 
 ## Meta dashboard status
 
-A read-only browser report says the Meta account has one app named **BatesAI** in Development mode. The open dashboard URL identifies that app, but its Basic and Facebook Login settings have not been verified. The App Secret was not retrieved. The existing app's redirect URI, app domains, privacy and deletion URLs, requested permissions, tester roles, and review/live status are therefore unknown. The report proposed reusing BatesAI or creating a dedicated Endgame Fitness app; no choice or Meta-side change is recorded. Do not assume that the existing app is configured for Endgame.
+A read-only browser report says the Meta account has one app named **BatesAI** in Development mode. The user reports saving these Endgame settings on that app: app domain `batesai.org`, privacy and data-deletion URLs `https://batesai.org/endgamefitness/privacy`, and valid OAuth redirect URI `https://batesai.org/api/endgame/auth/callback`. The redirect URI persisted after a page reload. These fields were not independently re-read during this update. The App Secret remains unrevealed, and the app remains in Development mode. The report says the app category and icon are still missing for submission.
 
-At the latest production check, `wrangler secret list --config Server/wrangler.toml` returned an empty list, `/api/endgame/config` returned `facebook:false`, and `/api/endgame/auth/start` returned `503` with `FACEBOOK_NOT_CONFIGURED`. The Worker is deployed; Facebook sign-in is not active.
+The repository already contains a 1024 × 1024 Endgame icon candidate at `App/Resources/Assets.xcassets/AppIcon.appiconset/icon_1024.png`. It has not been uploaded to Meta. The requested Meta settings were the only reported Meta-side changes; no category or icon was submitted.
+
+At the latest production check, `wrangler secret list --config Server/wrangler.toml` returned an empty list, `/api/endgame/config` returned `facebook:false`, and `/api/endgame/auth/start` returned `503` with `FACEBOOK_NOT_CONFIGURED`. The Worker is deployed; Facebook sign-in is not active until the App ID and App Secret are stored and deployed.
 
 Do not add either value to this document, source control, screenshots, or chat. Save both directly as Cloudflare Worker secrets.
 
