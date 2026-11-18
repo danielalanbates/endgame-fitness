@@ -25,6 +25,7 @@ App/Sources/EndgameFitness/    SwiftUI Mac app and native training/game engines
   EngineSelfTest.swift       native engine regression checks
 Web/local-app/               dependency-free browser app and testable training engine
 Server/                     scoped Cloudflare Worker, Facebook OAuth, account saves and friends
+Docs/FACEBOOK_SETUP.md       Meta app settings, credential audit, and release checklist
 Server/README.md             deployment, Meta setup and security details
 Docs/STATUS.md              verification results, known limits and next actions
 Docs/STATUS_LEGACY.md        earlier development notes (historical, not current behavior)
