@@ -1,3 +1,4 @@
+import {raidWrites,raidStatus,raidRewards} from "../../_lib/weekly-raids.mjs";
 import {guildAction} from "../../_lib/guilds.mjs";
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 // BatesAI Membership is the sole identity system. Endgame accepts its shared
@@ -144,8 +145,10 @@ export async function onRequest({ request, env, params }) {
       )
         .bind(user.id)
         .first();
+      const state = row ? JSON.parse(row.data) : null;
+      if (state?.players?.[0]) state.players[0].raidRewards = await raidRewards(env.DB,user.id);
       return reply({
-        state: row ? JSON.parse(row.data) : null,
+        state,
         revision: row?.revision || 0,
       });
     }
@@ -164,19 +167,12 @@ export async function onRequest({ request, env, params }) {
           { error: "State must belong to your BatesAI account" },
           400,
         );
-      let result;
-      if (b.revision === 0)
-        result = await env.DB.prepare(
-          "INSERT INTO ef_state(user_id,data,revision,updated_at) VALUES(?,?,1,?) ON CONFLICT(user_id) DO NOTHING",
-        )
-          .bind(user.id, JSON.stringify(v), now())
-          .run();
-      else
-        result = await env.DB.prepare(
-          "UPDATE ef_state SET data=?,revision=revision+1,updated_at=? WHERE user_id=? AND revision=?",
-        )
-          .bind(JSON.stringify(v), now(), user.id, b.revision)
-          .run();
+      v.players[0].raidRewards = await raidRewards(env.DB,user.id);
+      const writeId = crypto.randomUUID(), epoch = now();
+      const save = b.revision === 0
+        ? env.DB.prepare("INSERT INTO ef_state(user_id,data,revision,updated_at,write_id) VALUES(?,?,1,?,?) ON CONFLICT(user_id) DO NOTHING").bind(user.id,JSON.stringify(v),epoch,writeId)
+        : env.DB.prepare("UPDATE ef_state SET data=?,revision=revision+1,updated_at=?,write_id=? WHERE user_id=? AND revision=?").bind(JSON.stringify(v),epoch,writeId,user.id,b.revision);
+      const [result] = await env.DB.batch([save,...raidWrites(env.DB,user.id,writeId,v.players[0],epoch)]);
       if (!result.meta.changes)
         return reply(
           {
@@ -185,8 +181,9 @@ export async function onRequest({ request, env, params }) {
           },
           409,
         );
-      return reply({ revision: b.revision + 1 });
+      return reply({ revision: b.revision + 1, raidRewards: await raidRewards(env.DB,user.id) });
     }
+    if (path === "raid/status" && request.method === "GET") return reply(await raidStatus(env.DB,user.id,now()));
     if (path === "guild/status" && request.method === "GET")
       return reply(await guildAction(env.DB,user.id,"status",{}));
     if (["guild/create","guild/join","guild/leave"].includes(path) && request.method === "POST")

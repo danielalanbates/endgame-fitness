@@ -223,7 +223,7 @@ const baseSessionXP = (s) =>
 export const sessionXP = s => Number.isSafeInteger(s.earnedXP) && s.earnedXP >= 0 ? s.earnedXP : baseSessionXP(s);
 export const xp = (p) =>
   p.sessions.reduce((n, s) => n + sessionXP(s), 0) +
-  (p.claimed || []).length * 75;
+  (p.claimed || []).length * 75 + (p.raidRewards || []).reduce((sum,r) => sum+r.xp,0);
 export function stats(p) {
   const sets = p.sessions.flatMap(completedSets);
   return {
@@ -288,7 +288,7 @@ export function seasonProgress(p, now = Date.now()) {
   const inSeason = ms => ms >= season.starts_at * 1000 && ms < season.ends_at * 1000;
   const workouts = p.sessions.filter(s => inSeason(s.finished)).reduce((n,s) => n + sessionXP(s), 0);
   const questXP = Object.values(p.questTimes || {}).filter(inSeason).length * 75;
-  const total = workouts + questXP;
+  const total = workouts + questXP + (p.raidRewards || []).filter(r=>inSeason(r.week*1000)).reduce((sum,r)=>sum+r.xp,0);
   return {season, total, tier: tierForXp(total), claims: p.seasonClaims?.[season.id] || []};
 }
 export function claimTier(p, tier, now = Date.now()) {
@@ -572,6 +572,7 @@ export function validateState(v) {
     const record = value => value && typeof value === "object" && !Array.isArray(value);
     if (p.streak != null && (!record(p.streak) || !/^\d{4}-\d{2}-\d{2}$/.test(p.streak.lastDate) ||
         !intBetween(p.streak.current,1,20000) || !intBetween(p.streak.longest,p.streak.current,20000))) throw Error("Invalid streak.");
+    if (p.raidRewards != null && (!Array.isArray(p.raidRewards) || p.raidRewards.some(r=>!r || !intBetween(r.xp,0,100000) || !Number.isSafeInteger(r.week)))) throw Error("Invalid raid rewards.");
     if (p.ranks != null && (!record(p.ranks) || Object.entries(p.ranks).some(([id,n]) =>
       !nodeById(id) || !intBetween(n,0,nodeById(id).max_rank)))) throw Error("Invalid talent ranks.");
     for (const key of ["rewardPoints","bonusPoints","freezes"]) {

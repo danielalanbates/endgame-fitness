@@ -96,6 +96,7 @@ async function sync() {
   try {
     const r = await api("state", "PUT", { state, revision });
     revision = r.revision;
+    if (Array.isArray(r.raidRewards)) player().raidRewards = r.raidRewards;
     dirty = saveEpoch !== epoch;
     cloudStatus = dirty ? "Saving latest changes…" : "Saved to your account";
     try {
@@ -451,6 +452,12 @@ function progressPage() {
         "</div>"
   }</section>`;
 }
+function raidPanel(raid) {
+  if (!raid?.boss) return "";
+  return `<section class="card"><h2>${esc(raid.boss)}</h2><p>${esc(raid.group)} weekly raid · ${fmt(Math.min(raid.hp,raid.damage))} / ${fmt(raid.hp)} damage</p>
+    ${progress(raid.damage,raid.hp)}<p>${raid.damage >= raid.hp ? "Boss defeated" : "Saved workouts deal one damage per pound of volume. Personal records add bonus damage."}</p>
+    ${raid.rewards.length ? '<details><summary>Raid rewards</summary>'+raid.rewards.map(r=>'<p>'+esc(r.title)+' · '+esc(r.aura)+' · '+fmt(r.xp)+' XP</p>').join("")+'</details>' : ""}</section>`;
+}
 function guildPanel(status) {
   if (!status) return '<section class="card"><h2>Guild</h2><p>Guild data is unavailable.</p></section>';
   if (status.guild) {
@@ -470,7 +477,7 @@ function socialPage() {
     s = E.stats(p),
     week = E.weeklySessions(p),
     days = new Set(week.map((s) => s.day)).size;
-  return `${heading("STRONGER TOGETHER", "Find your training party.", "Real friends. Shared consistency. A reason to show up for each other.")}${guildPanel(social?.guildStatus)}<div class="grid"><div class="stack"><section class="card hero"><span class="eyebrow">WEEKLY PARTY QUEST</span><h2>Three days. One stronger party.</h2><p>Each party member aims to train on three different days this week. Every completed day is a step forward. The challenge resets on Monday.</p>${progress(days, 3)}<small>${days} / 3 training days · your contribution</small></section><section class="card"><h2>Your party this week</h2><p><small>Friends see your display name and aggregate training stats. These are self-reported logs, not independently verified results.</small></p><div class="listrow row"><div><h3>${esc(p.name)} <small>(you)</small></h3><small>Level ${s.level} · ${s.sessions} sessions</small></div><span class="lime">${days} / 3 days</span></div>${social ? social.friends.map((f) => `<div class="listrow row"><div><h3>${esc(f.name)}</h3><small>Level ${f.level} · ${f.sessions} sessions · ${f.weeklySets} sets this week</small></div><div><span class="lime">${f.weeklyDays} / 3 days</span><br>${button("Remove", "removeFriend", "quiet danger", `data-id="${esc(f.id)}"`)}</div></div>`).join("") : "<p>Loading party…</p>"}${social && !social.friends.length ? "<p>Your party is waiting to be formed. Share your friend code with someone you train with.</p>" : ""}</section>${social?.incoming.length ? `<section class="card"><h2>Party invitations</h2>${social.incoming.map((f) => `<div class="listrow row"><h3>${esc(f.name)}</h3><div class="actions">${button("Accept", "respond", "primary", `data-id="${esc(f.id)}" data-accept="true"`)}${button("Decline", "respond", "quiet", `data-id="${esc(f.id)}" data-accept="false"`)}</div></div>`).join("")}</section>` : ""}</div><aside class="stack"><section class="card"><span class="eyebrow purple">Your friend code</span><h2 class="readonlycode" style="font-size:20px;margin-top:16px;letter-spacing:2px">${esc(user.friend_code)}</h2><p>Share this code privately. A friend can send an invitation; you decide whether to accept.</p><div class="actions">${button("Copy invite link", "invite", "primary")}${button("Refresh party", "refresh", "quiet")}</div></section><section class="card"><h2>Add a friend</h2><form data-form="friend"><label>Friend code<input name="code" required maxlength="16" pattern="[a-fA-F0-9]{16}" placeholder="16-character code" autocomplete="off" value="${esc(new URLSearchParams(location.search).get("invite") || "")}"></label>${button("Send invitation →", "submit", "primary", 'type="submit"')}</form>${social?.outgoing.length ? `<p><small>${social.outgoing.length} invitation(s) awaiting acceptance.</small></p>` : ""}</section><section class="card"><h3>Your circle. Your choice.</h3><p>Your BatesAI account provides sign-in. Endgame friend codes build your party without importing your contacts or posting to your social feeds.</p><small>Workout detail and preferences stay private. No public global ranking, no pressure to lift beyond your ability.</small></section></aside></div>`;
+  return `${heading("STRONGER TOGETHER", "Find your training party.", "Real friends. Shared consistency. A reason to show up for each other.")}${guildPanel(social?.guildStatus)}${raidPanel(social?.raid)}<div class="grid"><div class="stack"><section class="card hero"><span class="eyebrow">WEEKLY PARTY QUEST</span><h2>Three days. One stronger party.</h2><p>Each party member aims to train on three different days this week. Every completed day is a step forward. The challenge resets on Monday.</p>${progress(days, 3)}<small>${days} / 3 training days · your contribution</small></section><section class="card"><h2>Your party this week</h2><p><small>Friends see your display name and aggregate training stats. These are self-reported logs, not independently verified results.</small></p><div class="listrow row"><div><h3>${esc(p.name)} <small>(you)</small></h3><small>Level ${s.level} · ${s.sessions} sessions</small></div><span class="lime">${days} / 3 days</span></div>${social ? social.friends.map((f) => `<div class="listrow row"><div><h3>${esc(f.name)}</h3><small>Level ${f.level} · ${f.sessions} sessions · ${f.weeklySets} sets this week</small></div><div><span class="lime">${f.weeklyDays} / 3 days</span><br>${button("Remove", "removeFriend", "quiet danger", `data-id="${esc(f.id)}"`)}</div></div>`).join("") : "<p>Loading party…</p>"}${social && !social.friends.length ? "<p>Your party is waiting to be formed. Share your friend code with someone you train with.</p>" : ""}</section>${social?.incoming.length ? `<section class="card"><h2>Party invitations</h2>${social.incoming.map((f) => `<div class="listrow row"><h3>${esc(f.name)}</h3><div class="actions">${button("Accept", "respond", "primary", `data-id="${esc(f.id)}" data-accept="true"`)}${button("Decline", "respond", "quiet", `data-id="${esc(f.id)}" data-accept="false"`)}</div></div>`).join("")}</section>` : ""}</div><aside class="stack"><section class="card"><span class="eyebrow purple">Your friend code</span><h2 class="readonlycode" style="font-size:20px;margin-top:16px;letter-spacing:2px">${esc(user.friend_code)}</h2><p>Share this code privately. A friend can send an invitation; you decide whether to accept.</p><div class="actions">${button("Copy invite link", "invite", "primary")}${button("Refresh party", "refresh", "quiet")}</div></section><section class="card"><h2>Add a friend</h2><form data-form="friend"><label>Friend code<input name="code" required maxlength="16" pattern="[a-fA-F0-9]{16}" placeholder="16-character code" autocomplete="off" value="${esc(new URLSearchParams(location.search).get("invite") || "")}"></label>${button("Send invitation →", "submit", "primary", 'type="submit"')}</form>${social?.outgoing.length ? `<p><small>${social.outgoing.length} invitation(s) awaiting acceptance.</small></p>` : ""}</section><section class="card"><h3>Your circle. Your choice.</h3><p>Your BatesAI account provides sign-in. Endgame friend codes build your party without importing your contacts or posting to your social feeds.</p><small>Workout detail and preferences stay private. No public global ranking, no pressure to lift beyond your ability.</small></section></aside></div>`;
 }
 function makePhases(goal, weeks) {
   const recipe = recipes[goal];
@@ -571,8 +578,9 @@ function render() {
 }
 async function refreshSocial() {
   try {
-    const [party,guildStatus] = await Promise.all([api("social"),api("guild/status").catch(() => null)]);
-    social = {...party,guildStatus};
+    const [party,guildStatus,raid] = await Promise.all([api("social"),api("guild/status").catch(() => null),api("raid/status").catch(() => null)]);
+    social = {...party,guildStatus,raid};
+    if (Array.isArray(raid?.rewards)) player().raidRewards = raid.rewards;
     if (tab === "social") render();
   } catch (e) {
     social = { friends: [], incoming: [], outgoing: [] };

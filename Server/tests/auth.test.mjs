@@ -14,6 +14,7 @@ function db() {
     ),
   );
   raw.exec(readFileSync(new URL("../migrations/0002_batesai_membership.sql", import.meta.url), "utf8"));
+  for (const file of ["0003_guilds.sql","0004_weekly_raids.sql"]) raw.exec(readFileSync(new URL("../migrations/"+file,import.meta.url),"utf8"));
   raw.exec(`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL, expires_at INTEGER NOT NULL);`);
   return {
@@ -317,4 +318,57 @@ test("opposite invitations cannot create duplicate friendship rows", async () =>
       .prepare("INSERT INTO ef_friendships VALUES(?,?,0,0)")
       .run("friend", id),
   );
+});
+
+test("weekly raid credits saved workouts once, rejects stale hits and grants a single boss reward",async()=>{
+  const {DB,id,token}=await setup();
+  const p=E.newPlayer("Lifter");
+  p.id=id; p.unit="lb";
+  const state={version:1,players:[p],selected:id,rivals:[]};
+  const put=revision=>request({DB},"state","PUT",{revision,state},auth(token));
+  const status=async()=> (await request({DB},"raid/status","GET",null,auth(token))).json();
+  const initial=await status();
+  assert.equal(initial.group,"Solo");
+  const session=E.startWorkout(p);
+  session.exercises[0].sets=[{weight:1000,reps:100,rir:2,done:true},{weight:1000,reps:100,rir:2,done:true}];
+  E.finishWorkout(p);
+  assert.equal((await put(0)).status,200);
+  assert.equal((await status()).damage,200000);
+  assert.equal((await put(1)).status,200);
+  const duplicate=structuredClone(p.sessions[0]);
+  duplicate.id=crypto.randomUUID(); p.sessions.push(duplicate);
+  assert.equal((await put(1)).status,409);
+  assert.equal((await status()).damage,200000);
+  assert.equal((await put(2)).status,200);
+  const raid=await status();
+  assert.equal(raid.damage,400000);
+  assert.equal(raid.rewards.length,1);
+  assert.ok(raid.rewards[0].xp>0);
+});
+
+test("guild members share raid HP and each contributor gets the defeat reward",async()=>{
+  const {DB,id,token}=await setup();
+  const second=crypto.randomUUID(), membership=crypto.randomUUID(), token2=crypto.randomUUID();
+  DB.raw.prepare("INSERT INTO users VALUES(?,?,?)").run(membership,"second@example.com","Second");
+  DB.raw.prepare("INSERT INTO ef_accounts VALUES(?,?,?,?,?)").run(second,"batesai:"+membership,"Second","2222222222222222",0);
+  DB.raw.prepare("INSERT INTO ef_membership_links VALUES(?,?)").run(membership,second);
+  DB.raw.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(crypto.randomUUID(),membership,await hash(token2),Math.floor(Date.now()/1000)+1000);
+  const post=(t,path,body)=>request({DB},path,"POST",body,auth(t));
+  const get=async(t,path)=>(await request({DB},path,"GET",null,auth(t))).json();
+  assert.equal((await post(token,"guild/create",{name:"Dragons"})).status,200);
+  const {guild}=await get(token,"guild/status");
+  assert.equal((await post(token2,"guild/join",{code:guild.invite_code})).status,200);
+  for (const [user,t,weight] of [[id,token,1],[second,token2,1000]]) {
+    const p=E.newPlayer("Lifter"); p.id=user; p.unit="lb";
+    for(let i=0;i<3;i++){
+      const session=E.startWorkout(p);
+      session.exercises[0].sets=[{weight,reps:100,rir:2,done:true},{weight,reps:100,rir:2,done:true}];
+      E.finishWorkout(p);
+    }
+    const state={version:1,players:[p],selected:user,rivals:[]};
+    assert.equal((await request({DB},"state","PUT",{revision:0,state},auth(t))).status,200);
+  }
+  const a=await get(token,"raid/status"), b=await get(token2,"raid/status");
+  assert.equal(a.group,"Guild"); assert.deepEqual(a,b);
+  assert.equal(a.damage,600600); assert.ok(a.rewards[0].xp>0);
 });
