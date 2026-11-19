@@ -451,12 +451,26 @@ function progressPage() {
         "</div>"
   }</section>`;
 }
+function guildPanel(status) {
+  if (!status) return '<section class="card"><h2>Guild</h2><p>Guild data is unavailable.</p></section>';
+  if (status.guild) {
+    const g = status.guild;
+    return `<section class="card"><h2>${esc(g.emblem)} ${esc(g.name)}</h2><p>${esc(g.motto)}</p><p>Invite code: <code>${esc(g.invite_code)}</code></p>
+      ${g.members.map(m => '<p>'+esc(m.name)+' · '+esc(m.role)+'</p>').join("")}
+      ${button("Leave guild","leaveGuild","quiet")}</section>`;
+  }
+  return `<section class="card"><h2>Guilds</h2>
+    <form data-form="joinGuild"><label>Invite code<input name="code" maxlength="16" required></label><button>Join by code</button></form>
+    ${(status.open || []).map(g => '<div class="listrow">'+esc(g.name)+' · '+g.members+'/50 '+button("Join","joinOpenGuild","quiet",'data-id="'+esc(g.id)+'"')+'</div>').join("")}
+    <details><summary>Found a guild</summary><form data-form="createGuild"><label>Name<input name="name" minlength="3" maxlength="32" required></label>
+    <label>Motto<input name="motto" maxlength="160"></label><label>Emblem<input name="emblem" maxlength="16"></label><label><input type="checkbox" name="open"> Open to other players</label><button>Create guild</button></form></details></section>`;
+}
 function socialPage() {
   const p = player(),
     s = E.stats(p),
     week = E.weeklySessions(p),
     days = new Set(week.map((s) => s.day)).size;
-  return `${heading("STRONGER TOGETHER", "Find your training party.", "Real friends. Shared consistency. A reason to show up for each other.")}<div class="grid"><div class="stack"><section class="card hero"><span class="eyebrow">WEEKLY PARTY QUEST</span><h2>Three days. One stronger party.</h2><p>Each party member aims to train on three different days this week. Every completed day is a step forward. The challenge resets on Monday.</p>${progress(days, 3)}<small>${days} / 3 training days · your contribution</small></section><section class="card"><h2>Your party this week</h2><p><small>Friends see your display name and aggregate training stats. These are self-reported logs, not independently verified results.</small></p><div class="listrow row"><div><h3>${esc(p.name)} <small>(you)</small></h3><small>Level ${s.level} · ${s.sessions} sessions</small></div><span class="lime">${days} / 3 days</span></div>${social ? social.friends.map((f) => `<div class="listrow row"><div><h3>${esc(f.name)}</h3><small>Level ${f.level} · ${f.sessions} sessions · ${f.weeklySets} sets this week</small></div><div><span class="lime">${f.weeklyDays} / 3 days</span><br>${button("Remove", "removeFriend", "quiet danger", `data-id="${esc(f.id)}"`)}</div></div>`).join("") : "<p>Loading party…</p>"}${social && !social.friends.length ? "<p>Your party is waiting to be formed. Share your friend code with someone you train with.</p>" : ""}</section>${social?.incoming.length ? `<section class="card"><h2>Party invitations</h2>${social.incoming.map((f) => `<div class="listrow row"><h3>${esc(f.name)}</h3><div class="actions">${button("Accept", "respond", "primary", `data-id="${esc(f.id)}" data-accept="true"`)}${button("Decline", "respond", "quiet", `data-id="${esc(f.id)}" data-accept="false"`)}</div></div>`).join("")}</section>` : ""}</div><aside class="stack"><section class="card"><span class="eyebrow purple">Your friend code</span><h2 class="readonlycode" style="font-size:20px;margin-top:16px;letter-spacing:2px">${esc(user.friend_code)}</h2><p>Share this code privately. A friend can send an invitation; you decide whether to accept.</p><div class="actions">${button("Copy invite link", "invite", "primary")}${button("Refresh party", "refresh", "quiet")}</div></section><section class="card"><h2>Add a friend</h2><form data-form="friend"><label>Friend code<input name="code" required maxlength="16" pattern="[a-fA-F0-9]{16}" placeholder="16-character code" autocomplete="off" value="${esc(new URLSearchParams(location.search).get("invite") || "")}"></label>${button("Send invitation →", "submit", "primary", 'type="submit"')}</form>${social?.outgoing.length ? `<p><small>${social.outgoing.length} invitation(s) awaiting acceptance.</small></p>` : ""}</section><section class="card"><h3>Your circle. Your choice.</h3><p>Your BatesAI account provides sign-in. Endgame friend codes build your party without importing your contacts or posting to your social feeds.</p><small>Workout detail and preferences stay private. No public global ranking, no pressure to lift beyond your ability.</small></section></aside></div>`;
+  return `${heading("STRONGER TOGETHER", "Find your training party.", "Real friends. Shared consistency. A reason to show up for each other.")}${guildPanel(social?.guildStatus)}<div class="grid"><div class="stack"><section class="card hero"><span class="eyebrow">WEEKLY PARTY QUEST</span><h2>Three days. One stronger party.</h2><p>Each party member aims to train on three different days this week. Every completed day is a step forward. The challenge resets on Monday.</p>${progress(days, 3)}<small>${days} / 3 training days · your contribution</small></section><section class="card"><h2>Your party this week</h2><p><small>Friends see your display name and aggregate training stats. These are self-reported logs, not independently verified results.</small></p><div class="listrow row"><div><h3>${esc(p.name)} <small>(you)</small></h3><small>Level ${s.level} · ${s.sessions} sessions</small></div><span class="lime">${days} / 3 days</span></div>${social ? social.friends.map((f) => `<div class="listrow row"><div><h3>${esc(f.name)}</h3><small>Level ${f.level} · ${f.sessions} sessions · ${f.weeklySets} sets this week</small></div><div><span class="lime">${f.weeklyDays} / 3 days</span><br>${button("Remove", "removeFriend", "quiet danger", `data-id="${esc(f.id)}"`)}</div></div>`).join("") : "<p>Loading party…</p>"}${social && !social.friends.length ? "<p>Your party is waiting to be formed. Share your friend code with someone you train with.</p>" : ""}</section>${social?.incoming.length ? `<section class="card"><h2>Party invitations</h2>${social.incoming.map((f) => `<div class="listrow row"><h3>${esc(f.name)}</h3><div class="actions">${button("Accept", "respond", "primary", `data-id="${esc(f.id)}" data-accept="true"`)}${button("Decline", "respond", "quiet", `data-id="${esc(f.id)}" data-accept="false"`)}</div></div>`).join("")}</section>` : ""}</div><aside class="stack"><section class="card"><span class="eyebrow purple">Your friend code</span><h2 class="readonlycode" style="font-size:20px;margin-top:16px;letter-spacing:2px">${esc(user.friend_code)}</h2><p>Share this code privately. A friend can send an invitation; you decide whether to accept.</p><div class="actions">${button("Copy invite link", "invite", "primary")}${button("Refresh party", "refresh", "quiet")}</div></section><section class="card"><h2>Add a friend</h2><form data-form="friend"><label>Friend code<input name="code" required maxlength="16" pattern="[a-fA-F0-9]{16}" placeholder="16-character code" autocomplete="off" value="${esc(new URLSearchParams(location.search).get("invite") || "")}"></label>${button("Send invitation →", "submit", "primary", 'type="submit"')}</form>${social?.outgoing.length ? `<p><small>${social.outgoing.length} invitation(s) awaiting acceptance.</small></p>` : ""}</section><section class="card"><h3>Your circle. Your choice.</h3><p>Your BatesAI account provides sign-in. Endgame friend codes build your party without importing your contacts or posting to your social feeds.</p><small>Workout detail and preferences stay private. No public global ranking, no pressure to lift beyond your ability.</small></section></aside></div>`;
 }
 function makePhases(goal, weeks) {
   const recipe = recipes[goal];
@@ -557,7 +571,8 @@ function render() {
 }
 async function refreshSocial() {
   try {
-    social = await api("social");
+    const [party,guildStatus] = await Promise.all([api("social"),api("guild/status").catch(() => null)]);
+    social = {...party,guildStatus};
     if (tab === "social") render();
   } catch (e) {
     social = { friends: [], incoming: [], outgoing: [] };
@@ -675,6 +690,14 @@ root.addEventListener("click", async (event) => {
           },
         );
         break;
+      case "joinOpenGuild":
+        await api("guild/join","POST",{id:b.dataset.id});
+        await refreshSocial(); break;
+      case "leaveGuild":
+        confirmAction("Leave this guild?", "Ownership passes to another member when the owner leaves.", async () => {
+          await api("guild/leave","POST",{}); await refreshSocial();
+        });
+        break;
       case "claimTier":
         notice(E.claimTier(p, Number(b.dataset.tier)));
         persist(); render(); break;
@@ -790,6 +813,11 @@ root.addEventListener("submit", async (event) => {
     data = new FormData(form),
     p = player();
   try {
+    if (["createGuild","joinGuild"].includes(form.dataset.form)) {
+      const creating = form.dataset.form === "createGuild";
+      await api(creating ? "guild/create" : "guild/join","POST",{...Object.fromEntries(data),open:data.has("open")});
+      await refreshSocial(); return;
+    }
     if (form.dataset.form === "template") {
       p.phases = makePhases(data.get("goal"), Number(data.get("weeks")));
       persist(); render(); return;

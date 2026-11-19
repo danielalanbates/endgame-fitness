@@ -1,3 +1,4 @@
+import {guildAction} from "../../_lib/guilds.mjs";
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 // BatesAI Membership is the sole identity system. Endgame accepts its shared
 // Google/Apple session and never receives provider tokens.
@@ -186,6 +187,10 @@ export async function onRequest({ request, env, params }) {
         );
       return reply({ revision: b.revision + 1 });
     }
+    if (path === "guild/status" && request.method === "GET")
+      return reply(await guildAction(env.DB,user.id,"status",{}));
+    if (["guild/create","guild/join","guild/leave"].includes(path) && request.method === "POST")
+      return reply(await guildAction(env.DB,user.id,path.split("/")[1],await boundedJSON(request)));
     if (path === "friends" && request.method === "POST") {
       const b = await boundedJSON(request),
         code = String(b.code || "")
