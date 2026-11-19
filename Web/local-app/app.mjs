@@ -23,13 +23,15 @@ let state = E.fresh(),
   noticeTimer = null,
   storageIssue = false,
   saveEpoch = 0;
+let nativeExercises = [];
 const tabs = [
-  ["home", "◈", "Overview"],
-  ["workout", "↗", "Train"],
-  ["program", "▦", "Your program"],
+  ["home", "◈", "Home"],
+  ["workout", "↗", "Workout"],
+  ["social", "♧", "Community"],
   ["progress", "⌁", "Progress"],
-  ["social", "♧", "Your party"],
-  ["library", "⌕", "Exercise guide"],
+  ["program", "▦", "Programs"],
+  ["mesocycle", "▦", "Mesocycle"],
+  ["library", "⌕", "Tools"],
   ["settings", "⚙", "Settings"],
 ];
 const player = () => state.players.find((p) => p.id === state.selected);
@@ -121,6 +123,11 @@ function updateStatus() {
   if (el) el.textContent = cloudStatus;
 }
 async function boot() {
+  fetch("./exercise_library.json").then(r => r.json()).then(data => {
+    nativeExercises = data.exercises;
+    if ($("#guides")) $("#guides").innerHTML = guides($("#search").value);
+  }).catch(() => {});
+
   root.innerHTML =
     '<div class="empty"><div class="glyph">◈</div><h1>Preparing your next level.</h1><p>Restoring your saved session…</p></div>';
   try {
@@ -398,24 +405,52 @@ function socialPage() {
     days = new Set(week.map((s) => s.day)).size;
   return `${heading("STRONGER TOGETHER", "Find your training party.", "Real friends. Shared consistency. A reason to show up for each other.")}<div class="grid"><div class="stack"><section class="card hero"><span class="eyebrow">WEEKLY PARTY QUEST</span><h2>Three days. One stronger party.</h2><p>Each party member aims to train on three different days this week. Every completed day is a step forward. The challenge resets on Monday.</p>${progress(days, 3)}<small>${days} / 3 training days · your contribution</small></section><section class="card"><h2>Your party this week</h2><p><small>Friends see your display name and aggregate training stats. These are self-reported logs, not independently verified results.</small></p><div class="listrow row"><div><h3>${esc(p.name)} <small>(you)</small></h3><small>Level ${s.level} · ${s.sessions} sessions</small></div><span class="lime">${days} / 3 days</span></div>${social ? social.friends.map((f) => `<div class="listrow row"><div><h3>${esc(f.name)}</h3><small>Level ${f.level} · ${f.sessions} sessions · ${f.weeklySets} sets this week</small></div><div><span class="lime">${f.weeklyDays} / 3 days</span><br>${button("Remove", "removeFriend", "quiet danger", `data-id="${esc(f.id)}"`)}</div></div>`).join("") : "<p>Loading party…</p>"}${social && !social.friends.length ? "<p>Your party is waiting to be formed. Share your friend code with someone you train with.</p>" : ""}</section>${social?.incoming.length ? `<section class="card"><h2>Party invitations</h2>${social.incoming.map((f) => `<div class="listrow row"><h3>${esc(f.name)}</h3><div class="actions">${button("Accept", "respond", "primary", `data-id="${esc(f.id)}" data-accept="true"`)}${button("Decline", "respond", "quiet", `data-id="${esc(f.id)}" data-accept="false"`)}</div></div>`).join("")}</section>` : ""}</div><aside class="stack"><section class="card"><span class="eyebrow purple">Your friend code</span><h2 class="readonlycode" style="font-size:20px;margin-top:16px;letter-spacing:2px">${esc(user.friend_code)}</h2><p>Share this code privately. A friend can send an invitation; you decide whether to accept.</p><div class="actions">${button("Copy invite link", "invite", "primary")}${button("Refresh party", "refresh", "quiet")}</div></section><section class="card"><h2>Add a friend</h2><form data-form="friend"><label>Friend code<input name="code" required maxlength="16" pattern="[a-fA-F0-9]{16}" placeholder="16-character code" autocomplete="off" value="${esc(new URLSearchParams(location.search).get("invite") || "")}"></label>${button("Send invitation →", "submit", "primary", 'type="submit"')}</form>${social?.outgoing.length ? `<p><small>${social.outgoing.length} invitation(s) awaiting acceptance.</small></p>` : ""}</section><section class="card"><h3>Your circle. Your choice.</h3><p>Your BatesAI account provides sign-in. Endgame friend codes build your party without importing your contacts or posting to your social feeds.</p><small>Workout detail and preferences stay private. No public global ranking, no pressure to lift beyond your ability.</small></section></aside></div>`;
 }
+function mesocycle() {
+  const p = player();
+  const completed = p.sessions.filter(session => session.planId === p.plan?.id).length;
+  const week = Math.floor(completed / p.days) + 1;
+  const phase = (week - 1) % 5 + 1;
+  return heading("Mesocycle", "Training block", "Your training weeks advance as you complete sessions.") +
+    '<section class="card"><h2>Week ' + phase + ' of 5</h2><p>' +
+    (phase === 5 ? 'Recovery week' : 'Training week') + ' · ' +
+    (completed % p.days) + ' of ' + p.days + ' sessions completed</p>' +
+    progress(phase - 1, 5) + '</section>';
+}
 function library() {
-  return `${heading("MOVE WITH CONFIDENCE", "Learn the movement.", "Clear cues for every movement in your web program.")}<label>Find an exercise<input id="search" placeholder="Search by exercise, muscle, or equipment" type="search"></label><div class="guidegrid" id="guides">${guides("")}</div>`;
+  const unit = player().unit;
+  const bar = unit === "kg" ? 20 : 45;
+  return heading("Tools", "Training tools", "Calculate plates per side or look up a movement.") +
+    `<section class="card"><h2>Plate calculator</h2><label>Target weight (${esc(unit)})<input type="number" step="any" min="0" id="targetWeight"></label><label>Bar weight (${esc(unit)})<input type="number" step="any" min="0" id="barWeight" value="${bar}"></label><output id="plateResult" aria-live="polite"></output></section>
+    <h2>Exercise guide</h2><label>Find an exercise<input id="search" placeholder="Exercise, muscle, or equipment" type="search"></label><div id="guides">${guides("")}</div>`;
 }
 function guides(query) {
-  const list = E.exercises.filter((e) =>
-    `${e.name} ${e.muscle} ${e.equipment}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
-  return (
-    list
-      .map(
-        (e) =>
-          `<article class="card"><span class="eyebrow purple">${e.muscle} · ${e.equipment}</span><h3 style="margin-top:13px">${e.name}</h3><p>${e.guide}</p></article>`,
-      )
-      .join("") ||
-    "<p>No matching exercises. Try a muscle group or equipment name.</p>"
-  );
+  const list = nativeExercises.length ? nativeExercises : E.exercises.map(e => ({
+    name: e.name, primary: [e.muscle], equipment: e.equipment, instructions: [e.guide]
+  }));
+  const matches = list.filter(e => [e.name, ...e.primary, e.equipment].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  return `<p>${matches.length} exercises</p>` + matches.map(e =>
+    `<details class="listrow"><summary>${esc(e.name)}</summary><p>${esc(e.primary.join(", "))} · ${esc(e.equipment)}</p><ol>${e.instructions.map(line => "<li>" + esc(line) + "</li>").join("")}</ol></details>`
+  ).join("");
+}
+function updatePlates() {
+  const target = $("#targetWeight").valueAsNumber;
+  const bar = $("#barWeight").valueAsNumber;
+  const unit = player().unit;
+  const output = $("#plateResult");
+  if (!(target >= bar && bar >= 0)) {
+    output.textContent = "Enter a target at or above the bar weight.";
+    return;
+  }
+  let remaining = (target - bar) / 2;
+  const plates = unit === "kg" ? [25,20,15,10,5,2.5,1.25] : [45,35,25,10,5,2.5];
+  const parts = [];
+  for (const plate of plates) {
+    const count = Math.floor((remaining + 0.0001) / plate);
+    if (count) parts.push(count + " × " + plate + " " + unit);
+    remaining -= count * plate;
+  }
+  output.textContent = (parts.length ? "Per side: " + parts.join(", ") : "Bar only") +
+    (remaining > 0.0001 ? ". Closest total: " + fmt(target - 2 * remaining) + " " + unit : "");
 }
 function settings() {
   const p = player();
@@ -434,6 +469,7 @@ function render() {
               program,
               progress: progressPage,
               social: socialPage,
+              mesocycle,
               library,
               settings,
             }[tab] || home
@@ -701,6 +737,7 @@ root.addEventListener("submit", async (event) => {
 root.addEventListener("input", (event) => {
   const t = event.target,
     p = player();
+  if (["targetWeight", "barWeight"].includes(t.id)) updatePlates();
   if (t.id === "search") {
     $("#guides").innerHTML = guides(t.value);
     return;

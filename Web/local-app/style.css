@@ -787,3 +787,8 @@ dialog::backdrop {
 [hidden] {
   display: none !important;
 }
+
+/* Swift build 7 brand colors */
+.sidebar { background: linear-gradient(170deg, #302845, #192b39 65%, #171b23); }
+h1, .brand strong { background: linear-gradient(100deg, #b696ff, #83c9ff); color: transparent; background-clip: text; }
+#plateResult { display: block; margin-block: 1rem; }

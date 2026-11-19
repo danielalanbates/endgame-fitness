@@ -16,6 +16,7 @@ if (
     "Client/server engine drift: update the server copy and run tests.",
   );
 await mkdir(new URL("build/web/", root), { recursive: true });
+await copyFile(new URL("App/Resources/exercise_library.json", root), new URL("build/web/exercise_library.json", root));
 for (const name of [
   "index.html",
   "app.mjs",
@@ -31,5 +32,5 @@ for (const name of [
     new URL("build/web/" + name, root),
   );
 console.log(
-  "Web artifact ready: build/web (8 public assets; tests and development files excluded).",
+  "Web artifact ready: build/web (9 public assets; tests and development files excluded).",
 );
