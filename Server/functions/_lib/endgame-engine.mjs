@@ -1,3 +1,5 @@
+import {seasonAt, tierForXp, rewardFor} from "./seasons.mjs";
+import {nodeById, validateSpend, pointsSpent, applyTalentEffects, bonusTalentPoints} from "./talents.mjs";
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 // batesai.org · help@batesai.org · See ../../LICENSE.
 import { catalog } from "./native-programs.mjs";
@@ -207,10 +209,11 @@ export const completedSets = (s) =>
       .filter((t) => t.done && t.reps > 0)
       .map((t) => ({ ...t, exercise: e.id })),
   );
-export const sessionXP = (s) =>
+const baseSessionXP = (s) =>
   completedSets(s).length
     ? Math.min(350, completedSets(s).length * 10 + 50)
     : 0;
+export const sessionXP = s => Number.isSafeInteger(s.earnedXP) && s.earnedXP >= 0 ? s.earnedXP : baseSessionXP(s);
 export const xp = (p) =>
   p.sessions.reduce((n, s) => n + sessionXP(s), 0) +
   (p.claimed || []).length * 75;
@@ -268,7 +271,42 @@ export function claim(p, id) {
   const q = quests(p).find((q) => q.id === id);
   if (!q || q.claimed || q.current < q.target)
     throw Error("This quest is not ready to claim.");
+  const before = level(xp(p));
   p.claimed.push(id);
+  (p.questTimes ||= {})[id] = Date.now();
+  p.bonusPoints = (p.bonusPoints || 0) + bonusTalentPoints(p.ranks || {}, before, level(xp(p)));
+}
+export function seasonProgress(p, now = Date.now()) {
+  const season = seasonAt(now / 1000);
+  const inSeason = ms => ms >= season.starts_at * 1000 && ms < season.ends_at * 1000;
+  const workouts = p.sessions.filter(s => inSeason(s.finished)).reduce((n,s) => n + sessionXP(s), 0);
+  const questXP = Object.values(p.questTimes || {}).filter(inSeason).length * 75;
+  const total = workouts + questXP;
+  return {season, total, tier: tierForXp(total), claims: p.seasonClaims?.[season.id] || []};
+}
+export function claimTier(p, tier, now = Date.now()) {
+  const {season, tier: reached, claims} = seasonProgress(p, now);
+  if (!season.active || !Number.isInteger(tier) || tier < 1 || tier > reached || claims.includes(tier))
+    throw Error("This tier is unavailable.");
+  const reward = rewardFor(season.number, tier);
+  if (reward.type === "streak_freeze" && (p.freezes || 0) >= 3) throw Error("Your three streak freezes are full.");
+  if (reward.type === "streak_freeze") p.freezes = (p.freezes || 0) + 1;
+  if (reward.type === "talent_point") p.rewardPoints = (p.rewardPoints || 0) + 1;
+  if (reward.type === "title" || reward.type === "cosmetic") {
+    const key = reward.type === "title" ? "titles" : "auras";
+    p[key] = [...new Set([...(p[key] || []), reward.value])];
+  }
+  (p.seasonClaims ||= {})[season.id] = [...claims, tier];
+  return reward.label;
+}
+export function unspentPoints(p) {
+  return level(xp(p)) - 1 + (p.rewardPoints || 0) + (p.bonusPoints || 0) - pointsSpent(p.ranks || {});
+}
+export function spendTalent(p, id) {
+  const ranks = p.ranks || {};
+  const result = validateSpend(ranks, unspentPoints(p), id);
+  if (!result.ok) throw Error(result.error);
+  p.ranks = {...ranks, [id]: (ranks[id] || 0) + 1};
 }
 export function nextLoad(p, id, low, high) {
   const last = p.sessions.filter(session => session.exercises.some(exercise =>
@@ -402,7 +440,11 @@ export function finishWorkout(p) {
   if (!p.active || completedSets(p.active).length === 0)
     throw Error("Complete at least one set before finishing.");
   const done = { ...p.active, finished: Date.now(), day: dayKey() };
+  const before = level(xp(p));
+  const volume = completedSets(done).reduce((n,t) => n + t.weight * t.reps, 0) * (p.unit === "kg" ? 2.20462 : 1);
+  done.earnedXP = applyTalentEffects(baseSessionXP(done), p.ranks || {}, {volume});
   p.sessions.push(done);
+  p.bonusPoints = (p.bonusPoints || 0) + bonusTalentPoints(p.ranks || {}, before, level(xp(p)));
   p.active = null;
   return done;
 }
@@ -492,6 +534,22 @@ export function validateState(v) {
     )
       throw Error("Invalid player data.");
     ids.add(p.id);
+    const intBetween = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
+    const record = value => value && typeof value === "object" && !Array.isArray(value);
+    if (p.ranks != null && (!record(p.ranks) || Object.entries(p.ranks).some(([id,n]) =>
+      !nodeById(id) || !intBetween(n,0,nodeById(id).max_rank)))) throw Error("Invalid talent ranks.");
+    for (const key of ["rewardPoints","bonusPoints","freezes"]) {
+      if (p[key] != null && !intBetween(p[key],0,key === "freezes" ? 3 : 100000)) throw Error("Invalid reward balance.");
+    }
+    if (p.seasonClaims != null && (!record(p.seasonClaims) || Object.entries(p.seasonClaims).some(([id,tiers]) =>
+      !/^s[1-9]\d*$/.test(id) || !Array.isArray(tiers) || tiers.length > 30 ||
+      tiers.some(n => !intBetween(n,1,30)) || new Set(tiers).size !== tiers.length))) throw Error("Invalid season claims.");
+    if (p.questTimes != null && (!record(p.questTimes) || Object.entries(p.questTimes).some(([id,time]) =>
+      !p.claimed.includes(id) || !Number.isSafeInteger(time)))) throw Error("Invalid quest history.");
+    for (const key of ["titles","auras"]) {
+      if (p[key] != null && (!Array.isArray(p[key]) || p[key].some(v => typeof v !== "string" || v.length > 100)))
+        throw Error("Invalid reward inventory.");
+    }
     if (p.schedule) makePlan(p);
     if (p.phases && (!Array.isArray(p.phases) || !p.phases.length || p.phases.length > 24 ||
         p.phases.some(phase => !phase || !Number.isInteger(phase.weeks) || phase.weeks < 1 || phase.weeks > 24 ||

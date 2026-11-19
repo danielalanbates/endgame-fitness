@@ -1,3 +1,5 @@
+import {tiersFor} from "./seasons.mjs";
+import {TALENT_TREE, validateSpend} from "./talents.mjs";
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 import { catalog, recipes } from "./native-programs.mjs";
 import * as E from "./engine.mjs";
@@ -403,13 +405,25 @@ function workout() {
     s.exercises.reduce((n, e) => n + e.sets.length, 0),
   )}<p>Only completed sets count. Bodyweight sets use 0 ${p.unit} of external load.</p>${button("Finish workout →", "finish", "primary", 'style="width:100%"')}<div class="actions">${button("Discard session", "discard", "danger quiet")}</div></section><section class="card"><h3>Keep a little in the tank.</h3><p>RIR 3 = about 3 more good reps possible. Your load suggestion adapts to reps and reserve, not just the biggest number you lifted.</p><small>Warm-up sets aren’t working sets. Take a few easier practice sets before logging your first working set.</small></section></aside></div>`;
 }
+function seasonAndTalents(p) {
+  const {season, total, tier, claims} = E.seasonProgress(p);
+  const points = E.unspentPoints(p), ranks = p.ranks || {};
+  return `<section class="card"><h2>${esc(season.name)}</h2><p>${esc(season.theme)}</p>
+    <p>${fmt(total)} season XP · Tier ${tier} of 30</p>
+    <details><summary>Season rewards</summary>${tiersFor(season.number).map(t => `<div class="listrow row"><span>Tier ${t.tier} · ${esc(t.reward.label)}</span>
+    ${claims.includes(t.tier) ? "Claimed" : t.tier <= tier ? button("Claim tier "+t.tier,"claimTier","primary",'data-tier="'+t.tier+'"') : fmt(t.xp_required)+" XP"}</div>`).join("")}</details></section>
+    <section class="card"><h2>Talents</h2><p>${points} unspent talent points</p>${TALENT_TREE.branches.map(branch => `<details><summary>${esc(branch.name)}</summary>${TALENT_TREE.nodes.filter(n => n.branch === branch.id).map(n => {
+      const allowed = validateSpend(ranks, points, n.id);
+      return `<div class="listrow"><h3>${esc(n.name)} · ${esc(ranks[n.id] || 0)}/${n.max_rank}</h3><p>${esc(n.description)}</p>${allowed.ok ? button("Spend one point","spendTalent","primary",'data-id="'+n.id+'"') : esc(allowed.error)}</div>`;
+    }).join("")}</details>`).join("")}</section>`;
+}
 function progressPage() {
   const p = player(),
     s = E.stats(p),
     recent = p.sessions.slice(-8),
     vol = (w) => E.completedSets(w).reduce((n, t) => n + t.weight * t.reps, 0),
     max = Math.max(1, ...recent.map(vol));
-  return `${heading("PROOF YOU’RE SHOWING UP", "Look how far you’ve come.", "Your own history is the benchmark that matters.")}<div class="cards">${stat("Training days", s.days, "Different days trained")}${stat("Working sets", s.sets, "Lifetime completed sets")}${stat("External volume", fmt(s.volume), p.unit + " × reps · not a score")}${stat("Character level", s.level, fmt(s.xp) + " total XP")}</div>${recent.length ? `<section class="card" style="padding-bottom:48px"><h2>Recent external load volume</h2><small>Compare like-for-like sessions. Bodyweight difficulty and range of motion aren’t captured here.</small><div class="volumechart">${recent.map((w) => `<div class="bar" style="height:${Math.max(3, (vol(w) / max) * 100)}%" title="${esc(w.day)}: ${fmt(vol(w))} ${p.unit} × reps"><small>${esc(w.day.slice(5))}</small></div>`).join("")}</div></section>` : ""}<section class="card" style="margin-top:22px"><h2>Your training journal</h2>${
+  return `${heading("PROOF YOU’RE SHOWING UP", "Look how far you’ve come.", "Your own history is the benchmark that matters.")}<div class="cards">${stat("Training days", s.days, "Different days trained")}${stat("Working sets", s.sets, "Lifetime completed sets")}${stat("External volume", fmt(s.volume), p.unit + " × reps · not a score")}${stat("Character level", s.level, fmt(s.xp) + " total XP")}</div>${seasonAndTalents(p)}${recent.length ? `<section class="card" style="padding-bottom:48px"><h2>Recent external load volume</h2><small>Compare like-for-like sessions. Bodyweight difficulty and range of motion aren’t captured here.</small><div class="volumechart">${recent.map((w) => `<div class="bar" style="height:${Math.max(3, (vol(w) / max) * 100)}%" title="${esc(w.day)}: ${fmt(vol(w))} ${p.unit} × reps"><small>${esc(w.day.slice(5))}</small></div>`).join("")}</div></section>` : ""}<section class="card" style="margin-top:22px"><h2>Your training journal</h2>${
     p.sessions.length
       ? p.sessions
           .slice()
@@ -660,6 +674,12 @@ root.addEventListener("click", async (event) => {
           },
         );
         break;
+      case "claimTier":
+        notice(E.claimTier(p, Number(b.dataset.tier)));
+        persist(); render(); break;
+      case "spendTalent":
+        E.spendTalent(p, b.dataset.id);
+        persist(); render(); break;
       case "claim":
         E.claim(p, b.dataset.id);
         persist();
