@@ -32,6 +32,9 @@ async def main():
   await page.route('**/api/endgame/**',route)
   await page.reload();await page.get_by_text('Make it yours',exact=True).wait_for()
   await page.locator('input[name=name]').fill('Ada')
+  for key,value in dict(age=32,weight=150,height=65,bench=75,squat=100,deadlift=110).items():
+   await page.locator(f'input[name="{key}"]').fill(str(value))
+  await page.locator('input[name=accepted]').check()
   await page.get_by_role('button',name='Build my program').click()
   await page.get_by_role('heading',name='Ready for your next level, Ada?').wait_for()
   assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')

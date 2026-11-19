@@ -271,47 +271,24 @@ export function claim(p, id) {
   p.claimed.push(id);
 }
 export function nextLoad(p, id, low, high) {
-  const history = p.sessions
-    .flatMap((s) => s.exercises.filter((e) => e.id === id))
-    .filter((e) => e.sets.some((t) => t.done));
-  const last = history.at(-1);
-  if (!last)
-    return {
-      weight: 0,
-      reason:
-        "Start light. Choose a load that leaves 2–3 good repetitions in reserve.",
-    };
-  const sets = last.sets.filter((t) => t.done),
-    weight = Math.min(...sets.map((t) => t.weight));
-  const success =
-    sets.length >= 2 && sets.every((t) => t.reps >= high && t.rir >= 2);
-  const previous = history.at(-2)?.sets.filter((t) => t.done);
-  const repeat =
-    previous?.length >= 2 &&
-    previous.every((t) => t.reps >= high && t.rir >= 2);
-  if (success && repeat && weight > 0) {
-    const step = p.unit === "kg" ? 1 : 2.5;
-    const raised = Math.round((weight * 1.025) / step) * step;
-    const next = Math.max(weight + step, raised);
-    if (next / weight <= 1.1)
-      return {
-        weight: next,
-        reason:
-          "Top of the rep range with reserve twice. Try a small increase; reduce it if technique changes.",
-      };
+  const last = p.sessions.filter(session => session.exercises.some(exercise =>
+    exercise.id === id && exercise.sets.some(set => set.done && set.reps > 0)))
+    .reduce((latest, session) => !latest || session.finished >= latest.finished ? session : latest, null);
+  if (!last) return {weight: 0, reps: low, reason: "Choose a comfortable starting load."};
+  const sets = last.exercises.filter(exercise => exercise.id === id)
+    .flatMap(exercise => exercise.sets.filter(set => set.done && set.reps > 0));
+  const weight = Math.max(...sets.map(set => set.weight));
+  const working = sets.filter(set => Math.abs(set.weight - weight) < 0.01);
+  const bestReps = Math.max(...working.map(set => set.reps));
+  if (working.every(set => set.reps >= high && (set.rir ?? 1) >= 1)) {
+    if (!weight) return {weight, reps: high, reason: "You reached the top of your bodyweight rep range."};
+    const exercise = byId(id);
+    const lower = ["squat","hinge","calf"].includes(exercise?.pattern) ||
+      /squat|deadlift|lunge|leg |calf|step-up|glute|nordic/i.test(exercise?.name || "");
+    const step = (p.unit === "kg" ? 2.5 : 5) * (lower ? 2 : 1);
+    return {previousWeight: weight, weight: weight + step, reps: low, reason: "Your top working sets reached the upper rep target with reserve."};
   }
-  if (sets.some((t) => t.reps < low || t.rir === 0) && weight > 0)
-    return {
-      weight: Math.round(weight * 0.95 * 2) / 2,
-      reason:
-        "Last time was demanding. Reduce the load slightly and rebuild controlled reps.",
-    };
-  return {
-    weight,
-    reason: weight
-      ? "Keep the load; build controlled reps before adding weight."
-      : "Use bodyweight or a light load. Progress control and repetitions first.",
-  };
+  return {weight, reps: Math.min(high, bestReps + 1), reason: "Keep the load and build repetitions."};
 }
 const safeLabel = s => typeof s === "string" && /^[^<>"\x27\x00-\x1f]{1,80}$/u.test(s);
 export function makePlan(p) {
@@ -409,9 +386,9 @@ export function startWorkout(p, recovery = 3) {
           { length: deload ? Math.max(1, Math.ceil(e.sets / 2)) : e.sets },
           () => ({
             weight: deload
-              ? Math.round(suggested.weight * 0.9 * 2) / 2
+              ? Math.round((suggested.previousWeight ?? suggested.weight) * 0.9 * 2) / 2
               : suggested.weight,
-            reps: e.low,
+            reps: deload ? e.low : suggested.reps,
             rir: deload ? 4 : 3,
             done: false,
           }),

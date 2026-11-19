@@ -219,6 +219,40 @@ function dragonLogo() {
 function onboarding() {
   return `<main class="welcome"><section><div class="brand">${dragonLogo()}ENDGAME FITNESS</div><span class="eyebrow" style="display:block;margin-top:45px">Welcome, ${esc(user.display_name)}</span><h1>Build your<br><em>starting point.</em></h1><p class="pitch">A plan that fits your equipment, your week, and your goals. These answers are saved to your account.</p><p>Start with comfortable loads, learn the movement, then progress. You can change your preferences anytime.</p>${button("Sign out", "logout", "quiet")}</section><section class="card"><h2>Make it yours</h2>${preferencesForm(null, "create")}<p><small>General strength training for adults. Adjust for your experience and health. Stop an exercise if it causes pain.</small></p></section></main>`;
 }
+const trainingTerms = [
+  [
+    "🏥 Medical Disclaimer",
+    "Endgame Fitness and its developers are not medical professionals and do not provide medical advice, diagnosis, or treatment. The information and workout programs provided by this application are for educational and informational purposes only.\n\nBefore beginning any exercise program, you should consult with your primary care physician or other qualified healthcare provider to ensure that exercise is safe and appropriate for your individual circumstances.\n\nIf you experience any pain, discomfort, dizziness, or other adverse symptoms during exercise, stop immediately and consult a healthcare professional."
+  ],
+  [
+    "⚠️ Assumption of Risk",
+    "You acknowledge and agree that participation in physical exercise activities involves inherent risks, including but not limited to:\n\n• Risk of serious injury or death\n• Muscle strains, sprains, and tears\n• Joint injuries\n• Cardiovascular incidents\n• Equipment-related injuries\n\nYou voluntarily assume all such risks and agree to participate at your own risk."
+  ],
+  [
+    "🛡️ Limitation of Liability",
+    "TO THE FULLEST EXTENT PERMITTED BY LAW, Bates LLC, its owners, developers, and affiliates SHALL NOT BE LIABLE for any injuries, damages, or losses of any kind arising from:\n\n• Use of this application\n• Following workout programs or recommendations\n• Use of exercise equipment\n• Any direct, indirect, incidental, consequential, or punitive damages\n\nYou release and hold harmless Bates LLC and all associated parties from any and all claims, liabilities, damages, or expenses arising from your use of this application."
+  ],
+  [
+    "🏢 Business Indemnification",
+    "You agree to indemnify and hold harmless Bates LLC, its officers, directors, employees, contractors, and agents from any claims, lawsuits, damages, losses, or expenses (including attorney fees) arising from:\n\n• Your use of this application\n• Your breach of these terms\n• Your violation of any law or rights of third parties\n\nBates LLC provides this software \"AS IS\" without warranties of any kind, either express or implied."
+  ],
+  [
+    "✅ Your Acknowledgment",
+    "By checking the box below, you acknowledge that:\n\n• You have read and understood all waivers and disclaimers\n• You have been advised to consult with a physician before starting any exercise program\n• You voluntarily assume all risks associated with physical exercise\n• You release Bates LLC from all liability\n• You are of legal age to enter into this agreement\n• This agreement is legally binding"
+  ]
+];
+const assessmentFields = [
+  ["age", "Age in years", 1], ["weight", "Body weight (lb)", 0.1],
+  ["height", "Height (in)", 0.1], ["bench", "Bench press five-rep weight (lb)", 0.5],
+  ["squat", "Squat five-rep weight (lb)", 0.5], ["deadlift", "Deadlift five-rep weight (lb)", 0.5]
+];
+function trainingProfileForm(player) {
+  const profile = player?.assessment || {};
+  return `<fieldset><legend>Training profile</legend><label>Experience<select name="experience">
+    ${["beginner","intermediate","advanced"].map(value => `<option ${value === profile.experience ? "selected" : ""}>${value}</option>`).join("")}</select></label>
+    <div class="formgrid">${assessmentFields.map(([key,label,step]) => `<label>${label}<input name="${key}" type="number" min="${["age","weight","height"].includes(key) ? step : 0}" step="${step}" value="${esc(profile[key] ?? "")}" required></label>`).join("")}</div></fieldset>
+    ${player?.assessment?.accepted ? "" : `<details><summary>Read the training terms</summary>${trainingTerms.map(([title,body]) => `<h3>${esc(title)}</h3><p style="white-space:pre-line">${esc(body)}</p>`).join("")}</details><label><input type="checkbox" name="accepted" required> I agree to the training terms.</label>`}`;
+}
 function preferencesForm(p, action) {
   return `<form data-form="${action}"><label>Player name<input name="name" required maxlength="40" value="${esc(p?.name || user.display_name.slice(0, 40))}" autocomplete="nickname"></label><label>Your main goal<select name="goal">${[
     ["balanced", "Build a balanced foundation"],
@@ -240,7 +274,7 @@ function preferencesForm(p, action) {
     )
     .join(
       "",
-    )}</select></label><div class="formgrid"><label>Sessions per week<select name="days">${[2, 3, 4, 5, 6].map((n) => `<option ${n === (p?.days || 3) ? "selected" : ""}>${n}</option>`).join("")}</select></label><label>Minutes per session<select name="minutes">${[20, 30, 45, 60].map((n) => `<option ${n === (p?.minutes || 45) ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>${button(p ? "Update preferences & rebuild plan" : "Build my program →", "submit", "primary", 'type="submit" style="width:100%"')}</form>`;
+    )}</select></label><div class="formgrid"><label>Sessions per week<select name="days">${[2, 3, 4, 5, 6].map((n) => `<option ${n === (p?.days || 3) ? "selected" : ""}>${n}</option>`).join("")}</select></label><label>Minutes per session<select name="minutes">${[20, 30, 45, 60].map((n) => `<option ${n === (p?.minutes || 45) ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>${trainingProfileForm(p)}${button(p ? "Update preferences & rebuild plan" : "Build my program →", "submit", "primary", 'type="submit" style="width:100%"')}</form>`;
 }
 function frame(content) {
   const p = player(),
@@ -321,7 +355,7 @@ function program() {
     )
     .join(
       "",
-    )}${programPicker()}</div><aside class="stack"><section class="card"><h2>The progression rule</h2><p>First, add good repetitions within your target range. When all sets reach the top with at least 2 reps in reserve in two sessions, we suggest a modest load increase.</p><p>If reps fall short or you reach failure, the next suggestion backs off. Every fifth training week reduces volume; your readiness can trigger an earlier recovery session.</p><small>These are conservative programming rules, not a guarantee of individual outcomes. Bodyweight plans have limited pulling resistance.</small></section><section class="card"><h2>Fit your real life</h2><p>Sessions rotate by completion. Rest between hard sessions. A missed day never creates a debt you need to repay.</p>${button("Adjust preferences", "nav", "quiet", 'data-tab="settings"')}</section><section class="card"><h3>Built on evidence</h3><p><a href="https://pubmed.ncbi.nlm.nih.gov/19204579/" target="_blank" rel="noopener">ACSM progression guidance ↗</a><br><a href="https://pubmed.ncbi.nlm.nih.gov/38970765/" target="_blank" rel="noopener">Proximity to failure research ↗</a></p><small>Our specific rules are implementation choices. No study proves this app superior to every custom program.</small></section></aside></div>`;
+    )}${programPicker()}</div><aside class="stack"><section class="card"><h2>The progression rule</h2><p>First, add good repetitions within your target range. When all sets at your heaviest load reach the top with at least one rep in reserve, the next session suggests more weight.</p><p>Otherwise, keep the weight and work toward another rep. Every fifth training week reduces volume; your readiness can trigger an earlier recovery session.</p><small>These are conservative programming rules, not a guarantee of individual outcomes. Bodyweight plans have limited pulling resistance.</small></section><section class="card"><h2>Fit your real life</h2><p>Sessions rotate by completion. Rest between hard sessions. A missed day never creates a debt you need to repay.</p>${button("Adjust preferences", "nav", "quiet", 'data-tab="settings"')}</section><section class="card"><h3>Built on evidence</h3><p><a href="https://pubmed.ncbi.nlm.nih.gov/19204579/" target="_blank" rel="noopener">ACSM progression guidance ↗</a><br><a href="https://pubmed.ncbi.nlm.nih.gov/38970765/" target="_blank" rel="noopener">Proximity to failure research ↗</a></p><small>Our specific rules are implementation choices. No study proves this app superior to every custom program.</small></section></aside></div>`;
 }
 function workout() {
   const p = player(),
@@ -768,12 +802,15 @@ root.addEventListener("submit", async (event) => {
         Number(data.get("days")),
         Number(data.get("minutes")),
       );
+      prefs.assessment = Object.fromEntries(assessmentFields.map(([key]) => [key, Number(data.get(key))]));
+      prefs.assessment.experience = data.get("experience");
+      prefs.assessment.accepted = Boolean(p?.assessment?.accepted || data.has("accepted"));
       if (!p) {
         prefs.id = user.id;
         prefs.plan = E.makePlan(prefs);
         state = { version: 1, selected: user.id, players: [prefs], rivals: [] };
       } else {
-        for (const k of ["name", "goal", "equipment", "days", "minutes"])
+        for (const k of ["name", "goal", "equipment", "days", "minutes", "assessment"])
           p[k] = prefs[k];
         p.plan = E.makePlan(p);
       }

@@ -73,25 +73,26 @@ test("finish only awards completed sets and clears active", () => {
   assert.equal(E.xp(v), 60);
   assert.throws(() => E.finishWorkout(v));
 });
-test("one success does not increase suggested load", () => {
+test("one successful session increases the upper-body load", () => {
   const v = p();
   v.sessions = [session()];
-  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 40);
+  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 42.5);
 });
-test("two successes with reserve suggest modest increase", () => {
+test("repeated equal sessions give the same next load", () => {
   const v = p();
   v.sessions = [session(), session()];
-  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 41);
+  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 42.5);
 });
-test("minimum increment cannot exceed 10 percent at low loads", () => {
+test("metric upper-body step is 2.5 kg", () => {
   const v = p();
   v.sessions = [session("bench", 5), session("bench", 5)];
-  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 5);
+  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 7.5);
 });
-test("failure or missed reps backs off load", () => {
+test("missed reps keep load and target the next rep", () => {
   const v = p();
   v.sessions = [session("bench", 40, 4, 0)];
-  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 38);
+  assert.equal(E.nextLoad(v, "bench", 8, 12).weight, 40);
+  assert.equal(E.nextLoad(v, "bench", 8, 12).reps, 5);
 });
 test("bodyweight stays zero external load", () => {
   const v = p();
