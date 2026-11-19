@@ -1,5 +1,6 @@
 import {seasonAt, tierForXp, rewardFor} from "./seasons.mjs";
-import {nodeById, validateSpend, pointsSpent, applyTalentEffects, bonusTalentPoints} from "./talents.mjs";
+import {applySessionDay, effectiveStreak} from "./streaks.mjs";
+import {streakShieldDays,nodeById, validateSpend, pointsSpent, applyTalentEffects, bonusTalentPoints} from "./talents.mjs";
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 // batesai.org · help@batesai.org · See ../../LICENSE.
 import { catalog } from "./native-programs.mjs";
@@ -200,8 +201,14 @@ export function newPlayer(
     recovery: 3,
   };
 }
+export function xpForLevel(level) {
+  const n = Math.max(0, level - 1);
+  return Math.round(100*n + 15*n*n + 0.9*n*n*n);
+}
 export function level(xp) {
-  return Math.floor(Math.sqrt(Math.max(0, xp) / 100)) + 1;
+  let rank = 1;
+  while (rank < 200 && xp >= xpForLevel(rank + 1)) rank++;
+  return rank;
 }
 export const completedSets = (s) =>
   s.exercises.flatMap((e) =>
@@ -436,13 +443,40 @@ export function startWorkout(p, recovery = 3) {
   };
   return p.active;
 }
+function storedStreak(p) {
+  if (p.streak) return {...p.streak, freezes: p.freezes || 0};
+  let state = {};
+  for (const day of [...new Set(p.sessions.filter(s => !s.flagged).map(s => s.day))].sort()) {
+    state = applySessionDay(state, day);
+  }
+  return {...state, freezes: Math.min(3, (state.freezes || 0) + (p.freezes || 0))};
+}
+export function trainingStreak(p, today = dayKey()) {
+  const state = storedStreak(p);
+  return {...effectiveStreak(state, today, streakShieldDays(p.ranks || {})), longest: state.longest || 0};
+}
 export function finishWorkout(p) {
   if (!p.active || completedSets(p.active).length === 0)
     throw Error("Complete at least one set before finishing.");
   const done = { ...p.active, finished: Date.now(), day: dayKey() };
   const before = level(xp(p));
   const volume = completedSets(done).reduce((n,t) => n + t.weight * t.reps, 0) * (p.unit === "kg" ? 2.20462 : 1);
-  done.earnedXP = applyTalentEffects(baseSessionXP(done), p.ranks || {}, {volume});
+  const sets = completedSets(done);
+  const reps = sets.reduce((sum, set) => sum + set.reps, 0);
+  const duration = Math.max(0, (done.finished - done.started) / 1000);
+  const pounds = p.unit === "kg" ? 2.20462 : 1;
+  const flagged = volume > 250000 || reps > 5000 || duration > 21600 ||
+    sets.some(set => set.reps > 100 || set.weight * pounds > 1500);
+  if (flagged) {
+    done.earnedXP = 0;
+    done.flagged = true;
+  } else {
+    const streak = applySessionDay(storedStreak(p), done.day, streakShieldDays(p.ranks || {}));
+    p.streak = {lastDate: streak.lastDate, current: streak.current, longest: streak.longest};
+    p.freezes = streak.freezes;
+    const base = Math.max(10, Math.round(volume ** 0.8 * 0.35 + reps * 0.5 + Math.min(duration / 60, 120) * 1.5));
+    done.earnedXP = applyTalentEffects(base, p.ranks || {}, {volume, streak: streak.current});
+  }
   p.sessions.push(done);
   p.bonusPoints = (p.bonusPoints || 0) + bonusTalentPoints(p.ranks || {}, before, level(xp(p)));
   p.active = null;
@@ -536,6 +570,8 @@ export function validateState(v) {
     ids.add(p.id);
     const intBetween = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
     const record = value => value && typeof value === "object" && !Array.isArray(value);
+    if (p.streak != null && (!record(p.streak) || !/^\d{4}-\d{2}-\d{2}$/.test(p.streak.lastDate) ||
+        !intBetween(p.streak.current,1,20000) || !intBetween(p.streak.longest,p.streak.current,20000))) throw Error("Invalid streak.");
     if (p.ranks != null && (!record(p.ranks) || Object.entries(p.ranks).some(([id,n]) =>
       !nodeById(id) || !intBetween(n,0,nodeById(id).max_rank)))) throw Error("Invalid talent ranks.");
     for (const key of ["rewardPoints","bonusPoints","freezes"]) {

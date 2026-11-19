@@ -70,7 +70,7 @@ test("finish only awards completed sets and clears active", () => {
   E.finishWorkout(v);
   assert.equal(v.active, null);
   assert.equal(E.stats(v).sets, 1);
-  assert.equal(E.xp(v), 60);
+  assert.equal(E.xp(v), 10);
   assert.throws(() => E.finishWorkout(v));
 });
 test("one successful session increases the upper-body load", () => {
@@ -174,6 +174,6 @@ test("storage errors propagate so caller can protect data", () => {
 test("level boundaries are monotone", () => {
   assert.equal(E.level(-1), 1);
   assert.equal(E.level(99), 1);
-  assert.equal(E.level(100), 2);
-  assert.equal(E.level(400), 3);
+  assert.equal(E.level(115), 1);
+  assert.equal(E.level(116), 2);
 });

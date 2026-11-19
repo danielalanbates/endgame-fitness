@@ -21,3 +21,32 @@ test("season claims survive save, cannot be repeated and reset for the next seas
   E.spendTalent(restored,"momentum");
   assert.equal(restored.ranks.momentum,1);
 });
+
+test("a shield covers the first missed day and a banked freeze covers the next", () => {
+  const p = E.newPlayer("Lifter");
+  const previous = new Date();
+  previous.setDate(previous.getDate() - 3);
+  p.streak = {current: 5, longest: 5, lastDate: E.dayKey(previous)};
+  p.freezes = 1;
+  p.ranks = {streak_shield: 1};
+  E.startWorkout(p).exercises[0].sets[0].done = true;
+  E.finishWorkout(p);
+  assert.equal(p.streak.current, 6);
+  assert.equal(p.freezes, 0);
+  E.startWorkout(p).exercises[0].sets[0].done = true;
+  E.finishWorkout(p);
+  assert.equal(p.streak.current, 6);
+});
+
+test("newly achieved seven-day streak applies Second Wind to this workout", () => {
+  const p = E.newPlayer("Lifter");
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate()-1);
+  p.streak = {current:6,longest:6,lastDate:E.dayKey(yesterday)};
+  p.ranks = {second_wind:3};
+  E.startWorkout(p).exercises[0].sets[0].done = true;
+  const workout = E.finishWorkout(p);
+  assert.equal(workout.earnedXP, 11);
+  assert.equal(p.streak.current, 7);
+  assert.equal(p.freezes, 1);
+});

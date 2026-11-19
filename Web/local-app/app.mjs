@@ -307,8 +307,8 @@ function home() {
           plan.sessions.length
       ],
     week = E.weeklySessions(p),
-    thisLevel = (s.level - 1) ** 2 * 100,
-    nextLevel = s.level ** 2 * 100;
+    thisLevel = E.xpForLevel(s.level),
+    nextLevel = E.xpForLevel(s.level + 1);
   return `${heading("THE LONG GAME", `Ready for your next level, ${esc(p.name.split(" ")[0])}?`, "Small wins. Stronger habits. A little more you, every session.")}<div class="grid"><section class="card hero"><span class="badge">${p.active ? "SESSION IN PROGRESS" : "YOUR NEXT WORKOUT"}</span><h2>${esc(p.active?.name || next.name)}</h2><div class="hero-meta"><span>◷ ~${p.minutes} min</span><span>▦ ${p.active?.exercises.length || next.exercises.length} exercises</span><span>↗ ${esc(p.goal === "muscle" ? "Hypertrophy" : p.goal === "strength" ? "Strength" : "Balanced")}</span></div><p>${p.active ? "Your session is saved. Pick up where you left off." : "A purposeful session, with room to recover. Warm up first and let good technique lead."}</p>${button(p.active ? "Resume workout →" : "Let’s train →", "start", "primary")}</section><section class="card"><div class="row"><span class="eyebrow purple">Your character</span><span class="avatar">✧</span></div><h2 style="margin-top:20px">Level ${s.level} adventurer</h2><p>Consistency is your superpower.</p>${progress(s.xp - thisLevel, nextLevel - thisLevel)}<div class="row"><small>${fmt(s.xp)} XP total</small><small>${fmt(nextLevel - s.xp)} to level ${s.level + 1}</small></div><p><small>Training rewards effort and consistency, never lifting heavier than you should.</small></p></section></div><div class="cards">${stat("Training days", new Set(week.map((s) => s.day)).size + "/" + p.days, "This week’s rhythm")}${stat(
     "Working sets",
     week.reduce((n, s) => n + E.completedSets(s).length, 0),
@@ -407,12 +407,13 @@ function workout() {
 }
 function seasonAndTalents(p) {
   const {season, total, tier, claims} = E.seasonProgress(p);
+  const streak = E.trainingStreak(p);
   const points = E.unspentPoints(p), ranks = p.ranks || {};
   return `<section class="card"><h2>${esc(season.name)}</h2><p>${esc(season.theme)}</p>
     <p>${fmt(total)} season XP · Tier ${tier} of 30</p>
     <details><summary>Season rewards</summary>${tiersFor(season.number).map(t => `<div class="listrow row"><span>Tier ${t.tier} · ${esc(t.reward.label)}</span>
     ${claims.includes(t.tier) ? "Claimed" : t.tier <= tier ? button("Claim tier "+t.tier,"claimTier","primary",'data-tier="'+t.tier+'"') : fmt(t.xp_required)+" XP"}</div>`).join("")}</details></section>
-    <section class="card"><h2>Talents</h2><p>${points} unspent talent points</p>${TALENT_TREE.branches.map(branch => `<details><summary>${esc(branch.name)}</summary>${TALENT_TREE.nodes.filter(n => n.branch === branch.id).map(n => {
+    <section class="card"><h2>Training streak</h2><p>${streak.current} days · Best ${streak.longest} · ${streak.freezes} available freezes</p></section><section class="card"><h2>Talents</h2><p>${points} unspent talent points</p>${TALENT_TREE.branches.map(branch => `<details><summary>${esc(branch.name)}</summary>${TALENT_TREE.nodes.filter(n => n.branch === branch.id).map(n => {
       const allowed = validateSpend(ranks, points, n.id);
       return `<div class="listrow"><h3>${esc(n.name)} · ${esc(ranks[n.id] || 0)}/${n.max_rank}</h3><p>${esc(n.description)}</p>${allowed.ok ? button("Spend one point","spendTalent","primary",'data-id="'+n.id+'"') : esc(allowed.error)}</div>`;
     }).join("")}</details>`).join("")}</section>`;
