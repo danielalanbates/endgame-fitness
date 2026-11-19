@@ -25,7 +25,11 @@ for (const name of [
   "style.css",
   "sw.js",
   "manifest.webmanifest",
-  "icon.svg",
+  "dragon-dark.webp",
+  "dragon-light.webp",
+  "dragon-checkered.webp",
+  "dragon-192.png",
+  "dragon-512.png",
   "privacy.html",
 ])
   await copyFile(
@@ -33,5 +37,5 @@ for (const name of [
     new URL("build/web/" + name, root),
   );
 console.log(
-  "Web artifact ready: build/web (10 public assets; tests and development files excluded).",
+  "Web artifact ready: build/web (14 public assets; tests and development files excluded).",
 );
