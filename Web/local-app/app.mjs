@@ -580,7 +580,9 @@ async function refreshSocial() {
   try {
     const [party,guildStatus,raid] = await Promise.all([api("social"),api("guild/status").catch(() => null),api("raid/status").catch(() => null)]);
     social = {...party,guildStatus,raid};
-    if (Array.isArray(raid?.rewards)) player().raidRewards = raid.rewards;
+    if (player() && guildStatus && Array.isArray(party.friends))
+      player().community = {friends:party.friends.length,inGuild:Boolean(guildStatus.guild)};
+    if (player() && Array.isArray(raid?.rewards)) player().raidRewards = raid.rewards;
     if (tab === "social") render();
   } catch (e) {
     social = { friends: [], incoming: [], outgoing: [] };
@@ -675,6 +677,14 @@ root.addEventListener("click", async (event) => {
         render();
         break;
       case "finish": {
+        const activeId = p.active?.id;
+        if (!activeId) return;
+        if (!E.completedSets(p.active).length) throw Error("Complete at least one set before finishing.");
+        b.disabled = true;
+        if ((p.ranks?.rally || p.ranks?.guild_banner) && navigator.onLine) {
+          try { p.community = await api("talents/community"); } catch { /* Offline workouts use the last saved membership. */ }
+        }
+        if (player() !== p || p.active?.id !== activeId) return;
         const w = E.finishWorkout(p);
         timerEnd = 0;
         persist();

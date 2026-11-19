@@ -50,3 +50,17 @@ test("newly achieved seven-day streak applies Second Wind to this workout", () =
   assert.equal(p.streak.current, 7);
   assert.equal(p.freezes, 1);
 });
+
+test("Rally caps friend bonuses at five and Guild Banner requires an active membership", () => {
+  const finish = community => {
+    const p = E.newPlayer("Lifter");
+    p.ranks = {rally:5,guild_banner:3};
+    p.community = community;
+    const set = E.startWorkout(p).exercises[0].sets[0];
+    Object.assign(set,{weight:50,reps:10,done:true});
+    return E.finishWorkout(p).earnedXP;
+  };
+  const base = finish({friends:0,inGuild:false});
+  assert.equal(finish({friends:9,inGuild:true}),Math.round(base*1.34));
+  assert.equal(finish({friends:1,inGuild:false}),Math.round(base*1.05));
+});

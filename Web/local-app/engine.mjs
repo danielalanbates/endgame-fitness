@@ -475,7 +475,7 @@ export function finishWorkout(p) {
     p.streak = {lastDate: streak.lastDate, current: streak.current, longest: streak.longest};
     p.freezes = streak.freezes;
     const base = Math.max(10, Math.round(volume ** 0.8 * 0.35 + reps * 0.5 + Math.min(duration / 60, 120) * 1.5));
-    done.earnedXP = applyTalentEffects(base, p.ranks || {}, {volume, streak: streak.current});
+    done.earnedXP = applyTalentEffects(base, p.ranks || {}, {volume, streak: streak.current, friends:p.community?.friends || 0, inGuild:p.community?.inGuild === true});
   }
   p.sessions.push(done);
   p.bonusPoints = (p.bonusPoints || 0) + bonusTalentPoints(p.ranks || {}, before, level(xp(p)));
@@ -570,6 +570,7 @@ export function validateState(v) {
     ids.add(p.id);
     const intBetween = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
     const record = value => value && typeof value === "object" && !Array.isArray(value);
+    if (p.community != null && (!record(p.community) || !intBetween(p.community.friends,0,Number.MAX_SAFE_INTEGER) || typeof p.community.inGuild !== "boolean")) throw Error("Invalid community context.");
     if (p.streak != null && (!record(p.streak) || !/^\d{4}-\d{2}-\d{2}$/.test(p.streak.lastDate) ||
         !intBetween(p.streak.current,1,20000) || !intBetween(p.streak.longest,p.streak.current,20000))) throw Error("Invalid streak.");
     if (p.raidRewards != null && (!Array.isArray(p.raidRewards) || p.raidRewards.some(r=>!r || !intBetween(r.xp,0,100000) || !Number.isSafeInteger(r.week)))) throw Error("Invalid raid rewards.");

@@ -139,6 +139,13 @@ export async function onRequest({ request, env, params }) {
         "Set-Cookie": clearSessionCookie,
       });
     }
+    if (path === "talents/community" && request.method === "GET") {
+      const context = await env.DB.prepare(`SELECT
+        (SELECT count(*) FROM ef_friendships WHERE accepted=1 AND (requester=? OR recipient=?)) AS friends,
+        EXISTS(SELECT 1 FROM ef_guild_members WHERE user_id=?) AS inGuild`)
+        .bind(user.id,user.id,user.id).first();
+      return reply({friends:context.friends,inGuild:Boolean(context.inGuild)});
+    }
     if (path === "state" && request.method === "GET") {
       const row = await env.DB.prepare(
         "SELECT data,revision FROM ef_state WHERE user_id=?",
