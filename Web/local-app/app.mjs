@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
+import { catalog, recipes } from "./native-programs.mjs";
 import * as E from "./engine.mjs";
 const $ = (s) => document.querySelector(s),
   root = $("#app");
@@ -304,10 +305,10 @@ function calendar(p) {
 function program() {
   const p = player(),
     plan = p.plan || E.makePlan(p);
-  return `${heading("INTENTION BEFORE INTENSITY", "A plan with a purpose.", "Train the patterns. Build your base. Progress when you’re ready.")}<div class="grid"><div class="stack"><section class="card"><span class="eyebrow purple">${esc(plan.split)} · ${p.days} DAYS / WEEK</span><h2 style="margin-top:15px">Your next training block</h2><p>${esc(plan.explanation)}</p><div class="actions">${button(p.active ? "Resume your session" : "Start next session →", "start", "primary")}</div></section>${plan.sessions
+  return `${heading("INTENTION BEFORE INTENSITY", "A plan with a purpose.", "Train the patterns. Build your base. Progress when you’re ready.")}<div class="grid"><div class="stack"><section class="card"><span class="eyebrow purple">${esc(plan.split)} · ${plan.sessions.length} SCHEDULED WORKOUTS</span><h2 style="margin-top:15px">Your next training block</h2><p>${esc(plan.explanation)}</p><div class="actions">${button(p.active ? "Resume your session" : "Start next session →", "start", "primary")}</div></section>${plan.sessions
     .map(
       (s) =>
-        `<section class="card"><h2>${s.name}</h2>${s.exercises
+        `<section class="card"><h2>${esc(s.name)}</h2>${s.exercises
           .map((e) => {
             const ex = E.byId(e.id),
               suggestion = E.nextLoad(p, e.id, e.low, e.high);
@@ -317,7 +318,7 @@ function program() {
     )
     .join(
       "",
-    )}</div><aside class="stack"><section class="card"><h2>The progression rule</h2><p>First, add good repetitions within your target range. When all sets reach the top with at least 2 reps in reserve in two sessions, we suggest a modest load increase.</p><p>If reps fall short or you reach failure, the next suggestion backs off. Every fifth training week reduces volume; your readiness can trigger an earlier recovery session.</p><small>These are conservative programming rules, not a guarantee of individual outcomes. Bodyweight plans have limited pulling resistance.</small></section><section class="card"><h2>Fit your real life</h2><p>Sessions rotate by completion. Rest between hard sessions. A missed day never creates a debt you need to repay.</p>${button("Adjust preferences", "nav", "quiet", 'data-tab="settings"')}</section><section class="card"><h3>Built on evidence</h3><p><a href="https://pubmed.ncbi.nlm.nih.gov/19204579/" target="_blank" rel="noopener">ACSM progression guidance ↗</a><br><a href="https://pubmed.ncbi.nlm.nih.gov/38970765/" target="_blank" rel="noopener">Proximity to failure research ↗</a></p><small>Our specific rules are implementation choices. No study proves this app superior to every custom program.</small></section></aside></div>`;
+    )}${programPicker()}</div><aside class="stack"><section class="card"><h2>The progression rule</h2><p>First, add good repetitions within your target range. When all sets reach the top with at least 2 reps in reserve in two sessions, we suggest a modest load increase.</p><p>If reps fall short or you reach failure, the next suggestion backs off. Every fifth training week reduces volume; your readiness can trigger an earlier recovery session.</p><small>These are conservative programming rules, not a guarantee of individual outcomes. Bodyweight plans have limited pulling resistance.</small></section><section class="card"><h2>Fit your real life</h2><p>Sessions rotate by completion. Rest between hard sessions. A missed day never creates a debt you need to repay.</p>${button("Adjust preferences", "nav", "quiet", 'data-tab="settings"')}</section><section class="card"><h3>Built on evidence</h3><p><a href="https://pubmed.ncbi.nlm.nih.gov/19204579/" target="_blank" rel="noopener">ACSM progression guidance ↗</a><br><a href="https://pubmed.ncbi.nlm.nih.gov/38970765/" target="_blank" rel="noopener">Proximity to failure research ↗</a></p><small>Our specific rules are implementation choices. No study proves this app superior to every custom program.</small></section></aside></div>`;
 }
 function workout() {
   const p = player(),
@@ -405,16 +406,40 @@ function socialPage() {
     days = new Set(week.map((s) => s.day)).size;
   return `${heading("STRONGER TOGETHER", "Find your training party.", "Real friends. Shared consistency. A reason to show up for each other.")}<div class="grid"><div class="stack"><section class="card hero"><span class="eyebrow">WEEKLY PARTY QUEST</span><h2>Three days. One stronger party.</h2><p>Each party member aims to train on three different days this week. Every completed day is a step forward. The challenge resets on Monday.</p>${progress(days, 3)}<small>${days} / 3 training days · your contribution</small></section><section class="card"><h2>Your party this week</h2><p><small>Friends see your display name and aggregate training stats. These are self-reported logs, not independently verified results.</small></p><div class="listrow row"><div><h3>${esc(p.name)} <small>(you)</small></h3><small>Level ${s.level} · ${s.sessions} sessions</small></div><span class="lime">${days} / 3 days</span></div>${social ? social.friends.map((f) => `<div class="listrow row"><div><h3>${esc(f.name)}</h3><small>Level ${f.level} · ${f.sessions} sessions · ${f.weeklySets} sets this week</small></div><div><span class="lime">${f.weeklyDays} / 3 days</span><br>${button("Remove", "removeFriend", "quiet danger", `data-id="${esc(f.id)}"`)}</div></div>`).join("") : "<p>Loading party…</p>"}${social && !social.friends.length ? "<p>Your party is waiting to be formed. Share your friend code with someone you train with.</p>" : ""}</section>${social?.incoming.length ? `<section class="card"><h2>Party invitations</h2>${social.incoming.map((f) => `<div class="listrow row"><h3>${esc(f.name)}</h3><div class="actions">${button("Accept", "respond", "primary", `data-id="${esc(f.id)}" data-accept="true"`)}${button("Decline", "respond", "quiet", `data-id="${esc(f.id)}" data-accept="false"`)}</div></div>`).join("")}</section>` : ""}</div><aside class="stack"><section class="card"><span class="eyebrow purple">Your friend code</span><h2 class="readonlycode" style="font-size:20px;margin-top:16px;letter-spacing:2px">${esc(user.friend_code)}</h2><p>Share this code privately. A friend can send an invitation; you decide whether to accept.</p><div class="actions">${button("Copy invite link", "invite", "primary")}${button("Refresh party", "refresh", "quiet")}</div></section><section class="card"><h2>Add a friend</h2><form data-form="friend"><label>Friend code<input name="code" required maxlength="16" pattern="[a-fA-F0-9]{16}" placeholder="16-character code" autocomplete="off" value="${esc(new URLSearchParams(location.search).get("invite") || "")}"></label>${button("Send invitation →", "submit", "primary", 'type="submit"')}</form>${social?.outgoing.length ? `<p><small>${social.outgoing.length} invitation(s) awaiting acceptance.</small></p>` : ""}</section><section class="card"><h3>Your circle. Your choice.</h3><p>Your BatesAI account provides sign-in. Endgame friend codes build your party without importing your contacts or posting to your social feeds.</p><small>Workout detail and preferences stay private. No public global ranking, no pressure to lift beyond your ability.</small></section></aside></div>`;
 }
+function makePhases(goal, weeks) {
+  const recipe = recipes[goal];
+  const total = recipe.reduce((sum, row) => sum + Number(row[1]), 0);
+  const phases = recipe.map(([name, share, reps, focus]) => ({
+    name, weeks: Math.max(1, Math.floor(weeks * share / total)), reps, focus
+  }));
+  let remaining = weeks - phases.reduce((sum, p) => sum + p.weeks, 0);
+  for (let i = 0; i < remaining; i++) phases[i % phases.length].weeks++;
+  return phases;
+}
 function mesocycle() {
   const p = player();
-  const completed = p.sessions.filter(session => session.planId === p.plan?.id).length;
-  const week = Math.floor(completed / p.days) + 1;
-  const phase = (week - 1) % 5 + 1;
-  return heading("Mesocycle", "Training block", "Your training weeks advance as you complete sessions.") +
-    '<section class="card"><h2>Week ' + phase + ' of 5</h2><p>' +
-    (phase === 5 ? 'Recovery week' : 'Training week') + ' · ' +
-    (completed % p.days) + ' of ' + p.days + ' sessions completed</p>' +
-    progress(phase - 1, 5) + '</section>';
+  const phases = p.phases || makePhases("general", 12);
+  const days = p.plan?.sessions.length || p.days;
+  const total = phases.reduce((sum, phase) => sum + phase.weeks, 0) * days;
+  const current = p.sessions.length % total;
+  let end = 0;
+  const active = phases.find(phase => current < (end += phase.weeks * days));
+  return heading("Mesocycle", "Mesocycle Training", "Plan training phases and track your place in the cycle.") +
+    `<section class="card"><h2>Current phase: ${esc(active.name)}</h2>${progress(current,total)}<p>Workout ${current} of ${total}</p></section>
+    <form class="card" data-form="template"><h2>Start from a template</h2><label>Goal<select name="goal">${Object.keys(recipes).map(key => '<option value="'+key+'">'+esc(key === "fatLoss" ? "Fat loss" : key)+'</option>').join("")}</select></label><label>Cycle length in weeks<input name="weeks" type="number" min="4" max="24" step="2" value="12" required></label><button>Use template</button></form>
+    <form class="card" data-form="phases"><h2>Your phases</h2>${phases.map(phase => `<fieldset><label>Phase name<input name="name" maxlength="60" value="${esc(phase.name)}" required></label><label>Weeks<input type="number" name="weeks" min="1" max="24" value="${phase.weeks}" required></label><label>Rep range<input name="reps" maxlength="30" value="${esc(phase.reps)}" required></label><label>Focus<input name="focus" maxlength="200" value="${esc(phase.focus)}"></label></fieldset>`).join("")}<button>Save phases</button></form>`;
+}
+function programPicker() {
+  return `<section class="card"><h2>Pre-built programs</h2>${catalog.map((entry,i) => `<details class="listrow"><summary>${esc(entry.name)}</summary><p>${esc(entry.description)}</p>${entry.sessions.map(day => '<p><strong>'+esc(day.name)+'</strong> · '+esc(day.exercises.join(", "))+'</p>').join("")}<button data-action="useProgram" data-index="${i}">Use program</button></details>`).join("")}</section>
+    <form class="card" data-form="custom"><h2>Build a custom program</h2><label>Program name<input required maxlength="80" name="name"></label><label>Workout days<textarea required rows="5" name="days" placeholder="Upper body: Bench Press, Pull-ups&#10;Lower body: Squats, Calf Raises"></textarea></label><details><summary>Available exercise names</summary><p>${E.availableMovements.map(e => esc(e.name)).join(", ")}</p></details><button>Use custom program</button></form>`;
+}
+function selectProgram(p, schedule) {
+  if (p.active) throw Error("Finish or discard your active workout before changing programs.");
+  const plan = E.makePlan({...p, schedule});
+  p.schedule = schedule;
+  p.plan = plan;
+  persist();
+  render();
 }
 function library() {
   const unit = player().unit;
@@ -520,6 +545,13 @@ root.addEventListener("click", async (event) => {
   const p = player();
   try {
     switch (b.dataset.action) {
+      case "useProgram": {
+        const entry = catalog[Number(b.dataset.index)];
+        const sessions = entry.sessions.map(day => ({ name: day.name,
+          exercises: day.exercises.map(name => ({id: "catalog:" + name, sets: entry.sets, low: entry.low, high: entry.high, rest: 90})) }));
+        selectProgram(p, {name: entry.name, sessions});
+        break;
+      }
       case "retry":
         await boot();
         break;
@@ -700,6 +732,27 @@ root.addEventListener("submit", async (event) => {
     data = new FormData(form),
     p = player();
   try {
+    if (form.dataset.form === "template") {
+      p.phases = makePhases(data.get("goal"), Number(data.get("weeks")));
+      persist(); render(); return;
+    }
+    if (form.dataset.form === "phases") {
+      p.phases = data.getAll("name").map((name,i) => ({ name, weeks: Number(data.getAll("weeks")[i]), reps: data.getAll("reps")[i], focus: data.getAll("focus")[i] }));
+      persist(); render(); return;
+    }
+    if (form.dataset.form === "custom") {
+      const sessions = data.get("days").trim().split(/\r?\n/).map(line => {
+        const [name, names] = line.split(":");
+        if (!names) throw Error("Use one day per line: day name followed by a colon and exercises.");
+        const exercises = names.split(",").map(text => {
+          const e = E.availableMovements.find(item => item.name.toLowerCase() === text.trim().toLowerCase());
+          if (!e) throw Error("Unknown exercise: " + text);
+          return {id: e.id, sets: 3, low: 8, high: 12, rest: 90};
+        });
+        return {name: name.trim(), exercises};
+      });
+      selectProgram(p, {name: data.get("name").trim(), sessions}); return;
+    }
     if (["create", "preferences"].includes(form.dataset.form)) {
       if (p?.active)
         throw Error(

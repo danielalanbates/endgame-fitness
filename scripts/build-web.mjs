@@ -21,6 +21,7 @@ for (const name of [
   "index.html",
   "app.mjs",
   "engine.mjs",
+  "native-programs.mjs",
   "style.css",
   "sw.js",
   "manifest.webmanifest",
@@ -32,5 +33,5 @@ for (const name of [
     new URL("build/web/" + name, root),
   );
 console.log(
-  "Web artifact ready: build/web (9 public assets; tests and development files excluded).",
+  "Web artifact ready: build/web (10 public assets; tests and development files excluded).",
 );

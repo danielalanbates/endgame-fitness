@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
 // batesai.org · help@batesai.org · See ../../LICENSE.
+import { catalog } from "./native-programs.mjs";
 export const VERSION = 1;
 export const key = "endgamefitness.local.v1";
 export const exercises = [
@@ -147,7 +148,17 @@ export const exercises = [
   muscle,
   guide,
 }));
-export const byId = (id) => exercises.find((e) => e.id === id);
+const movements = new Map(exercises.map(e => [e.id, e]));
+for (const program of catalog) {
+  for (const session of program.sessions) {
+    for (const name of session.exercises) {
+      const id = "catalog:" + name;
+      movements.set(id, { id, name, pattern: "", muscle: "", equipment: "", guide: "" });
+    }
+  }
+}
+export const byId = id => movements.get(id);
+export const availableMovements = [...movements.values()];
 export const dayKey = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export function fresh() {
@@ -302,7 +313,25 @@ export function nextLoad(p, id, low, high) {
       : "Use bodyweight or a light load. Progress control and repetitions first.",
   };
 }
+const safeLabel = s => typeof s === "string" && /^[^<>"\x27\x00-\x1f]{1,80}$/u.test(s);
 export function makePlan(p) {
+  if (p.schedule) {
+    const { name, sessions } = p.schedule;
+    if (!safeLabel(name) || !Array.isArray(sessions) || !sessions.length || sessions.length > 32)
+      throw Error("Invalid program.");
+    for (const session of sessions) {
+      if (!safeLabel(session.name) || !Array.isArray(session.exercises) ||
+          !session.exercises.length || session.exercises.length > 40)
+        throw Error("Invalid program day.");
+      for (const e of session.exercises) {
+        if (!byId(e.id) || ![e.sets,e.low,e.high,e.rest].every(Number.isInteger) ||
+            e.sets < 1 || e.sets > 15 || e.low < 1 || e.high < e.low || e.high > 100 ||
+            e.rest < 0 || e.rest > 900) throw Error("Invalid program exercise.");
+      }
+    }
+    return { id: crypto.randomUUID(), created: Date.now(), split: name, sessions,
+      explanation: name + " · " + sessions.length + " scheduled workouts" };
+  }
   const split = p.days >= 4 ? "Upper / lower" : "Full body";
   const patterns =
     p.days >= 4
@@ -486,6 +515,11 @@ export function validateState(v) {
     )
       throw Error("Invalid player data.");
     ids.add(p.id);
+    if (p.schedule) makePlan(p);
+    if (p.phases && (!Array.isArray(p.phases) || !p.phases.length || p.phases.length > 24 ||
+        p.phases.some(phase => !phase || !Number.isInteger(phase.weeks) || phase.weeks < 1 || phase.weeks > 24 ||
+          ![phase.name, phase.reps, phase.focus].every(text => typeof text === "string" && text.length <= 200))))
+      throw Error("Invalid training phases.");
     const sessionIds = new Set();
     for (const s of [...p.sessions, ...(p.active ? [p.active] : [])]) {
       if (sessionIds.has(s.id)) throw Error("Invalid duplicate workout");
@@ -533,6 +567,14 @@ export function validateState(v) {
       p.plan.created = Number.isFinite(old.created) ? old.created : Date.now();
     } else p.plan = null;
     for (const e of p.active?.exercises || []) {
+      const prescribed = p.schedule?.sessions.find(s => s.name === p.active.name)?.exercises.find(item => item.id === e.id);
+      if (prescribed) {
+        e.low = prescribed.low;
+        e.high = prescribed.high;
+        e.rest = prescribed.rest;
+        e.reason = typeof e.reason === "string" ? e.reason.slice(0, 300) : "";
+        continue;
+      }
       e.low = p.goal === "strength" ? 5 : 8;
       e.high = p.goal === "strength" ? 8 : 12;
       e.rest =

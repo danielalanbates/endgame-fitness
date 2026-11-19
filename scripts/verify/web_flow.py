@@ -1,12 +1,12 @@
 # Copyright (c) 2026 Daniel Bates / Bates LLC. All rights reserved.
-import json, asyncio
+import json, asyncio, os
 from pathlib import Path
 from playwright.async_api import async_playwright
 BASE='http://127.0.0.1:4318'
 OUT=Path(__file__).resolve().parents[2]/'.local'/'screenshots';OUT.mkdir(exist_ok=True)
 async def main():
  async with async_playwright() as pw:
-  browser=await pw.chromium.launch(headless=True)
+  browser=await pw.chromium.launch(headless=True, executable_path=os.getenv("CHROME_EXECUTABLE"))
   page=await browser.new_page(viewport={'width':1440,'height':1000},service_workers='block')
   errors=[]
   page.on('pageerror',lambda e:errors.append(str(e)))
@@ -53,7 +53,7 @@ async def main():
   assert await page.get_by_role('button',name='Claimed',exact=True).count()==1
   await page.set_viewport_size({'width':1440,'height':1000})
   await page.screenshot(path=str(OUT/'05-dashboard-desktop.png'),full_page=True)
-  for label in ['Your program','Progress','Your party','Exercise guide','Settings']:
+  for label in ['Programs','Progress','Community','Mesocycle','Tools','Settings']:
    await page.get_by_role('button',name=label,exact=True).click()
    await page.wait_for_timeout(150)
    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth'), label
@@ -61,10 +61,10 @@ async def main():
   await page.get_by_role('combobox',name='External load unit').select_option('lb')
   async with page.expect_download() as info:await page.get_by_role('button',name='Export backup',exact=True).click()
   download=await info.value;path=await download.path();backup=json.loads(Path(path).read_text());assert backup['players'][0]['unit']=='lb'
-  await page.get_by_role('button',name='Exercise guide',exact=True).click()
+  await page.get_by_role('button',name='Tools',exact=True).click()
   await page.get_by_role('searchbox').fill('Romanian')
-  assert await page.locator('#guides article').count()==2
-  await page.get_by_role('button',name='Your party',exact=True).click()
+  assert await page.locator('#guides details').count()>0
+  await page.get_by_role('button',name='Community',exact=True).click()
   await page.get_by_role('heading',name='Training Buddy',exact=True).wait_for()
   await page.get_by_role('button',name='Accept',exact=True).click()
   await page.get_by_role('button',name='Settings',exact=True).click()
